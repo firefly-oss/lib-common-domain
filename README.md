@@ -3,7 +3,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![Java](https://img.shields.io/badge/Java-17+-orange.svg)](https://openjdk.org/)
+[![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.org/)
 
 **A comprehensive Spring Boot 3 library providing essential domain layer utilities and configurations for the Firefly OpenCore Banking Platform.**
 
