@@ -381,3 +381,9 @@ Now you can:
 | `DomainEvent` | Business events | Success/failure notifications |
 
 **Golden Rule:** Use ServiceResult for expected failures, throw exceptions for saga failures.
+
+---
+
+## Note on Annotation Placement
+
+You can place @CommandQuery and @ViewQuery either on the class that represents the handler or directly on the specific method that acts as the entrypoint (e.g., execute). Choose the placement that your scanning/tooling expects. Semantics are identical in both cases.

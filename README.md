@@ -265,3 +265,33 @@ For contribution guidelines, please refer to the main platform documentation.
 ---
 
 **🏦 Firefly OpenCore Banking Platform** | **📚 [Documentation](./SAGA_INTEGRATION.md)** | **📄 [Apache 2.0 License](LICENSE)**
+
+---
+
+## 📌 Annotation Placement: Class vs Method
+
+Both @CommandQuery and @ViewQuery can be applied at the class level or directly on the entrypoint method. Choose the style that best fits your code organization and scanning strategy.
+
+- Class-level (recommended for handlers/services):
+```java
+@CommandQuery("Creates a new customer account")
+public class CreateCustomerCommand {
+    public void execute(CreateCustomerRequest request) { /* ... */ }
+}
+```
+
+- Method-level (useful when a class contains multiple operations):
+```java
+public class AccountService {
+    @CommandQuery("Creates a new customer account")
+    public void createAccount(CreateCustomerRequest request) { /* ... */ }
+
+    @ViewQuery("Retrieves account details")
+    public CustomerAccountDto getAccount(String accountId) { /* ... */ }
+}
+```
+
+Notes:
+- Semantics are identical regardless of placement: commands are state-changing and should return void; queries are read-only and return DTOs/records.
+- If you rely on component scanning that expects annotations on types, prefer class-level placement. If your tooling scans methods, method-level works equally well.
+- Annotations are @Inherited for class hierarchies; method-level annotations are not inherited by overrides in Java.
