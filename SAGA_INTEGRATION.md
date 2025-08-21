@@ -336,22 +336,21 @@ return Mono.empty();
 **Why:** @ViewQuery marks read-only operations
 
 ```java
-@ViewQuery("Gets user signup status")
+@ViewQuery("Gets user signup details")
 @Service
-public class GetUserStatusQuery {
+public class GetUserDetailsQuery {
     
     private final UserRepository userRepository;
     
-    public String execute(String email) {
+    public UserDto execute(String email) {
         new BusinessValidator()
             .notBlank(email, "Email required")
             .validate();
         
-        ServiceResult<User> result = ServiceResult.of(() -> 
-            userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found")));
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("User not found"));
         
-        return result.isSuccess() ? "FOUND" : "NOT_FOUND";
+        return new UserDto(user.getId(), user.getEmail(), user.getName());
     }
 }
 ```
