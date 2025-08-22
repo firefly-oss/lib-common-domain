@@ -130,6 +130,11 @@ firefly:
 **Declarative approach** using `@EmitEvent`:
 
 ```java
+import com.catalis.common.domain.events.outbound.EmitEvent;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import java.util.UUID;
+
 @Service
 public class OrderService {
     
@@ -144,6 +149,12 @@ public class OrderService {
 **Programmatic approach**:
 
 ```java
+import com.catalis.common.domain.events.outbound.DomainEventPublisher;
+import com.catalis.common.domain.events.DomainEventEnvelope;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import java.util.UUID;
+
 @Service
 public class OrderService {
     
@@ -172,8 +183,15 @@ public class OrderService {
 ### 4. Consuming Events
 
 ```java
+import com.catalis.common.domain.events.inbound.OnDomainEvent;
+import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Component
 public class OrderEventHandler {
+    
+    private static final Logger log = LoggerFactory.getLogger(OrderEventHandler.class);
     
     @OnDomainEvent(topic = "orders", type = "order.created")
     public void handleOrderCreated(Order order) {
@@ -702,6 +720,13 @@ public class OrderEventHandlers {
 
 ```java
 // User Service
+import com.catalis.common.domain.events.outbound.EmitEvent;
+import com.catalis.common.domain.events.inbound.OnDomainEvent;
+import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
+
 @Service
 public class UserService {
     
@@ -753,9 +778,8 @@ We welcome contributions to the Firefly Common Domain Library! Please follow the
 
 ### Development Setup
 
-1. **Clone the repository**
+1. **Navigate to the project directory**
    ```bash
-   git clone https://github.com/firefly-oss/lib-common-domain.git
    cd lib-common-domain
    ```
 
@@ -800,8 +824,5 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ## 📞 Support
 
 For support and questions:
-- **Issues**: [GitHub Issues](https://github.com/firefly-oss/lib-common-domain/issues)
 - **Documentation**: This README and inline code documentation
 - **Examples**: Check the `src/test` directory for comprehensive examples
-
----
