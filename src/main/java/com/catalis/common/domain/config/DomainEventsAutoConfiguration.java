@@ -22,7 +22,7 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 @EnableConfigurationProperties(DomainEventsProperties.class)
 @ConditionalOnClass({ApplicationEventPublisher.class})
-@ConditionalOnProperty(prefix = "catalis.events", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "firefly.events", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class DomainEventsAutoConfiguration {
 
     @Bean
@@ -72,7 +72,7 @@ public class DomainEventsAutoConfiguration {
     // Inbound subscribers (conditional, disabled by default)
 
     @Bean
-    @ConditionalOnExpression("'${catalis.events.consumer.enabled:false}'=='true' and '${catalis.events.adapter:auto}'=='kafka'")
+    @ConditionalOnExpression("'${firefly.events.consumer.enabled:false}'=='true' and '${firefly.events.adapter:auto}'=='kafka'")
     @ConditionalOnClass(name = {
             "org.springframework.kafka.core.ConsumerFactory",
             "org.springframework.kafka.listener.KafkaMessageListenerContainer"
@@ -88,7 +88,7 @@ public class DomainEventsAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnExpression("'${catalis.events.consumer.enabled:false}'=='true' and '${catalis.events.adapter:auto}'=='rabbit'")
+    @ConditionalOnExpression("'${firefly.events.consumer.enabled:false}'=='true' and '${firefly.events.adapter:auto}'=='rabbit'")
     @ConditionalOnClass(name = {
             "org.springframework.amqp.rabbit.connection.ConnectionFactory",
             "org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer"
@@ -104,7 +104,7 @@ public class DomainEventsAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnExpression("'${catalis.events.consumer.enabled:false}'=='true' and '${catalis.events.adapter:auto}'=='sqs'")
+    @ConditionalOnExpression("'${firefly.events.consumer.enabled:false}'=='true' and '${firefly.events.adapter:auto}'=='sqs'")
     @ConditionalOnClass(name = "software.amazon.awssdk.services.sqs.SqsAsyncClient")
     @ConditionalOnBean(type = "software.amazon.awssdk.services.sqs.SqsAsyncClient")
     public SmartLifecycle domainEventsSqsSubscriber(ApplicationContext ctx,
@@ -119,7 +119,7 @@ public class DomainEventsAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnExpression("'${catalis.events.consumer.enabled:false}'=='true' and '${catalis.events.adapter:auto}'=='auto'")
+    @ConditionalOnExpression("'${firefly.events.consumer.enabled:false}'=='true' and '${firefly.events.adapter:auto}'=='auto'")
     public SmartLifecycle domainEventsAutoSubscriber(ApplicationContext ctx,
                                                      DomainEventsProperties props,
                                                      ApplicationEventPublisher events) {

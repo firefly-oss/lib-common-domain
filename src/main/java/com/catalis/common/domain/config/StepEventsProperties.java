@@ -2,7 +2,7 @@ package com.catalis.common.domain.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "catalis.stepevents")
+@ConfigurationProperties(prefix = "firefly.stepevents")
 public class StepEventsProperties {
 
     public enum Adapter { AUTO, APPLICATION_EVENT, KAFKA, RABBIT, SQS, NOOP }

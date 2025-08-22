@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.ArrayList;
 import java.util.List;
 
-@ConfigurationProperties(prefix = "catalis.events")
+@ConfigurationProperties(prefix = "firefly.events")
 public class DomainEventsProperties {
 
     public enum Adapter { AUTO, APPLICATION_EVENT, KAFKA, RABBIT, SQS, NOOP }

@@ -30,7 +30,7 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 @EnableConfigurationProperties(StepEventsProperties.class)
 @ConditionalOnClass({StepEventPublisher.class, ApplicationEventPublisher.class})
-@ConditionalOnProperty(prefix = "catalis.stepevents", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "firefly.stepevents", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class StepEventsAutoConfiguration {
 
     @Bean
