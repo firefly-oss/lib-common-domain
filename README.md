@@ -1,7 +1,42 @@
 # Firefly OpenCore Banking Platform - Common Domain Library
-Last updated: 2025-08-22 16:56
+Last updated: 2025-08-22 17:06
 
 This library provides common domain building blocks and auto-configurations shared across microservices.
+
+## Installation
+
+Artifact coordinates:
+
+Maven (pom.xml):
+
+```
+<dependency>
+  <groupId>com.catalis</groupId>
+  <artifactId>lib-common-domain</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+Gradle (Groovy DSL):
+
+```
+dependencies {
+  implementation "com.catalis:lib-common-domain:1.0.0-SNAPSHOT"
+}
+```
+
+Gradle (Kotlin DSL):
+
+```
+dependencies {
+  implementation("com.catalis:lib-common-domain:1.0.0-SNAPSHOT")
+}
+```
+
+Requirements:
+- Spring Boot (auto-configured via spring.factories; works with the parent BOM used in this repository)
+- Message client dependencies as needed by your chosen adapter (spring-kafka, spring-boot-starter-amqp, or AWS SDK v2 SQS)
+- A JDK compatible with your Spring Boot version (Boot 3 typically requires Java 17+)
 
 ## Generic Domain Events (Publish & Read)
 
@@ -47,6 +82,8 @@ catalis:
     adapter: kafka   # auto | application-event | kafka | rabbit | sqs | noop (default: auto)
     kafka:
       templateBeanName: kafkaTemplate
+      # If Spring Messaging is on the classpath, send as Message with headers (default: true)
+      useMessagingIfAvailable: true
 ```
 
 - AUTO detection order: Kafka -> Rabbit -> SQS -> ApplicationEvent.
@@ -68,6 +105,17 @@ catalis:
       queueUrl: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
       # or
       queueName: my-queue
+```
+
+### Disable publishing (NOOP) for Domain Events
+
+```
+catalis:
+  events:
+    enabled: false
+# or
+# events:
+#   adapter: noop
 ```
 
 Note: This library emits in-process Spring events for local subscribers; for cross-service consumption, connect your consumer to the configured MQ (Kafka/Rabbit/SQS).
@@ -229,6 +277,9 @@ catalis:
       enabled: true
       kafka:
         topics: ["payments.events", "invoices.events"]
+        # Optional overrides:
+        # groupId: payments-read-model
+        # consumerFactoryBeanName: kafkaConsumerFactory
 
 RabbitMQ (requires spring-amqp and a ConnectionFactory bean):
 
@@ -246,13 +297,13 @@ catalis:
   events:
     adapter: sqs
     sqs:
-      # One of these
+      # Provide queueUrl here, or omit and set consumer.sqs.queueName below
       queueUrl: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
-      # or
-      queueName: my-queue
     consumer:
       enabled: true
       sqs:
+        # If queueUrl above is not set, provide the queueName to resolve URL
+        queueName: my-queue
         waitTimeSeconds: 10      # long polling
         maxMessages: 10
         pollDelayMillis: 1000
@@ -279,3 +330,28 @@ Non-intrusive/optional loading:
   - `com.catalis.common.domain.config.DomainEventsAutoConfiguration`
   - `com.catalis.common.domain.config.StepEventsAutoConfiguration`
 
+
+
+## JSON logging
+
+JSON logging is enabled by default when using this library because a logback-spring.xml is bundled on the classpath. It uses net.logstash.logback encoder to emit structured JSON logs.
+
+Notes:
+- Auto-configuration class: com.catalis.common.domain.config.JsonLoggingAutoConfiguration (no additional beans; config is in logback-spring.xml).
+- To customize or disable, add your own logback-spring.xml in your application resources; Spring Boot will pick up the nearest one on the classpath and override the default.
+
+## Development
+
+- Build: mvn clean verify
+- Run tests: mvn test
+- Java version: align with your Spring Boot version (typically Java 17+)
+
+## Changelog
+
+- Unreleased — 2025-08-22
+  - README refreshed: Installation instructions, accurate property names for catalis.events and catalis.stepevents, inbound subscriber configuration, Kafka useMessagingIfAvailable, and JSON logging notes.
+  - Clarified adapter auto-detection order and in-process fallbacks.
+
+## License
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
