@@ -5,86 +5,86 @@
 [![Java](https://img.shields.io/badge/Java-17%2B-orange.svg)]()
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen.svg)]()
 
-A comprehensive Spring Boot library that provides domain-driven design (DDD) capabilities with reactive programming support, featuring multi-adapter event publishing and consumption, step events integration, and structured JSON logging.
-
-## 📋 Table of Contents
-
-- [Overview](#-overview)
-- [Features](#-features)
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [Configuration](#-configuration)
-- [Usage](#-usage)
-  - [Publishing Domain Events](#publishing-domain-events)
-  - [Consuming Domain Events](#consuming-domain-events)
-  - [Step Events Integration](#step-events-integration)
-- [Messaging Adapters](#-messaging-adapters)
-- [Configuration Reference](#-configuration-reference)
-- [Advanced Usage](#-advanced-usage)
-- [Examples](#-examples)
-- [Contributing](#-contributing)
-- [License](#-license)
+A powerful Spring Boot library that enables domain-driven design (DDD) with reactive programming support, featuring multi-messaging adapter architecture and comprehensive event handling capabilities.
 
 ## 🌟 Overview
 
-The Firefly Common Domain Library is designed to simplify domain-driven development in Spring Boot applications by providing:
+The Firefly Common Domain Library simplifies the implementation of event-driven architectures in Spring Boot applications by providing:
 
-- **Multi-transport Event Publishing**: Support for Kafka, RabbitMQ, SQS, and Spring Application Events
-- **Reactive Programming**: Built with Project Reactor for non-blocking operations
-- **Hexagonal Architecture**: Clean separation between ports and adapters
-- **Auto-configuration**: Zero-configuration setup with sensible defaults
-- **Aspect-Oriented Programming**: Declarative event publishing with annotations
-- **Type-safe Configuration**: Comprehensive configuration properties with validation
+- **Multi-Transport Event System**: Support for Kafka, RabbitMQ, AWS SQS, and Spring Application Events
+- **Reactive Architecture**: Built on Project Reactor for non-blocking operations
+- **Modular Design**: Choose only the messaging adapters you need
+- **Auto-Configuration**: Zero-configuration setup with intelligent adapter detection
+- **Declarative Programming**: Annotation-driven event publishing and consumption
+- **Production-Ready**: Comprehensive monitoring, health checks, and metrics
 
-## ✨ Features
+## 📋 Table of Contents
 
-### Domain Events
-- **Multiple Messaging Adapters**: Kafka, RabbitMQ, SQS, Application Events
-- **Auto-detection**: Automatically selects the best available adapter
-- **Declarative Publishing**: `@EmitEvent` annotation with SpEL support
-- **Programmatic Publishing**: Direct API for complex scenarios
-- **Event Consumption**: Annotation-driven event handlers
-- **Reactive Support**: Full Project Reactor integration
+- [Architecture](#-architecture)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Configuration](#-configuration)
+- [Usage Examples](#-usage-examples)
+- [Modules](#-modules)
+- [Monitoring & Health](#-monitoring--health)
+- [Testing](#-testing)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-### Step Events Integration
-- **Transactional Engine Support**: Integrates with `lib-transactional-engine`
-- **Bridge Pattern**: Delegates to domain event publishers when available
-- **Same Adapter Support**: Uses the same messaging infrastructure
+## 🏗️ Architecture
 
-### Additional Features
-- **JSON Logging**: Structured logging with Logback integration
-- **Spring Boot Auto-configuration**: Seamless integration with Spring Boot
-- **Comprehensive Testing**: Extensive test coverage with examples
-- **Flexible Configuration**: YAML/Properties-based configuration
+The library follows a hexagonal architecture pattern with clear separation between:
 
-## 🚀 Installation
+- **Core Domain**: Event interfaces, envelopes, and business logic
+- **Ports**: Abstract interfaces for publishing and consuming events
+- **Adapters**: Concrete implementations for different messaging systems
+- **Configuration**: Auto-configuration and property management
 
-### Maven
+### Supported Messaging Systems
 
-Add the dependency to your `pom.xml`:
+| Adapter | Transport | Use Case |
+|---------|-----------|----------|
+| Kafka | Apache Kafka | High-throughput, distributed streaming |
+| RabbitMQ | AMQP | Complex routing, reliable messaging |
+| AWS SQS | Cloud Queue | Serverless, managed queuing |
+| Application Events | In-Memory | Testing, monolithic applications |
+
+## 📦 Installation
+
+### Basic Installation
+
+Choose one of the following approaches based on your needs:
+
+#### Option 1: All-in-One (Recommended for Getting Started)
 
 ```xml
 <dependency>
     <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain</artifactId>
+    <artifactId>lib-common-domain-all</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
-### Gradle
+#### Option 2: Modular Installation (Recommended for Production)
 
-Add the dependency to your `build.gradle`:
-
-```groovy
-implementation 'com.catalis:lib-common-domain:1.0.0-SNAPSHOT'
+Core module (required):
+```xml
+<dependency>
+    <groupId>com.catalis</groupId>
+    <artifactId>lib-common-domain-core</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
 ```
 
-### Additional Dependencies
-
-Depending on your chosen messaging adapter, include the appropriate dependencies:
+Add specific adapters as needed:
 
 **For Kafka:**
 ```xml
+<dependency>
+    <groupId>com.catalis</groupId>
+    <artifactId>lib-common-domain-kafka</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
 <dependency>
     <groupId>org.springframework.kafka</groupId>
     <artifactId>spring-kafka</artifactId>
@@ -94,13 +94,23 @@ Depending on your chosen messaging adapter, include the appropriate dependencies
 **For RabbitMQ:**
 ```xml
 <dependency>
+    <groupId>com.catalis</groupId>
+    <artifactId>lib-common-domain-rabbit</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+<dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-amqp</artifactId>
 </dependency>
 ```
 
-**For Amazon SQS:**
+**For AWS SQS:**
 ```xml
+<dependency>
+    <groupId>com.catalis</groupId>
+    <artifactId>lib-common-domain-sqs</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
 <dependency>
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>sqs</artifactId>
@@ -108,11 +118,20 @@ Depending on your chosen messaging adapter, include the appropriate dependencies
 </dependency>
 ```
 
-## 🏁 Quick Start
+### Gradle Installation
 
-### 1. Enable Auto-configuration
+```groovy
+implementation 'com.catalis:lib-common-domain-all:1.0.0-SNAPSHOT'
+// or modular approach
+implementation 'com.catalis:lib-common-domain-core:1.0.0-SNAPSHOT'
+implementation 'com.catalis:lib-common-domain-kafka:1.0.0-SNAPSHOT'
+```
 
-The library uses Spring Boot auto-configuration. Simply add it to your classpath and it will be automatically configured.
+## 🚀 Quick Start
+
+### 1. Enable Auto-Configuration
+
+The library automatically configures itself when added to your classpath. No additional configuration is required for basic usage.
 
 ### 2. Basic Configuration
 
@@ -122,38 +141,47 @@ Add to your `application.yml`:
 firefly:
   events:
     enabled: true
-    adapter: auto  # or kafka, rabbit, sqs, application_event, noop
+    adapter: auto  # Automatically detects available messaging systems
 ```
 
 ### 3. Publishing Events
 
-**Declarative approach** using `@EmitEvent`:
+#### Declarative Approach with @EmitEvent
 
 ```java
 import com.catalis.common.domain.events.outbound.EmitEvent;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
-import java.util.UUID;
 
 @Service
 public class OrderService {
     
     @EmitEvent(topic = "'orders'", type = "'order.created'", key = "#result.id")
     public Mono<Order> createOrder(CreateOrderRequest request) {
-        // Your business logic here
-        return Mono.just(new Order(UUID.randomUUID().toString(), request.getAmount()));
+        // Your business logic
+        Order order = processOrder(request);
+        return Mono.just(order);
+    }
+    
+    @EmitEvent(
+        topic = "'payments'", 
+        type = "'payment.processed'",
+        key = "#orderId",
+        payload = "{'orderId': #orderId, 'amount': #amount, 'status': 'COMPLETED'}"
+    )
+    public Mono<Void> processPayment(String orderId, BigDecimal amount) {
+        // Payment processing logic
+        return Mono.empty();
     }
 }
 ```
 
-**Programmatic approach**:
+#### Programmatic Approach
 
 ```java
 import com.catalis.common.domain.events.outbound.DomainEventPublisher;
 import com.catalis.common.domain.events.DomainEventEnvelope;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
-import java.util.UUID;
 
 @Service
 public class OrderService {
@@ -165,13 +193,14 @@ public class OrderService {
     }
     
     public Mono<Order> createOrder(CreateOrderRequest request) {
-        Order order = new Order(UUID.randomUUID().toString(), request.getAmount());
+        Order order = new Order(request);
         
         DomainEventEnvelope event = DomainEventEnvelope.builder()
             .topic("orders")
             .type("order.created")
             .key(order.getId())
             .payload(order)
+            .headers(Map.of("version", "1.0", "source", "order-service"))
             .build();
             
         return eventPublisher.publish(event)
@@ -185,51 +214,109 @@ public class OrderService {
 ```java
 import com.catalis.common.domain.events.inbound.OnDomainEvent;
 import org.springframework.stereotype.Component;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Component
 public class OrderEventHandler {
     
-    private static final Logger log = LoggerFactory.getLogger(OrderEventHandler.class);
-    
     @OnDomainEvent(topic = "orders", type = "order.created")
     public void handleOrderCreated(Order order) {
-        log.info("Order created: {}", order.getId());
-        // Handle the event
+        log.info("New order created: {}", order.getId());
+        // Process the event
+        sendWelcomeEmail(order.getCustomerEmail());
+        updateInventory(order.getItems());
     }
     
-    @OnDomainEvent(topic = "orders", type = "order.cancelled")
-    public void handleOrderCancelled(String orderId) {
-        log.info("Order cancelled: {}", orderId);
-        // Handle the event
+    @OnDomainEvent(topic = "payments", type = "payment.completed")
+    public void handlePaymentCompleted(PaymentEvent event) {
+        log.info("Payment completed for order: {}", event.getOrderId());
+        // Update order status
+        orderService.markAsPaid(event.getOrderId());
     }
 }
 ```
 
 ## ⚙️ Configuration
 
-### Basic Configuration
+### Adapter Selection
 
+The library automatically detects available messaging systems in this priority order:
+
+1. **Kafka** - if Kafka dependencies and `KafkaTemplate` are available
+2. **RabbitMQ** - if RabbitMQ dependencies and `RabbitTemplate` are available
+3. **AWS SQS** - if AWS SDK and `SqsAsyncClient` are available
+4. **Application Events** - always available as fallback
+
+### Messaging-Specific Configuration
+
+#### Kafka Configuration
+
+**Basic Configuration:**
 ```yaml
 firefly:
   events:
-    enabled: true
-    adapter: auto  # auto, kafka, rabbit, sqs, application_event, noop
+    adapter: kafka  # or auto
+    kafka:
+      template-bean-name: myKafkaTemplate  # optional custom template
+      use-messaging-if-available: true
+    consumer:
+      enabled: true
+      kafka:
+        topics: ["orders", "payments"]
+        group-id: "my-service"
+        consumer-factory-bean-name: myConsumerFactory  # optional
 ```
 
-### Kafka Configuration
-
+**Advanced Configuration with Bootstrap Servers and Producer Properties:**
 ```yaml
 firefly:
   events:
     adapter: kafka
     kafka:
-      template-bean-name: myKafkaTemplate  # optional
+      # Connection settings
+      bootstrap-servers: "localhost:9092,localhost:9093"
+      
+      # Serialization settings
+      key-serializer: "org.apache.kafka.common.serialization.StringSerializer"
+      value-serializer: "org.springframework.kafka.support.serializer.JsonSerializer"
+      
+      # Performance tuning
+      retries: 3
+      batch-size: 32768
+      linger-ms: 100
+      buffer-memory: 67108864
+      acks: "all"
+      
+      # Additional Kafka properties
+      properties:
+        "ssl.truststore.location": "/path/to/truststore.jks"
+        "ssl.truststore.password": "truststore-password"
+        "security.protocol": "SSL"
+        "compression.type": "snappy"
+        "max.request.size": 1048576
+      
+      # Legacy settings (still supported)
+      template-bean-name: myKafkaTemplate  # optional custom template
       use-messaging-if-available: true
+    consumer:
+      enabled: true
+      kafka:
+        topics: ["orders", "payments"]
+        group-id: "my-service"
+        consumer-factory-bean-name: myConsumerFactory  # optional
 ```
 
-### RabbitMQ Configuration
+**Configuration Properties Reference:**
+- `bootstrap-servers`: Comma-separated list of Kafka broker addresses
+- `key-serializer`: Serializer class for message keys (default: StringSerializer)
+- `value-serializer`: Serializer class for message values (default: StringSerializer)
+- `retries`: Number of retry attempts for failed sends
+- `batch-size`: Batch size for batching records
+- `linger-ms`: Time to wait for additional records before sending
+- `buffer-memory`: Total memory available for buffering
+- `acks`: Acknowledgment mode ("none", "1", "all", or "-1")
+- `properties`: Map of additional Kafka producer properties
+
+#### RabbitMQ Configuration
 
 ```yaml
 firefly:
@@ -237,11 +324,15 @@ firefly:
     adapter: rabbit
     rabbit:
       template-bean-name: myRabbitTemplate  # optional
-      exchange: "${topic}"  # SpEL expression
-      routing-key: "${type}"  # SpEL expression
+      exchange: "events.${topic}"  # SpEL expression
+      routing-key: "${type}.${key}"  # SpEL expression
+    consumer:
+      enabled: true
+      rabbit:
+        queues: ["orders.queue", "payments.queue"]
 ```
 
-### SQS Configuration
+#### AWS SQS Configuration
 
 ```yaml
 firefly:
@@ -250,401 +341,280 @@ firefly:
     sqs:
       client-bean-name: mySqsClient  # optional
       queue-url: "https://sqs.region.amazonaws.com/account/queue"
-      queue-name: "my-queue"  # alternative to queue-url
-```
-
-### Consumer Configuration
-
-```yaml
-firefly:
-  events:
+      # OR use queue name (will be resolved to URL)
+      queue-name: "my-events-queue"
     consumer:
       enabled: true
-      type-header: "event_type"
-      key-header: "event_key"
-      kafka:
-        topics:
-          - "orders"
-          - "payments"
-        consumer-factory-bean-name: myConsumerFactory  # optional
-        group-id: "my-service"  # optional
-      rabbit:
-        queues:
-          - "orders.queue"
-          - "payments.queue"
       sqs:
         queue-url: "https://sqs.region.amazonaws.com/account/consumer-queue"
-        queue-name: "consumer-queue"  # alternative to queue-url
         wait-time-seconds: 10
         max-messages: 10
         poll-delay-millis: 1000
 ```
 
-## 📝 Usage
+### Advanced Configuration
 
-### Publishing Domain Events
+```yaml
+firefly:
+  events:
+    enabled: true
+    adapter: auto
+    consumer:
+      enabled: true
+      type-header: "event_type"  # Header name for event type
+      key-header: "event_key"    # Header name for event key
+  stepevents:  # Integration with transactional engine
+    enabled: true
+    adapter: auto  # Uses same adapter as domain events
+```
 
-#### Using @EmitEvent Annotation
+## 💡 Usage Examples
 
-The `@EmitEvent` annotation provides a declarative way to publish events:
+### E-commerce Order Processing
 
 ```java
 @Service
-public class PaymentService {
+@Transactional
+public class EcommerceOrderService {
     
-    // Basic usage - publishes method result as payload
-    @EmitEvent(topic = "'payments'", type = "'payment.processed'")
-    public Mono<PaymentResult> processPayment(PaymentRequest request) {
-        // Process payment
-        return Mono.just(new PaymentResult(request.getId(), "SUCCESS"));
+    private final OrderRepository orderRepository;
+    private final PaymentService paymentService;
+    
+    @EmitEvent(topic = "'orders'", type = "'order.placed'", key = "#result.id")
+    public Mono<Order> placeOrder(PlaceOrderRequest request) {
+        Order order = Order.create(request);
+        return orderRepository.save(order)
+            .doOnSuccess(savedOrder -> log.info("Order placed: {}", savedOrder.getId()));
     }
     
-    // Custom key and payload using SpEL
-    @EmitEvent(
-        topic = "'payments'", 
-        type = "'payment.failed'",
-        key = "#request.userId",
-        payload = "{'error': #result.errorCode, 'amount': #request.amount}"
-    )
-    public PaymentResult processFailedPayment(PaymentRequest request) {
-        return new PaymentResult(request.getId(), "FAILED");
-    }
-    
-    // Using method parameters in expressions
     @EmitEvent(
         topic = "'orders'", 
-        type = "'order.updated'",
+        type = "'order.status.changed'",
         key = "#orderId",
-        payload = "{'orderId': #orderId, 'status': #status}"
+        payload = "{'orderId': #orderId, 'oldStatus': #oldStatus, 'newStatus': #newStatus}"
     )
-    public void updateOrderStatus(String orderId, String status) {
-        // Update logic
+    public Mono<Order> updateOrderStatus(String orderId, OrderStatus newStatus) {
+        return orderRepository.findById(orderId)
+            .map(order -> {
+                OrderStatus oldStatus = order.getStatus();
+                order.setStatus(newStatus);
+                return order;
+            })
+            .flatMap(orderRepository::save);
     }
 }
-```
 
-#### Programmatic Publishing
-
-For complex scenarios, use the `DomainEventPublisher` directly:
-
-```java
-@Service
-public class ComplexEventService {
+@Component
+public class OrderEventHandlers {
     
-    private final DomainEventPublisher eventPublisher;
+    private final PaymentService paymentService;
+    private final InventoryService inventoryService;
+    private final NotificationService notificationService;
     
-    public ComplexEventService(DomainEventPublisher eventPublisher) {
-        this.eventPublisher = eventPublisher;
-    }
-    
-    public Mono<Void> publishComplexEvent(BusinessEntity entity) {
-        Map<String, Object> headers = Map.of(
-            "version", "1.0",
-            "source", "order-service",
-            "correlation-id", UUID.randomUUID().toString()
-        );
+    @OnDomainEvent(topic = "orders", type = "order.placed")
+    public void handleOrderPlaced(Order order) {
+        // Reserve inventory
+        inventoryService.reserveItems(order.getItems())
+            .subscribe();
         
-        DomainEventEnvelope event = DomainEventEnvelope.builder()
-            .topic("business-events")
-            .type("entity.state.changed")
-            .key(entity.getId())
-            .payload(entity)
-            .headers(headers)
-            .build();
-            
-        return eventPublisher.publish(event);
+        // Send confirmation email
+        notificationService.sendOrderConfirmation(order.getCustomerEmail(), order)
+            .subscribe();
+    }
+    
+    @OnDomainEvent(topic = "payments", type = "payment.successful")
+    public void handlePaymentSuccessful(PaymentEvent event) {
+        // Update order status to paid
+        orderService.updateOrderStatus(event.getOrderId(), OrderStatus.PAID)
+            .subscribe();
+    }
+    
+    @OnDomainEvent(topic = "orders", type = "order.status.changed")
+    public void handleOrderStatusChange(OrderStatusChangeEvent event) {
+        if (event.getNewStatus() == OrderStatus.SHIPPED) {
+            // Send tracking information
+            notificationService.sendTrackingInfo(event.getOrderId())
+                .subscribe();
+        }
     }
 }
 ```
 
-### Consuming Domain Events
-
-#### Basic Event Handling
+### Microservices Communication Pattern
 
 ```java
-@Component
-public class OrderEventHandler {
+// User Service
+@Service
+public class UserManagementService {
     
-    private static final Logger log = LoggerFactory.getLogger(OrderEventHandler.class);
-    
-    @OnDomainEvent(topic = "orders", type = "order.created")
-    public void handleOrderCreated(Order order) {
-        log.info("Processing new order: {}", order.getId());
-        // Handle order creation
+    @EmitEvent(topic = "'users'", type = "'user.registered'", key = "#result.id")
+    public Mono<User> registerUser(UserRegistrationRequest request) {
+        User user = User.create(request);
+        return userRepository.save(user);
     }
     
-    @OnDomainEvent(topic = "orders", type = "order.updated")
-    public void handleOrderUpdated(OrderUpdateEvent event) {
-        log.info("Order {} updated: {}", event.getOrderId(), event.getChanges());
-        // Handle order update
+    @EmitEvent(topic = "'users'", type = "'user.profile.updated'", key = "#userId")
+    public Mono<User> updateProfile(String userId, UpdateProfileRequest request) {
+        return userRepository.findById(userId)
+            .map(user -> user.updateProfile(request))
+            .flatMap(userRepository::save);
+    }
+}
+
+// Notification Service
+@Component
+public class UserNotificationHandler {
+    
+    @OnDomainEvent(topic = "users", type = "user.registered")
+    public void sendWelcomeEmail(User user) {
+        emailService.sendWelcomeEmail(user.getEmail(), user.getName())
+            .subscribe();
+    }
+    
+    @OnDomainEvent(topic = "orders", type = "order.placed")
+    public void notifyOrderPlaced(Order order) {
+        smsService.sendOrderConfirmation(order.getCustomerPhone(), order.getId())
+            .subscribe();
+    }
+}
+
+// Analytics Service
+@Component 
+public class EventAnalyticsHandler {
+    
+    @OnDomainEvent(topic = "*", type = "*")  // Listen to all events
+    public void trackEvent(String eventPayload, 
+                          @Header("event_type") String eventType,
+                          @Header("event_topic") String topic) {
+        analyticsService.recordEvent(topic, eventType, eventPayload)
+            .subscribe();
     }
 }
 ```
 
-#### Advanced Event Handling with Type Conversion
+## 📊 Modules
 
-The library automatically converts JSON payloads to your target types:
+The library is designed with a modular architecture to minimize dependencies:
 
-```java
-@Component
-public class PaymentEventHandler {
-    
-    // Automatic deserialization from JSON string to PaymentEvent
-    @OnDomainEvent(topic = "payments", type = "payment.completed")
-    public void handlePaymentCompleted(PaymentEvent event) {
-        // event is automatically deserialized from JSON
-        processPayment(event);
+### Core Module (`lib-common-domain-core`)
+**Purpose**: Essential functionality and Application Events adapter
+
+**Includes**:
+- Domain event interfaces and envelopes
+- `@EmitEvent` aspect and SpEL processing
+- `@OnDomainEvent` event dispatcher
+- Configuration properties and validation
+- Actuator support (health checks, metrics)
+- Distributed tracing utilities
+- Spring Application Events adapter
+
+**Dependencies**: Spring Boot WebFlux, AOP, Actuator, Micrometer
+
+### Messaging Adapters
+
+#### Kafka Module (`lib-common-domain-kafka`)
+- Kafka-specific publishing and consumption
+- Spring Kafka integration
+- Testcontainers support for integration testing
+
+#### RabbitMQ Module (`lib-common-domain-rabbit`)
+- RabbitMQ publishing with configurable exchanges/routing
+- Spring AMQP integration
+- Testcontainers support for integration testing
+
+#### SQS Module (`lib-common-domain-sqs`)
+- AWS SQS publishing and consumption
+- AWS SDK v2 integration
+- LocalStack support for testing
+
+### All-in-One Module (`lib-common-domain-all`)
+**Purpose**: Convenience module including all adapters
+
+**Use When**: You need multiple messaging systems or want to avoid dependency management
+
+## 📈 Monitoring & Health
+
+### Health Checks
+
+The library automatically provides health indicators for each messaging adapter:
+
+```bash
+GET /actuator/health
+```
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "domainEventsKafka": {
+      "status": "UP",
+      "details": {
+        "adapter": "kafka",
+        "status": "Kafka template available"
+      }
+    },
+    "domainEventsRabbit": {
+      "status": "UP",
+      "details": {
+        "adapter": "rabbit",
+        "status": "RabbitMQ connection healthy"
+      }
     }
-    
-    // Raw string handling
-    @OnDomainEvent(topic = "payments", type = "payment.raw")
-    public void handleRawPayment(String jsonPayload) {
-        // Handle raw JSON string
-        ObjectMapper mapper = new ObjectMapper();
-        // Custom processing
-    }
+  }
 }
 ```
 
-### Step Events Integration
+### Metrics
 
-The library integrates with the Firefly Transactional Engine:
+Built-in metrics for monitoring event publishing and consumption:
 
-```yaml
-firefly:
-  stepevents:
-    enabled: true
-    adapter: auto  # Uses same adapters as domain events
+- `domain_events_published_total` - Counter of published events (by adapter, topic, type)
+- `domain_events_publish_duration` - Publishing duration timer
+- `domain_events_consumed_total` - Counter of consumed events
+- `domain_events_consume_duration` - Consumption duration timer
+
+### Configuration Info
+
+```bash
+GET /actuator/info
 ```
 
-The step events will automatically use the same messaging infrastructure as domain events when available.
+Provides detailed configuration information for debugging and verification.
 
-## 🔌 Messaging Adapters
+## 🧪 Testing
 
-### Auto-Detection Priority
-
-When using `adapter: auto`, the library detects available messaging systems in this order:
-
-1. **Kafka** - if `KafkaTemplate` bean is available
-2. **RabbitMQ** - if `RabbitTemplate` bean is available  
-3. **SQS** - if `SqsAsyncClient` bean is available
-4. **Application Events** - fallback option
-
-### Kafka Adapter
-
-**Features:**
-- Uses Spring Kafka's `KafkaTemplate`
-- Supports both messaging and direct template usage
-- Topic-based routing
-
-**Configuration:**
-```yaml
-firefly:
-  events:
-    adapter: kafka
-    kafka:
-      template-bean-name: customKafkaTemplate
-      use-messaging-if-available: true
-```
-
-### RabbitMQ Adapter
-
-**Features:**
-- Uses Spring AMQP's `RabbitTemplate`
-- Configurable exchange and routing key patterns
-- Supports SpEL expressions for dynamic routing
-
-**Configuration:**
-```yaml
-firefly:
-  events:
-    adapter: rabbit
-    rabbit:
-      template-bean-name: customRabbitTemplate
-      exchange: "events.${topic}"
-      routing-key: "${type}.${key}"
-```
-
-### SQS Adapter
-
-**Features:**
-- Uses AWS SDK v2 `SqsAsyncClient`
-- Supports both queue URL and queue name
-- Configurable SQS client
-
-**Configuration:**
-```yaml
-firefly:
-  events:
-    adapter: sqs
-    sqs:
-      client-bean-name: customSqsClient
-      queue-url: "https://sqs.us-east-1.amazonaws.com/123456789/events"
-      # OR
-      queue-name: "events-queue"
-```
-
-### Application Events Adapter
-
-**Features:**
-- Uses Spring's `ApplicationEventPublisher`
-- No external dependencies required
-- Useful for testing and monolithic applications
-
-**Configuration:**
-```yaml
-firefly:
-  events:
-    adapter: application_event
-```
-
-### No-Op Adapter
-
-**Features:**
-- Discards all events (useful for testing)
-- No processing overhead
-
-**Configuration:**
-```yaml
-firefly:
-  events:
-    adapter: noop
-```
-
-## 📖 Configuration Reference
-
-### Domain Events Properties
-
-| Property | Default | Description |
-|----------|---------|-------------|
-| `firefly.events.enabled` | `true` | Enable/disable domain events |
-| `firefly.events.adapter` | `auto` | Messaging adapter selection |
-| `firefly.events.kafka.template-bean-name` | - | Custom KafkaTemplate bean name |
-| `firefly.events.kafka.use-messaging-if-available` | `true` | Use Spring Messaging abstractions |
-| `firefly.events.rabbit.template-bean-name` | - | Custom RabbitTemplate bean name |
-| `firefly.events.rabbit.exchange` | `${topic}` | Exchange pattern (SpEL) |
-| `firefly.events.rabbit.routing-key` | `${type}` | Routing key pattern (SpEL) |
-| `firefly.events.sqs.client-bean-name` | - | Custom SqsAsyncClient bean name |
-| `firefly.events.sqs.queue-url` | - | SQS queue URL |
-| `firefly.events.sqs.queue-name` | - | SQS queue name |
-
-### Consumer Properties
-
-| Property | Default | Description |
-|----------|---------|-------------|
-| `firefly.events.consumer.enabled` | `false` | Enable event consumption |
-| `firefly.events.consumer.type-header` | `event_type` | Header name for event type |
-| `firefly.events.consumer.key-header` | `event_key` | Header name for event key |
-| `firefly.events.consumer.kafka.topics` | `[]` | Kafka topics to consume |
-| `firefly.events.consumer.kafka.consumer-factory-bean-name` | - | Custom ConsumerFactory bean |
-| `firefly.events.consumer.kafka.group-id` | - | Kafka consumer group ID |
-| `firefly.events.consumer.rabbit.queues` | `[]` | RabbitMQ queues to consume |
-| `firefly.events.consumer.sqs.queue-url` | - | SQS consumer queue URL |
-| `firefly.events.consumer.sqs.queue-name` | - | SQS consumer queue name |
-| `firefly.events.consumer.sqs.wait-time-seconds` | `10` | SQS long polling wait time |
-| `firefly.events.consumer.sqs.max-messages` | `10` | SQS max messages per poll |
-| `firefly.events.consumer.sqs.poll-delay-millis` | `1000` | Delay between polls |
-
-### Step Events Properties
-
-| Property | Default | Description |
-|----------|---------|-------------|
-| `firefly.stepevents.enabled` | `true` | Enable/disable step events |
-| `firefly.stepevents.adapter` | `auto` | Messaging adapter (same as domain events) |
-
-## 🚀 Advanced Usage
-
-### Custom Event Publishers
-
-Implement your own event publisher:
-
-```java
-@Component
-public class CustomDomainEventPublisher implements DomainEventPublisher {
-    
-    @Override
-    public Mono<Void> publish(DomainEventEnvelope envelope) {
-        // Custom publishing logic
-        return Mono.fromRunnable(() -> {
-            log.info("Publishing event: {} to {}", envelope.type, envelope.topic);
-            // Your custom implementation
-        });
-    }
-}
-```
-
-### Custom Event Handlers
-
-Create sophisticated event handlers:
-
-```java
-@Component
-public class AuditEventHandler {
-    
-    private final AuditService auditService;
-    
-    public AuditEventHandler(AuditService auditService) {
-        this.auditService = auditService;
-    }
-    
-    @OnDomainEvent(topic = "orders", type = "order.created")
-    @OnDomainEvent(topic = "orders", type = "order.updated")
-    @OnDomainEvent(topic = "orders", type = "order.cancelled")
-    public void auditOrderEvent(String eventPayload, 
-                               @Header("event_type") String eventType,
-                               @Header("correlation_id") String correlationId) {
-        auditService.recordEvent(eventType, eventPayload, correlationId);
-    }
-}
-```
-
-### Conditional Configuration
-
-Use Spring profiles for environment-specific configuration:
-
-```yaml
-# application-dev.yml
-firefly:
-  events:
-    adapter: application_event
-```
-
-```yaml  
-# application-prod.yml
-firefly:
-  events:
-    adapter: kafka
-    kafka:
-      template-bean-name: prodKafkaTemplate
-```
-
-### Testing
-
-#### Integration Testing
+### Integration Testing with Testcontainers
 
 ```java
 @SpringBootTest
-@TestPropertySource(properties = {
-    "firefly.events.adapter=application_event"
-})
-class EventIntegrationTest {
+@Testcontainers
+class OrderServiceIntegrationTest {
+    
+    @Container
+    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:latest"));
+    
+    @DynamicPropertySource
+    static void configureProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+    }
     
     @Autowired
     private OrderService orderService;
     
-    @EventListener
-    void handleEvent(DomainSpringEvent event) {
-        // Verify events in tests
-    }
-    
     @Test
     void shouldPublishEventWhenOrderCreated() {
-        // Test your event publishing
+        CreateOrderRequest request = new CreateOrderRequest("customer-123", items);
+        
+        StepVerifier.create(orderService.createOrder(request))
+            .assertNext(order -> assertThat(order.getId()).isNotNull())
+            .verifyComplete();
+        
+        // Verify event was published (using test consumer)
     }
 }
 ```
 
-#### Unit Testing
+### Unit Testing
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -657,409 +627,82 @@ class OrderServiceTest {
     private OrderService orderService;
     
     @Test
-    void shouldPublishEventWhenOrderCreated() {
+    void shouldPublishOrderCreatedEvent() {
         when(eventPublisher.publish(any())).thenReturn(Mono.empty());
         
+        CreateOrderRequest request = new CreateOrderRequest("customer-123", items);
+        
         StepVerifier.create(orderService.createOrder(request))
-            .expectNext(order)
+            .expectNextMatches(order -> order.getCustomerId().equals("customer-123"))
             .verifyComplete();
-            
+        
         verify(eventPublisher).publish(argThat(envelope ->
-            "orders".equals(envelope.topic) &&
-            "order.created".equals(envelope.type)
+            "orders".equals(envelope.getTopic()) &&
+            "order.created".equals(envelope.getType())
         ));
     }
 }
 ```
 
-## 💡 Examples
-
-### E-commerce Order Processing
-
-```java
-@Service
-@Transactional
-public class OrderProcessingService {
-    
-    private final OrderRepository orderRepository;
-    private final DomainEventPublisher eventPublisher;
-    
-    @EmitEvent(topic = "'orders'", type = "'order.created'", key = "#result.id")
-    public Mono<Order> createOrder(CreateOrderRequest request) {
-        Order order = new Order(request);
-        return orderRepository.save(order);
-    }
-    
-    @EmitEvent(topic = "'orders'", type = "'order.payment.requested'", 
-               payload = "{'orderId': #orderId, 'amount': #order.totalAmount}")
-    public Mono<Order> requestPayment(String orderId) {
-        return orderRepository.findById(orderId)
-            .map(order -> {
-                order.setStatus(OrderStatus.PAYMENT_REQUESTED);
-                return order;
-            });
-    }
-}
-
-@Component
-public class OrderEventHandlers {
-    
-    @OnDomainEvent(topic = "payments", type = "payment.completed")
-    public void handlePaymentCompleted(PaymentCompletedEvent event) {
-        // Update order status, send confirmation email, etc.
-    }
-    
-    @OnDomainEvent(topic = "inventory", type = "items.reserved")
-    public void handleItemsReserved(ItemReservationEvent event) {
-        // Proceed with order fulfillment
-    }
-}
-```
-
-### Microservices Communication
-
-```java
-// User Service
-import com.catalis.common.domain.events.outbound.EmitEvent;
-import com.catalis.common.domain.events.inbound.OnDomainEvent;
-import org.springframework.messaging.handler.annotation.Header;
-import org.springframework.stereotype.Service;
-import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
-
-@Service
-public class UserService {
-    
-    @EmitEvent(topic = "'users'", type = "'user.created'", key = "#result.id")
-    public Mono<User> createUser(CreateUserRequest request) {
-        return userRepository.save(new User(request));
-    }
-    
-    @EmitEvent(topic = "'users'", type = "'user.profile.updated'", key = "#userId")
-    public Mono<User> updateProfile(String userId, UpdateProfileRequest request) {
-        return userRepository.findById(userId)
-            .map(user -> user.updateProfile(request));
-    }
-}
-
-// Notification Service
-@Component
-public class UserNotificationHandler {
-    
-    private final NotificationService notificationService;
-    
-    @OnDomainEvent(topic = "users", type = "user.created")
-    public void sendWelcomeEmail(User user) {
-        notificationService.sendWelcomeEmail(user.getEmail(), user.getName());
-    }
-    
-    @OnDomainEvent(topic = "users", type = "user.profile.updated")  
-    public void notifyProfileUpdate(UserProfileUpdatedEvent event) {
-        notificationService.sendProfileUpdateNotification(event.getUserId());
-    }
-}
-
-// Analytics Service  
-@Component
-public class UserAnalyticsHandler {
-    
-    @OnDomainEvent(topic = "users", type = "user.created")
-    @OnDomainEvent(topic = "users", type = "user.profile.updated")
-    public void trackUserEvent(String eventPayload, 
-                              @Header("event_type") String eventType) {
-        analyticsService.track(eventType, eventPayload);
-    }
-}
-```
-
-## 📊 Actuators and Monitoring
-
-The library provides comprehensive actuator support for monitoring and health checking of domain events infrastructure.
-
-### Health Indicators
-
-The library automatically registers health indicators for each messaging adapter:
-
-#### Available Health Indicators
-
-- **`domainEventsKafka`**: Monitors Kafka connection and template availability
-- **`domainEventsRabbit`**: Monitors RabbitMQ connection and template availability  
-- **`domainEventsSqs`**: Monitors AWS SQS client and queue accessibility
-- **`domainEventsApplicationEvent`**: Monitors Spring ApplicationEventPublisher availability
-
-#### Health Check Details
-
-Each health indicator provides detailed information about:
-- Adapter status (UP/DOWN)
-- Configuration details
-- Connection status
-- Error messages (when applicable)
-
-#### Example Health Response
-
-```json
-{
-  "status": "UP",
-  "components": {
-    "domainEventsKafka": {
-      "status": "UP",
-      "details": {
-        "status": "Kafka template available",
-        "adapter": "kafka",
-        "templateBeanName": null,
-        "useMessagingIfAvailable": true,
-        "producerFactory": "DefaultKafkaProducerFactory"
-      }
-    },
-    "domainEventsRabbit": {
-      "status": "UP", 
-      "details": {
-        "status": "RabbitMQ connection healthy",
-        "adapter": "rabbit",
-        "templateBeanName": null,
-        "exchange": "${topic}",
-        "routingKey": "${type}",
-        "connectionFactory": "CachingConnectionFactory"
-      }
-    }
-  }
-}
-```
-
-### Metrics
-
-The library collects comprehensive metrics using Micrometer:
-
-#### Event Publishing Metrics
-- **`domain_events_published_total`**: Counter of published events
-  - Tags: `adapter`, `topic`, `type`, `result`
-- **`domain_events_publish_duration`**: Timer for publishing operations
-  - Tags: `adapter`, `topic`, `type`
-
-#### Event Consumption Metrics  
-- **`domain_events_consumed_total`**: Counter of consumed events
-  - Tags: `adapter`, `topic`, `type`, `result`
-- **`domain_events_consume_duration`**: Timer for consumption operations
-  - Tags: `adapter`, `topic`, `type`
-
-#### Health Check Metrics
-- **`domain_events_health_checks_total`**: Counter of health check results
-  - Tags: `adapter`, `result`
-
-#### Example Metrics Usage
-
-```java
-@Service 
-public class OrderService {
-    
-    private final DomainEventsMetrics metrics;
-    
-    @EmitEvent(topic = "'orders'", type = "'order.created'", key = "#result.id")
-    public Mono<Order> createOrder(CreateOrderRequest request) {
-        return Mono.fromCallable(() -> processOrder(request))
-            .doOnSuccess(order -> metrics.recordEventPublished("kafka", "orders", "order.created"))
-            .doOnError(error -> metrics.recordEventPublishFailed("kafka", "orders", "order.created", 
-                                                                 error.getClass().getSimpleName()));
-    }
-}
-```
-
-### Info Contributor
-
-The library provides detailed configuration information via the info endpoint:
-
-#### Configuration Details Exposed
-- **Basic Configuration**: enabled status, selected adapter
-- **Adapter Settings**: configuration for all messaging adapters
-- **Consumer Settings**: inbound event consumption configuration
-
-#### Example Info Response
-
-```json
-{
-  "domainEvents": {
-    "enabled": true,
-    "adapter": "AUTO",
-    "adapters": {
-      "kafka": {
-        "templateBeanName": null,
-        "useMessagingIfAvailable": true
-      },
-      "rabbit": {
-        "templateBeanName": null, 
-        "exchange": "${topic}",
-        "routingKey": "${type}"
-      },
-      "sqs": {
-        "clientBeanName": null,
-        "queueUrl": null,
-        "queueName": null
-      }
-    },
-    "consumer": {
-      "enabled": false,
-      "typeHeader": "event_type",
-      "keyHeader": "event_key",
-      "adapters": {
-        "kafka": {
-          "topics": [],
-          "consumerFactoryBeanName": null,
-          "groupId": null
-        },
-        "rabbit": {
-          "queues": []
-        },
-        "sqs": {
-          "queueUrl": null,
-          "queueName": null,
-          "waitTimeSeconds": 10,
-          "maxMessages": 10,
-          "pollDelayMillis": 1000
-        }
-      }
-    }
-  }
-}
-```
-
-### Actuator Configuration
-
-#### Enable Actuator Endpoints
-
-Add to your `application.yml`:
+### Testing Configuration
 
 ```yaml
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-  endpoint:
-    health:
-      show-details: always
-      show-components: always
-```
-
-#### Custom Health Indicator Configuration
-
-```yaml
-management:
-  health:
-    domainEventsKafka:
+# application-test.yml
+firefly:
+  events:
+    adapter: application_event  # Use in-memory events for testing
+    consumer:
       enabled: true
-    domainEventsRabbit: 
-      enabled: true
-    domainEventsSqs:
-      enabled: false  # Disable specific health indicators
 ```
-
-#### Metrics Configuration
-
-```yaml
-management:
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-    tags:
-      application: my-service
-      environment: production
-```
-
-### Accessing Actuator Endpoints
-
-Once configured, access the endpoints:
-
-- **Health**: `GET /actuator/health`
-- **Health Detail**: `GET /actuator/health/domainEventsKafka` 
-- **Info**: `GET /actuator/info`
-- **Metrics**: `GET /actuator/metrics`
-- **Specific Metric**: `GET /actuator/metrics/domain_events_published_total`
-
-### Integration with Monitoring Systems
-
-#### Prometheus Integration
-
-The metrics are automatically available for Prometheus scraping when enabled:
-
-```yaml
-management:
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-  endpoints:
-    web:
-      exposure:
-        include: prometheus
-```
-
-#### Grafana Dashboard
-
-Create dashboards using the provided metrics:
-- Event publishing rates by adapter and topic
-- Error rates and types
-- Health check status trends
-- Processing duration percentiles
-
-#### Alerting Examples
-
-Set up alerts based on the metrics:
-- High error rates: `rate(domain_events_published_total{result="error"}[5m]) > 0.1`
-- Health check failures: `domain_events_health_checks_total{result="unhealthy"} > 0`
-- Slow processing: `histogram_quantile(0.95, domain_events_publish_duration) > 5`
 
 ## 🤝 Contributing
 
-We welcome contributions to the Firefly Common Domain Library! Please follow these guidelines:
+We welcome contributions! Please follow these guidelines:
 
 ### Development Setup
 
-1. **Navigate to the project directory**
+1. **Clone and build**:
    ```bash
+   git clone <repository-url>
    cd lib-common-domain
-   ```
-
-2. **Build the project**
-   ```bash
    ./mvnw clean compile
    ```
 
-3. **Run tests**
+2. **Run tests**:
    ```bash
    ./mvnw test
    ```
 
-### Contribution Guidelines
+3. **Integration tests** (requires Docker):
+   ```bash
+   ./mvnw verify
+   ```
 
-- **Code Style**: Follow the existing code style and formatting
-- **Tests**: Add comprehensive tests for new features
-- **Documentation**: Update documentation for new features or changes
-- **Commits**: Use clear, descriptive commit messages
-- **Pull Requests**: Create detailed pull requests with clear descriptions
+### Guidelines
 
-### Reporting Issues
+- **Code Quality**: Follow existing patterns and maintain test coverage
+- **Documentation**: Update documentation for new features
+- **Compatibility**: Maintain backward compatibility when possible
+- **Testing**: Add comprehensive tests for new functionality
 
-When reporting issues, please include:
-- Library version
-- Spring Boot version
-- Messaging system and version (if applicable)
-- Complete stack trace
-- Minimal reproduction case
+### Pull Request Process
 
-### Feature Requests
-
-For feature requests, please:
-- Describe the use case clearly
-- Explain why the feature would be beneficial
-- Provide examples of how it would be used
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes with tests
+4. Update documentation as needed
+5. Submit a pull request with detailed description
 
 ## 📄 License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-## 📞 Support
+---
 
-For support and questions:
-- **Documentation**: This README and inline code documentation
-- **Examples**: Check the `src/test` directory for comprehensive examples
+## 🚀 Getting Support
+
+- **Documentation**: Comprehensive examples in this README
+- **Issues**: Report bugs and request features via GitHub Issues
+- **Discussions**: Join community discussions for questions and best practices
+
+For enterprise support and consulting, contact the Catalis team.
