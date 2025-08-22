@@ -1,297 +1,281 @@
-# 🏦 Firefly OpenCore Banking Platform
-## Common Domain Library
+# Firefly OpenCore Banking Platform - Common Domain Library
+Last updated: 2025-08-22 16:56
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.org/)
+This library provides common domain building blocks and auto-configurations shared across microservices.
 
-**A comprehensive Spring Boot 3 library providing essential domain layer utilities and configurations for the Firefly OpenCore Banking Platform.**
+## Generic Domain Events (Publish & Read)
 
-This library serves as the foundational domain layer component, offering a complete set of utilities, annotations, and configurations that enable robust business logic implementation across all banking microservices in the platform.
+Use the built-in generic events API to publish and read events that are not part of Transactional Engine StepEvents.
 
----
+- Port: `com.catalis.common.domain.events.outbound.DomainEventPublisher`
+- Envelope: `com.catalis.common.domain.events.DomainEventEnvelope`
+- Annotations:
+  - `@EmitEvent` to publish after a method completes successfully (supports SpEL for topic/type/key/payload).
+  - `@OnDomainEvent` to subscribe to in-process events for local handling (topic/type filters).
+- Auto-configuration: `com.catalis.common.domain.config.DomainEventsAutoConfiguration`.
 
-## 🚀 Quick Start
+Quickstart publish:
 
-Add the dependency to your Spring Boot 3 microservice:
-
-```xml
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
 ```
-
-**That's it!** Auto-configuration handles the rest.
-
----
-
-## ✨ Core Features
-
-| Feature | Description | Use Case |
-|---------|-------------|----------|
-| 🏷️ **Domain Annotations** | CQRS pattern markers | Distinguish commands from queries |
-| ✅ **Business Validation** | Fluent rule validation | Input validation with error collection |
-| 🔄 **Service Results** | Functional error handling | Graceful failure management |
-| 📝 **Domain Events** | Immutable event records | Business event representation |
-| 📊 **JSON Logging** | Structured logging | Production-ready observability |
-
----
-
-## 🏷️ Domain Annotations
-
-**Enforce CQRS patterns with clear semantic markers.**
-
-### @CommandQuery - State-Changing Operations
-```java
-@CommandQuery("Creates a new customer account")
-public class CreateCustomerCommand {
-    public void execute(CreateCustomerRequest request) {
-        // Business logic that modifies state
-        // Must return void, throw exceptions on failure
-    }
+@Service
+class PaymentsService {
+  // Emits event on success; payload defaults to method return (#result)
+  @EmitEvent(topic = "payments.events", type = "CREATED", key = "#p0.id")
+  public Mono<Payment> create(Payment p) {
+    return repo.save(p);
+  }
 }
 ```
 
-### @ViewQuery - Read-Only Operations
-```java
-@ViewQuery("Retrieves customer account details")
-public class GetCustomerAccountQuery {
-    public CustomerAccountDto execute(String customerId) {
-        // Read-only logic, never modifies state
-        return new CustomerAccountDto(...);
-    }
+Quickstart read (in-process subscription):
+
+```
+@Component
+class PaymentsProjection {
+  @OnDomainEvent(topic = "payments.events", type = "CREATED")
+  public void onCreated(Payment payload) {
+    // update read model
+  }
 }
 ```
 
-## ✅ Business Validation
+Adapter selection via application.yaml (prefix: catalis.events):
 
-**Fluent, expressive validation with comprehensive error collection.**
+```
+catalis:
+  events:
+    adapter: kafka   # auto | application-event | kafka | rabbit | sqs | noop (default: auto)
+    kafka:
+      templateBeanName: kafkaTemplate
+```
 
-```java
-// Banking-specific validation example
-new BusinessValidator()
-    .notBlank(accountNumber, "Account number required")
-    .matches(accountNumber, "^[0-9]{10,12}$", "Invalid account number format")
-    .rule(amount.compareTo(BigDecimal.ZERO) > 0, "Amount must be positive")
-    .rule(amount.compareTo(dailyLimit) <= 0, "Amount exceeds daily limit")
-    .validate(); // Throws BusinessValidationException if any rule fails
+- AUTO detection order: Kafka -> Rabbit -> SQS -> ApplicationEvent.
+- When using Rabbit:
+```
+catalis:
+  events:
+    adapter: rabbit
+    rabbit:
+      exchange: "${topic}"
+      routingKey: "${type}"
+```
+- When using SQS:
+```
+catalis:
+  events:
+    adapter: sqs
+    sqs:
+      queueUrl: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
+      # or
+      queueName: my-queue
+```
 
-// Built-in validation methods
-new BusinessValidator()
-    .notNull(customer, "Customer required")
-    .notBlank(customer.getEmail(), "Email required")
-    .range(customer.getAge(), 18, 120, "Age must be between 18 and 120")
-    .minLength(password, 8, "Password too short")
-    .validate();
+Note: This library emits in-process Spring events for local subscribers; for cross-service consumption, connect your consumer to the configured MQ (Kafka/Rabbit/SQS).
 
-// Conditional validation
-new BusinessValidator()
-    .when(customer.isVip(), () -> new BusinessValidator()
-        .notNull(customer.getVipCode(), "VIP code required"))
-    .validate();
+## Step Events (Hexagonal MQ Support)
 
-// Check errors without throwing
-BusinessValidator validator = new BusinessValidator()
-    .rule(condition, "Error message");
-    
-if (validator.hasErrors()) {
-    List<String> errors = validator.getErrors();
-    // Handle validation errors gracefully
+The library integrates with `lib-transactional-engine` step events using a hexagonal architecture.
+
+- Port: `com.catalis.transactionalengine.events.StepEventPublisher`
+- Envelope: `com.catalis.transactionalengine.events.StepEventEnvelope`
+- Default adapter: in-process via Spring `ApplicationEventPublisher`
+- Override: provide your own `StepEventPublisher` bean (Kafka/Rabbit/SQS/etc.). If you do, the default adapter is not created.
+
+Auto-configuration: `com.catalis.common.domain.config.StepEventsAutoConfiguration` (registered via `META-INF/spring.factories`). If a `DomainEventPublisher` bean is available, StepEvents automatically delegates to it via an internal bridge so both StepEvents and generic events share the same configured adapter.
+
+### Quickstart: Publish Step Events from Sagas
+
+Annotate your saga steps with `@StepEvent` (from transactional-engine). Events are batched and emitted only after the saga completes successfully.
+
+Example:
+
+```
+@SagaStep(id = "reserve")
+@StepEvent(topic = "inventory.events", type = "RESERVED", key = "#{in.orderId}")
+public Mono<InventoryReservation> reserve(@Input Order in) { /* ... */ }
+```
+
+### Default In-Process Publisher
+
+If you don't provide any `StepEventPublisher` bean, the library will create one that forwards events using Spring `ApplicationEventPublisher` (in-process).
+
+### Custom MQ Publisher (Kafka example)
+
+Create your own adapter bean implementing the port:
+
+```
+@Component
+class KafkaStepEventPublisher implements StepEventPublisher {
+  private final KafkaTemplate<String, Object> kafka;
+
+  KafkaStepEventPublisher(KafkaTemplate<String, Object> kafka) { this.kafka = kafka; }
+
+  @Override
+  public Mono<Void> publish(StepEventEnvelope e) {
+    // Map envelope fields to your Kafka record
+    return Mono.create(sink ->
+      kafka.send(e.topic, e.key, e.payload)
+           .addCallback(r -> sink.success(), ex -> sink.error(ex))
+    );
+  }
 }
 ```
 
-## 🔄 Service Results
+With this bean present, the default in-process adapter is disabled automatically.
 
-**Functional error handling for operations that might fail gracefully.**
+## Notes
+- This library now bundles Kafka, RabbitMQ, and AWS SQS client dependencies so microservices don’t need to declare them. Selection is property-driven and remains non-intrusive.
+- For a complete guide on sagas, see docs in lib-transactional-engine regarding `@Saga`, `@SagaStep`, and `@StepEvent`.
 
-### When to Use ServiceResult
+## Adapter selection via application.yaml
 
-| ✅ **Use ServiceResult** | ❌ **Don't Use ServiceResult** |
-|-------------------------|-------------------------------|
-| External payment gateway calls | Input validation (use BusinessValidator) |
-| Credit bureau API lookups | Programming errors (NPE, etc.) |
-| Database operations that might not find data | Configuration errors |
-| File operations that might fail | Operations that should always succeed |
+This library auto-wires the StepEventPublisher for you. Microservices just add the client dependency and set properties. Do NOT create your own StepEventPublisher bean unless you want to fully override.
 
-### Basic Usage
+- Property prefix: catalis.stepevents
+- Enable/disable: catalis.stepevents.enabled (default: true)
+- Adapter: catalis.stepevents.adapter: auto | application-event | kafka | rabbit | sqs | noop (default: auto)
+- Auto detection order: Kafka -> Rabbit -> SQS -> ApplicationEvent
 
-```java
-// Banking service example
-public ServiceResult<Account> findAccount(String accountNumber) {
-    return ServiceResult.of(() -> accountRepository.findByNumber(accountNumber)
-        .orElseThrow(() -> new RuntimeException("Account not found")));
-}
+### Kafka (Spring for Apache Kafka)
+Requirements: spring-kafka on classpath and a KafkaTemplate bean.
 
-// Using ServiceResults with fallback
-ServiceResult<Account> result = accountService.findAccount(accountNumber);
-if (result.isSuccess()) {
-    Account account = result.getData().orElseThrow();
-    // Process account
-} else {
-    log.warn("Account lookup failed: {}", result.getError().orElse("Unknown"));
-    // Handle gracefully
-}
+Example application.yaml:
 
-// Provide fallback values
-Account account = accountService.findAccount(accountNumber)
-    .orElse(Account.createTemporary());
+catalis:
+  stepevents:
+    adapter: kafka
+    kafka:
+      # Optional if multiple templates registered
+      templateBeanName: kafkaTemplate
 
-// Transform successful results
-ServiceResult<BigDecimal> balanceResult = accountService.findAccount(accountNumber)
-    .map(Account::getBalance);
-```
+Behavior:
+- Sends using KafkaTemplate#send(topic, key, payload) when available.
+- If Spring Messaging is on the classpath and enabled (default), it may send Message with headers copied from the envelope.
 
-### 🔗 Saga Integration
+### RabbitMQ (Spring AMQP)
+Requirements: spring-amqp/spring-rabbit on classpath and a RabbitTemplate bean.
 
-For complex distributed banking workflows, ServiceResult integrates seamlessly with Saga orchestration. 
+Example application.yaml:
 
-**📖 [Complete Integration Tutorial](./SAGA_INTEGRATION.md)**
+catalis:
+  stepevents:
+    adapter: rabbit
+    rabbit:
+      # Defaults shown; you can template with ${topic}, ${type}, ${key}
+      exchange: "${topic}"
+      routingKey: "${type}"
+      # Optional if multiple templates
+      templateBeanName: rabbitTemplate
 
-Learn step-by-step how to combine ServiceResult with Saga patterns for:
-- Payment processing with fallback strategies
-- Account operations with graceful degradation  
-- Robust compensation handling
-- Error recovery patterns
+Behavior:
+- Publishes using RabbitTemplate#convertAndSend(exchange, routingKey, payload).
+- Default mapping: exchange=envelope.topic, routingKey=envelope.type.
 
-## 📝 Domain Events
+### AWS SQS (AWS SDK v2, async)
+Requirements: software.amazon.awssdk:sqs on classpath and a SqsAsyncClient bean.
 
-**Immutable event records for business logic and audit trails.**
+Example application.yaml:
 
-```java
-// Banking domain events
-DomainEvent accountCreated = new DomainEvent("AccountCreated", 
-    new AccountCreatedPayload(accountId, customerId, accountType));
+catalis:
+  stepevents:
+    adapter: sqs
+    sqs:
+      # One of these
+      queueUrl: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
+      # or
+      queueName: my-queue # defaults to envelope.topic if not set
+      # Optional if multiple clients
+      clientBeanName: sqsAsyncClient
 
-DomainEvent transactionProcessed = new DomainEvent("TransactionProcessed", 
-    Map.of("transactionId", txnId, "amount", amount, "accountId", accountId));
+Behavior:
+- Sends using SqsAsyncClient#sendMessage. If queueUrl missing, resolves via getQueueUrl(queueName).
+- Payload serialized to JSON via ObjectMapper if available; otherwise toString().
 
-// Access event metadata
-String eventId = accountCreated.eventId();        // Auto-generated UUID
-String eventType = accountCreated.eventType();    // "AccountCreated"
-Instant occurredAt = accountCreated.occurredAt(); // Auto-generated timestamp
-Object payload = accountCreated.payload();        // Your event data
-```
+### Disable publishing (NOOP)
 
-## 📊 JSON Logging
+catalis:
+  stepevents:
+    enabled: false
+# or
+# stepevents:
+#   adapter: noop
 
-**Production-ready structured logging with zero configuration.**
+### Default in-process fallback (ApplicationEvent)
+If no adapter is selected and AUTO cannot detect Kafka/Rabbit/SQS, events are published in-process via Spring ApplicationEventPublisher.
 
-```json
-{
-  "@timestamp": "2024-01-15T10:30:45.123+00:00",
-  "level": "INFO",
-  "logger": "com.firefly.banking.AccountService",
-  "message": "Account created successfully",
-  "thread": "http-nio-8080-exec-1",
-  "service": "account-service"
-}
-```
+### Responsibilities
+- Library: Provides StepEventPublisher and adapters; wires everything according to properties.
+- Microservice: Only adds the chosen client dependency and configures application.yaml.
 
-**✨ Zero configuration required** - JSON logging is automatically enabled when the library is on the classpath.
 
----
+## Inbound subscription from MQs (Kafka/Rabbit/SQS)
 
-## 🏗️ Architecture & Design
+You can subscribe to events from external message queues and dispatch them to local handlers annotated with `@OnDomainEvent`. The library provides inbound adapters and only starts them when explicitly enabled and when the chosen MQ is available.
 
-**This library is designed for the core domain layer of banking microservices.**
+- Enable with: `catalis.events.consumer.enabled: true`
+- Adapter selection uses the same `catalis.events.adapter` as publishers: `auto | kafka | rabbit | sqs`
+- Nothing is loaded unless enabled and the prerequisites (client on classpath and beans) are present.
 
-### ✅ What This Library Provides
-- Business logic validation and rules
-- Service result transformations and error handling
-- Domain event representation
-- CQRS pattern enforcement with annotations
-- Structured logging configuration
+Common options:
+- `catalis.events.consumer.typeHeader`: header name for event type (default: `event_type`)
+- `catalis.events.consumer.keyHeader`: header name for event key (default: `event_key`)
 
-### ❌ What This Library Does NOT Handle
-- Database operations (use separate data/repository layers)
-- HTTP clients or external service calls (use dedicated client libraries)
-- Workflow orchestration (use Saga libraries at higher layers)
-- Infrastructure concerns (use separate infrastructure modules)
+Kafka (requires spring-kafka and a ConsumerFactory bean):
 
----
+catalis:
+  events:
+    adapter: kafka
+    consumer:
+      enabled: true
+      kafka:
+        topics: ["payments.events", "invoices.events"]
 
-## 📦 Package Structure
+RabbitMQ (requires spring-amqp and a ConnectionFactory bean):
 
-```
-com.catalis.common.domain/
-├── annotation/                    # 🏷️ CQRS domain annotations
-│   ├── CommandQuery              # State-changing operations
-│   └── ViewQuery                 # Read-only operations
-├── util/                         # 🔧 Core domain utilities
-│   ├── BusinessValidator         # Fluent validation
-│   ├── BusinessValidationException # Validation failures
-│   ├── ServiceResult            # Functional error handling
-│   └── DomainEvent             # Immutable business events
-└── config/                      # ⚙️ Auto-configuration
-    └── JsonLoggingAutoConfiguration # Structured logging setup
-```
+catalis:
+  events:
+    adapter: rabbit
+    consumer:
+      enabled: true
+      rabbit:
+        queues: ["payments.events.queue"]
 
----
+AWS SQS (requires AWS SDK v2 and a SqsAsyncClient bean):
 
-## 📋 Best Practices
+catalis:
+  events:
+    adapter: sqs
+    sqs:
+      # One of these
+      queueUrl: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
+      # or
+      queueName: my-queue
+    consumer:
+      enabled: true
+      sqs:
+        waitTimeSeconds: 10      # long polling
+        maxMessages: 10
+        pollDelayMillis: 1000
 
-| Component | Use For | Example |
-|-----------|---------|----------|
-| `@CommandQuery` | State-changing operations | Account creation, transaction processing |
-| `@ViewQuery` | Read-only operations | Account lookups, balance inquiries |
-| `BusinessValidator` | Input validation | Account number format, amount limits |
-| `ServiceResult` | Operations that might fail | External API calls, optional lookups |
-| `DomainEvent` | Business occurrences | Account created, transaction completed |
+How it works:
+- The inbound adapter reads messages and republishes a DomainSpringEvent that contains a DomainEventEnvelope.
+- Your `@OnDomainEvent` methods will receive these events as if they were published in-process, and you can filter with `topic` and `type`.
+- If no topics/queues are configured, the subscriber is not started.
 
----
+Non-intrusive/optional loading:
+- Beans are created only when `catalis.events.consumer.enabled=true` and the adapter is selected.
+- Additionally, the adapter requires its client bean (`ConsumerFactory`, `ConnectionFactory`, or `SqsAsyncClient`) to be present; otherwise, nothing is created.
 
-## 📄 License
+## Package layout (ports and adapters)
 
-**Apache License 2.0**
+- Ports (outbound):
+  - Domain events: `com.catalis.common.domain.events.outbound.DomainEventPublisher`
+  - Step events (from transactional engine): `com.catalis.transactionalengine.events.StepEventPublisher`
+- Adapters (outbound publishers):
+  - Kafka/Rabbit/SQS/ApplicationEvent under `com.catalis.common.domain.events` and `com.catalis.common.domain.stepevents`
+- Adapters (inbound subscribers):
+  - Kafka/Rabbit/SQS under `com.catalis.common.domain.events.inbound`
+- Auto-configurations:
+  - `com.catalis.common.domain.config.DomainEventsAutoConfiguration`
+  - `com.catalis.common.domain.config.StepEventsAutoConfiguration`
 
-Copyright 2024 Firefly OpenCore Banking Platform
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at:
-
-[http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-
----
-
-## 🤝 Contributing
-
-This library is part of the **Firefly OpenCore Banking Platform** - a comprehensive set of common configurations and utilities for the domain layer across all banking microservices.
-
-For contribution guidelines, please refer to the main platform documentation.
-
----
-
-**🏦 Firefly OpenCore Banking Platform** | **📚 [Documentation](./SAGA_INTEGRATION.md)** | **📄 [Apache 2.0 License](LICENSE)**
-
----
-
-## 📌 Annotation Placement: Class vs Method
-
-Both @CommandQuery and @ViewQuery can be applied at the class level or directly on the entrypoint method. Choose the style that best fits your code organization and scanning strategy.
-
-- Class-level (recommended for handlers/services):
-```java
-@CommandQuery("Creates a new customer account")
-public class CreateCustomerCommand {
-    public void execute(CreateCustomerRequest request) { /* ... */ }
-}
-```
-
-- Method-level (useful when a class contains multiple operations):
-```java
-public class AccountService {
-    @CommandQuery("Creates a new customer account")
-    public void createAccount(CreateCustomerRequest request) { /* ... */ }
-
-    @ViewQuery("Retrieves account details")
-    public CustomerAccountDto getAccount(String accountId) { /* ... */ }
-}
-```
-
-Notes:
-- Semantics are identical regardless of placement: commands are state-changing and should return void; queries are read-only and return DTOs/records.
-- If you rely on component scanning that expects annotations on types, prefer class-level placement. If your tooling scans methods, method-level works equally well.
-- Annotations are @Inherited for class hierarchies; method-level annotations are not inherited by overrides in Java.
