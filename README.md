@@ -772,6 +772,243 @@ public class UserAnalyticsHandler {
 }
 ```
 
+## 📊 Actuators and Monitoring
+
+The library provides comprehensive actuator support for monitoring and health checking of domain events infrastructure.
+
+### Health Indicators
+
+The library automatically registers health indicators for each messaging adapter:
+
+#### Available Health Indicators
+
+- **`domainEventsKafka`**: Monitors Kafka connection and template availability
+- **`domainEventsRabbit`**: Monitors RabbitMQ connection and template availability  
+- **`domainEventsSqs`**: Monitors AWS SQS client and queue accessibility
+- **`domainEventsApplicationEvent`**: Monitors Spring ApplicationEventPublisher availability
+
+#### Health Check Details
+
+Each health indicator provides detailed information about:
+- Adapter status (UP/DOWN)
+- Configuration details
+- Connection status
+- Error messages (when applicable)
+
+#### Example Health Response
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "domainEventsKafka": {
+      "status": "UP",
+      "details": {
+        "status": "Kafka template available",
+        "adapter": "kafka",
+        "templateBeanName": null,
+        "useMessagingIfAvailable": true,
+        "producerFactory": "DefaultKafkaProducerFactory"
+      }
+    },
+    "domainEventsRabbit": {
+      "status": "UP", 
+      "details": {
+        "status": "RabbitMQ connection healthy",
+        "adapter": "rabbit",
+        "templateBeanName": null,
+        "exchange": "${topic}",
+        "routingKey": "${type}",
+        "connectionFactory": "CachingConnectionFactory"
+      }
+    }
+  }
+}
+```
+
+### Metrics
+
+The library collects comprehensive metrics using Micrometer:
+
+#### Event Publishing Metrics
+- **`domain_events_published_total`**: Counter of published events
+  - Tags: `adapter`, `topic`, `type`, `result`
+- **`domain_events_publish_duration`**: Timer for publishing operations
+  - Tags: `adapter`, `topic`, `type`
+
+#### Event Consumption Metrics  
+- **`domain_events_consumed_total`**: Counter of consumed events
+  - Tags: `adapter`, `topic`, `type`, `result`
+- **`domain_events_consume_duration`**: Timer for consumption operations
+  - Tags: `adapter`, `topic`, `type`
+
+#### Health Check Metrics
+- **`domain_events_health_checks_total`**: Counter of health check results
+  - Tags: `adapter`, `result`
+
+#### Example Metrics Usage
+
+```java
+@Service 
+public class OrderService {
+    
+    private final DomainEventsMetrics metrics;
+    
+    @EmitEvent(topic = "'orders'", type = "'order.created'", key = "#result.id")
+    public Mono<Order> createOrder(CreateOrderRequest request) {
+        return Mono.fromCallable(() -> processOrder(request))
+            .doOnSuccess(order -> metrics.recordEventPublished("kafka", "orders", "order.created"))
+            .doOnError(error -> metrics.recordEventPublishFailed("kafka", "orders", "order.created", 
+                                                                 error.getClass().getSimpleName()));
+    }
+}
+```
+
+### Info Contributor
+
+The library provides detailed configuration information via the info endpoint:
+
+#### Configuration Details Exposed
+- **Basic Configuration**: enabled status, selected adapter
+- **Adapter Settings**: configuration for all messaging adapters
+- **Consumer Settings**: inbound event consumption configuration
+
+#### Example Info Response
+
+```json
+{
+  "domainEvents": {
+    "enabled": true,
+    "adapter": "AUTO",
+    "adapters": {
+      "kafka": {
+        "templateBeanName": null,
+        "useMessagingIfAvailable": true
+      },
+      "rabbit": {
+        "templateBeanName": null, 
+        "exchange": "${topic}",
+        "routingKey": "${type}"
+      },
+      "sqs": {
+        "clientBeanName": null,
+        "queueUrl": null,
+        "queueName": null
+      }
+    },
+    "consumer": {
+      "enabled": false,
+      "typeHeader": "event_type",
+      "keyHeader": "event_key",
+      "adapters": {
+        "kafka": {
+          "topics": [],
+          "consumerFactoryBeanName": null,
+          "groupId": null
+        },
+        "rabbit": {
+          "queues": []
+        },
+        "sqs": {
+          "queueUrl": null,
+          "queueName": null,
+          "waitTimeSeconds": 10,
+          "maxMessages": 10,
+          "pollDelayMillis": 1000
+        }
+      }
+    }
+  }
+}
+```
+
+### Actuator Configuration
+
+#### Enable Actuator Endpoints
+
+Add to your `application.yml`:
+
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+```
+
+#### Custom Health Indicator Configuration
+
+```yaml
+management:
+  health:
+    domainEventsKafka:
+      enabled: true
+    domainEventsRabbit: 
+      enabled: true
+    domainEventsSqs:
+      enabled: false  # Disable specific health indicators
+```
+
+#### Metrics Configuration
+
+```yaml
+management:
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: my-service
+      environment: production
+```
+
+### Accessing Actuator Endpoints
+
+Once configured, access the endpoints:
+
+- **Health**: `GET /actuator/health`
+- **Health Detail**: `GET /actuator/health/domainEventsKafka` 
+- **Info**: `GET /actuator/info`
+- **Metrics**: `GET /actuator/metrics`
+- **Specific Metric**: `GET /actuator/metrics/domain_events_published_total`
+
+### Integration with Monitoring Systems
+
+#### Prometheus Integration
+
+The metrics are automatically available for Prometheus scraping when enabled:
+
+```yaml
+management:
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: prometheus
+```
+
+#### Grafana Dashboard
+
+Create dashboards using the provided metrics:
+- Event publishing rates by adapter and topic
+- Error rates and types
+- Health check status trends
+- Processing duration percentiles
+
+#### Alerting Examples
+
+Set up alerts based on the metrics:
+- High error rates: `rate(domain_events_published_total{result="error"}[5m]) > 0.1`
+- Health check failures: `domain_events_health_checks_total{result="unhealthy"} > 0`
+- Slow processing: `histogram_quantile(0.95, domain_events_publish_duration) > 5`
+
 ## 🤝 Contributing
 
 We welcome contributions to the Firefly Common Domain Library! Please follow these guidelines:
