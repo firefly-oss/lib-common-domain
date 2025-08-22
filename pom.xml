@@ -49,6 +49,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Spring Boot Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Logback JSON Encoder -->
         <dependency>
             <groupId>net.logstash.logback</groupId>
