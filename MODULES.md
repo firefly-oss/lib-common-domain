@@ -12,6 +12,7 @@ This guide helps you choose the right combination of Firefly Common Domain modul
 | **Enterprise Integration** | `core` + `rabbit` | Complex routing, reliable messaging |
 | **Testing/Development** | `core` only | Application events for local testing |
 | **Serverless/Lambda** | `core` + `sqs` | Minimal footprint, cloud-native |
+| **Saga/Transactional Workflows** | `core` + transactional-engine + adapters | Step events for distributed transactions |
 
 ## 📦 Module Combinations
 
@@ -97,17 +98,10 @@ This guide helps you choose the right combination of Firefly Common Domain modul
 
 #### AWS SQS-Only Setup
 ```xml
-<!-- Core module -->
+<!-- Core module (includes SQS functionality) -->
 <dependency>
     <groupId>com.catalis</groupId>
     <artifactId>lib-common-domain-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-
-<!-- SQS adapter -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-sqs</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 
@@ -143,12 +137,7 @@ This guide helps you choose the right combination of Firefly Common Domain modul
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 
-<!-- SQS for AWS integration -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-sqs</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
+<!-- SQS for AWS integration (included in core module) -->
 
 <!-- Required dependencies -->
 <dependency>
@@ -188,10 +177,64 @@ firefly:
     <artifactId>lib-common-domain-rabbit</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
+<!-- SQS functionality is included in core module - no separate dependency needed -->
+```
+
+### Transactional Engine Integration
+
+For saga patterns and distributed transaction workflows using lib-transactional-engine-core.
+
+#### Basic Transactional Engine Setup
+```xml
+<!-- Core module -->
 <dependency>
     <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-sqs</artifactId>
+    <artifactId>lib-common-domain-core</artifactId>
     <version>1.0.0-SNAPSHOT</version>
+</dependency>
+
+<!-- Transactional Engine -->
+<dependency>
+    <groupId>com.catalis</groupId>
+    <artifactId>lib-transactional-engine-core</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+**Use When:**
+- Implementing saga patterns
+- Distributed transaction workflows
+- Step-by-step process orchestration
+- Complex business process management
+
+**Features:**
+- `StepEventPublisher` integration via bridge pattern
+- Automatic reuse of domain event messaging adapters
+- Same configuration and monitoring as domain events
+- Consistent error handling and retry mechanisms
+
+#### With Kafka (Recommended for High-Throughput Sagas)
+```xml
+<!-- Add Kafka adapter -->
+<dependency>
+    <groupId>com.catalis</groupId>
+    <artifactId>lib-common-domain-kafka</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+<dependency>
+    <groupId>org.springframework.kafka</groupId>
+    <artifactId>spring-kafka</artifactId>
+</dependency>
+```
+
+#### With SQS (Recommended for Cloud-Native Sagas)
+```xml
+<!-- SQS functionality is included in core module -->
+<!-- Only AWS SDK dependency is needed -->
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>sqs</artifactId>
+    <version>2.25.32</version>
 </dependency>
 ```
 

@@ -49,6 +49,44 @@ The library follows a hexagonal architecture pattern with clear separation betwe
 | AWS SQS | Cloud Queue | Serverless, managed queuing |
 | Application Events | In-Memory | Testing, monolithic applications |
 
+### Transactional Engine Integration
+
+The library seamlessly integrates with **lib-transactional-engine-core** to provide step event publishing capabilities for transactional workflows and saga patterns.
+
+#### StepEventPublisher Bridge Pattern
+
+The integration follows a bridge pattern where:
+
+- **Port**: `StepEventPublisher` interface from lib-transactional-engine-core
+- **Bridge**: `StepEventPublisherBridge` that adapts StepEvents to DomainEvents
+- **Adapters**: Reuses all existing messaging adapters (Kafka, RabbitMQ, SQS, Application Events)
+
+This design allows transactional engine step events to leverage the same messaging infrastructure and configuration as domain events.
+
+#### StepEvent vs DomainEvent Mapping
+
+| StepEventEnvelope Field | DomainEventEnvelope Field | Purpose |
+|-------------------------|---------------------------|---------|
+| `topic` | `topic` | Target destination/topic |
+| `type` | `type` | Event type identifier |
+| `key` | `key` | Partitioning/routing key |
+| `payload` | `payload` | Event data/content |
+| `headers` | `headers` | Additional metadata |
+
+#### Auto-Configuration
+
+StepEventPublisher is auto-configured when:
+1. `lib-transactional-engine-core` is on classpath
+2. A `DomainEventPublisher` bean is available
+3. StepEvents are enabled (default: `true`)
+
+```yaml
+firefly:
+  stepevents:
+    enabled: true  # Default: true
+    adapter: auto  # Uses same adapter as domain events
+```
+
 ## 📦 Installation
 
 ### Basic Installation
@@ -106,17 +144,25 @@ Add specific adapters as needed:
 
 **For AWS SQS:**
 ```xml
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-sqs</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
+<!-- SQS functionality is included in the core module -->
+<!-- Only AWS SDK dependency is needed -->
 <dependency>
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>sqs</artifactId>
     <version>2.25.32</version>
 </dependency>
 ```
+
+**For Transactional Engine (Saga/Step Events):**
+```xml
+<dependency>
+    <groupId>com.catalis</groupId>
+    <artifactId>lib-transactional-engine-core</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+*Note: The transactional engine integration automatically reuses your configured domain event adapter (Kafka, RabbitMQ, SQS, or Application Events). No additional messaging dependencies are required.*
 
 ### Gradle Installation
 
@@ -234,6 +280,85 @@ public class OrderEventHandler {
     }
 }
 ```
+
+### 5. Using StepEvents (Transactional Engine Integration)
+
+For saga patterns and distributed transaction workflows:
+
+#### Programmatic StepEvent Publishing
+
+```java
+import com.catalis.transactionalengine.events.StepEventPublisher;
+import com.catalis.transactionalengine.events.StepEventEnvelope;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+
+@Service
+public class OrderSagaOrchestrator {
+    
+    private final StepEventPublisher stepEventPublisher;
+    
+    public OrderSagaOrchestrator(StepEventPublisher stepEventPublisher) {
+        this.stepEventPublisher = stepEventPublisher;
+    }
+    
+    public Mono<Void> executeOrderProcessingSaga(String orderId) {
+        // Step 1: Reserve inventory
+        StepEventEnvelope reserveInventory = new StepEventEnvelope();
+        reserveInventory.topic = "inventory-saga";
+        reserveInventory.type = "inventory.reserve";
+        reserveInventory.key = orderId;
+        reserveInventory.payload = Map.of("orderId", orderId, "step", "reserve");
+        reserveInventory.headers = Map.of("sagaId", UUID.randomUUID().toString());
+        
+        return stepEventPublisher.publish(reserveInventory)
+            .then(publishPaymentStep(orderId))
+            .then(publishShippingStep(orderId));
+    }
+    
+    private Mono<Void> publishPaymentStep(String orderId) {
+        StepEventEnvelope processPayment = new StepEventEnvelope();
+        processPayment.topic = "payment-saga";
+        processPayment.type = "payment.process";
+        processPayment.key = orderId;
+        processPayment.payload = Map.of("orderId", orderId, "step", "payment");
+        
+        return stepEventPublisher.publish(processPayment);
+    }
+    
+    private Mono<Void> publishShippingStep(String orderId) {
+        StepEventEnvelope arrangeShipping = new StepEventEnvelope();
+        arrangeShipping.topic = "shipping-saga";
+        arrangeShipping.type = "shipping.arrange";
+        arrangeShipping.key = orderId;
+        arrangeShipping.payload = Map.of("orderId", orderId, "step", "shipping");
+        
+        return stepEventPublisher.publish(arrangeShipping);
+    }
+}
+```
+
+#### StepEvents Configuration
+
+```yaml
+firefly:
+  stepevents:
+    enabled: true  # Default: true
+    adapter: auto  # Reuses domain events adapter configuration
+    
+  # Domain events configuration (shared with StepEvents)
+  events:
+    adapter: kafka  # StepEvents will use the same Kafka setup
+    kafka:
+      bootstrap-servers: "localhost:9092"
+      template-bean-name: kafkaTemplate
+```
+
+**Key Benefits:**
+- **Bridge Pattern**: StepEvents automatically use your existing domain event messaging configuration
+- **Unified Infrastructure**: No need for separate messaging setup for saga events
+- **Consistent Monitoring**: StepEvents appear in the same health checks and metrics as domain events
+- **Same Error Handling**: Retry policies and error handling work identically for both event types
 
 ## ⚙️ Configuration
 
@@ -522,10 +647,11 @@ The library is designed with a modular architecture to minimize dependencies:
 - Spring AMQP integration
 - Testcontainers support for integration testing
 
-#### SQS Module (`lib-common-domain-sqs`)
-- AWS SQS publishing and consumption
+#### SQS Support (included in core module)
+- AWS SQS publishing and consumption (included in `lib-common-domain-core`)
 - AWS SDK v2 integration
 - LocalStack support for testing
+- No separate module required - only add AWS SDK dependency
 
 ### All-in-One Module (`lib-common-domain-all`)
 **Purpose**: Convenience module including all adapters
@@ -705,4 +831,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - **Issues**: Report bugs and request features via GitHub Issues
 - **Discussions**: Join community discussions for questions and best practices
 
-For enterprise support and consulting, contact the Catalis team.
+For enterprise support and consulting, contact the Firefly Team
