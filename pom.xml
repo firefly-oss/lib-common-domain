@@ -19,6 +19,7 @@
         <lib-common-domain.version>
             1.0.0-SNAPSHOT
         </lib-common-domain.version>
+        <aws.sdk2.version>2.25.32</aws.sdk2.version>
     </properties>
 
     <dependencies>
@@ -82,6 +83,28 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!-- Transactional Engine -->
+        <dependency>
+            <groupId>com.catalis</groupId>
+            <artifactId>lib-transactional-engine</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
+        <!-- MQ clients (bundled here for IDE/code support) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sqs</artifactId>
+            <version>${aws.sdk2.version}</version>
         </dependency>
     </dependencies>
 
