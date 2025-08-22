@@ -1,2 +1,4 @@
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-com.catalis.common.domain.config.JsonLoggingAutoConfiguration
+com.catalis.common.domain.config.JsonLoggingAutoConfiguration,\
+com.catalis.common.domain.config.StepEventsAutoConfiguration,\
+com.catalis.common.domain.config.DomainEventsAutoConfiguration
