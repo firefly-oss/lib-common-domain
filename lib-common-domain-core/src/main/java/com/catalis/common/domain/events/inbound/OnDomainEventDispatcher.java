@@ -1,0 +1,94 @@
+package com.catalis.common.domain.events.inbound;
+
+import com.catalis.common.domain.events.DomainEventEnvelope;
+import com.catalis.common.domain.events.DomainSpringEvent;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ApplicationListener;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Simple in-process dispatcher that routes DomainSpringEvent to methods annotated with @OnDomainEvent.
+ */
+public class OnDomainEventDispatcher implements ApplicationListener<DomainSpringEvent>, ApplicationContextAware, InitializingBean {
+
+    private ApplicationContext applicationContext;
+    private final List<Handler> handlers = new ArrayList<>();
+
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        this.applicationContext = applicationContext;
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        String[] beanNames = applicationContext.getBeanDefinitionNames();
+        for (String name : beanNames) {
+            Object bean = applicationContext.getBean(name);
+            for (Method m : bean.getClass().getMethods()) {
+                OnDomainEvent ann = m.getAnnotation(OnDomainEvent.class);
+                if (ann != null) {
+                    handlers.add(new Handler(bean, m, ann.topic(), ann.type()));
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onApplicationEvent(DomainSpringEvent event) {
+        DomainEventEnvelope e = event.getEnvelope();
+        for (Handler h : handlers) {
+            if (matches(h.topic, e.topic) && matches(h.type, e.type)) {
+                invoke(h, e);
+            }
+        }
+    }
+
+    private boolean matches(String pattern, String value) {
+        if (pattern == null || pattern.isEmpty() || pattern.equals("*")) return true;
+        return pattern.equals(value);
+    }
+
+    private void invoke(Handler h, DomainEventEnvelope e) {
+        try {
+            Class<?>[] paramTypes = h.method.getParameterTypes();
+            if (paramTypes.length == 1) {
+                Object arg;
+                if (paramTypes[0].isAssignableFrom(DomainEventEnvelope.class)) {
+                    arg = e;
+                } else if (e.payload != null && paramTypes[0].isInstance(e.payload)) {
+                    arg = e.payload;
+                } else if (e.payload instanceof String s) {
+                    Object mapper = tryGetObjectMapper();
+                    if (mapper != null) {
+                        Method read = mapper.getClass().getMethod("readValue", String.class, Class.class);
+                        arg = read.invoke(mapper, s, paramTypes[0]);
+                    } else {
+                        arg = s;
+                    }
+                } else {
+                    arg = e.payload;
+                }
+                h.method.invoke(h.bean, arg);
+            } else if (paramTypes.length == 0) {
+                h.method.invoke(h.bean);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private Object tryGetObjectMapper() {
+        try {
+            return applicationContext.getBean(Class.forName("com.fasterxml.jackson.databind.ObjectMapper"));
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private record Handler(Object bean, Method method, String topic, String type) {}
+}
