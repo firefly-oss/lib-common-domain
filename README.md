@@ -89,11 +89,11 @@ firefly:
 
 ## 📦 Installation
 
-### Basic Installation
+### Installation Options
 
-Choose one of the following approaches based on your needs:
+The library provides two main approaches for installation:
 
-#### Option 1: All-in-One (Recommended for Getting Started)
+#### Option 1: All-in-One Module (Recommended)
 
 ```xml
 <dependency>
@@ -103,9 +103,8 @@ Choose one of the following approaches based on your needs:
 </dependency>
 ```
 
-#### Option 2: Modular Installation (Recommended for Production)
+#### Option 2: Core Module Only
 
-Core module (required):
 ```xml
 <dependency>
     <groupId>com.catalis</groupId>
@@ -114,38 +113,37 @@ Core module (required):
 </dependency>
 ```
 
-Add specific adapters as needed:
+**Important Note**: The core module includes ALL messaging dependencies (Kafka, RabbitMQ, SQS) to ensure compatibility and avoid classpath issues. The separate adapter modules (kafka, rabbit, sqs) exist but provide no additional functionality beyond what's already included in the core module.
 
-**For Kafka:**
-```xml
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-kafka</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-<dependency>
-    <groupId>org.springframework.kafka</groupId>
-    <artifactId>spring-kafka</artifactId>
-</dependency>
-```
+### Supported Messaging Adapters
 
-**For RabbitMQ:**
-```xml
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-rabbit</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-amqp</artifactId>
-</dependency>
-```
+Currently, the library supports only two functional messaging adapters:
 
-**For AWS SQS:**
+**✅ Application Events (Default - Local Publishing)**
+- Works out of the box with no additional configuration
+- Events published within the same JVM using Spring's ApplicationEventPublisher
+- Ideal for monolithic applications and testing
+
+**✅ AWS SQS (Remote Publishing)**
+- Requires AWS SQS SDK dependency and configuration
+- Events published to AWS SQS queues
+- Ideal for cloud-native and distributed applications
+
+**✅ Kafka (Remote Publishing)**
+- Requires Apache Kafka dependency and configuration
+- Events published to Kafka topics using Spring Kafka
+- Ideal for high-throughput event streaming and distributed applications
+
+**✅ RabbitMQ (Remote Publishing)**
+- Requires RabbitMQ dependency and connection configuration
+- Events published to RabbitMQ exchanges using Spring AMQP
+- Ideal for reliable messaging and distributed applications
+
+### AWS SQS Setup
+
+If you want to use SQS for remote event publishing, add the AWS SDK dependency:
+
 ```xml
-<!-- SQS functionality is included in the core module -->
-<!-- Only AWS SDK dependency is needed -->
 <dependency>
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>sqs</artifactId>
@@ -153,7 +151,59 @@ Add specific adapters as needed:
 </dependency>
 ```
 
-**For Transactional Engine (Saga/Step Events):**
+### Kafka Setup
+
+If you want to use Kafka for remote event publishing, add the Spring Kafka dependency:
+
+```xml
+<dependency>
+    <groupId>org.springframework.kafka</groupId>
+    <artifactId>spring-kafka</artifactId>
+</dependency>
+```
+
+And configure your Kafka bootstrap servers in `application.yml`:
+
+```yaml
+firefly:
+  events:
+    adapter: kafka
+    kafka:
+      bootstrap-servers: localhost:9092
+```
+
+### RabbitMQ Setup
+
+If you want to use RabbitMQ for remote event publishing, add the Spring AMQP dependency:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-amqp</artifactId>
+</dependency>
+```
+
+And configure your RabbitMQ connection in `application.yml`:
+
+```yaml
+firefly:
+  events:
+    adapter: rabbit
+    rabbit:
+      exchange: "domain-events"
+      routing-key: "{topic}.{type}"
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+```
+
+### Transactional Engine Integration
+
+For saga patterns and distributed transaction workflows:
+
 ```xml
 <dependency>
     <groupId>com.catalis</groupId>
@@ -162,15 +212,16 @@ Add specific adapters as needed:
 </dependency>
 ```
 
-*Note: The transactional engine integration automatically reuses your configured domain event adapter (Kafka, RabbitMQ, SQS, or Application Events). No additional messaging dependencies are required.*
+**Important**: The transactional engine integration is already included in the core module. It automatically reuses your configured domain event adapter. However, due to the current implementation limitations, step events will use the same adapters as domain events:
+- **Application Events** (default) - Step events published locally within the JVM
+- **SQS** - Step events published to AWS SQS queues (if configured)
 
 ### Gradle Installation
 
 ```groovy
 implementation 'com.catalis:lib-common-domain-all:1.0.0-SNAPSHOT'
-// or modular approach
+// or core module only
 implementation 'com.catalis:lib-common-domain-core:1.0.0-SNAPSHOT'
-implementation 'com.catalis:lib-common-domain-kafka:1.0.0-SNAPSHOT'
 ```
 
 ## 🚀 Quick Start
@@ -187,7 +238,8 @@ Add to your `application.yml`:
 firefly:
   events:
     enabled: true
-    adapter: auto  # Automatically detects available messaging systems
+    adapter: auto  # Options: auto, application_event, sqs
+    # Note: auto will select sqs if AWS SQS is configured, otherwise application_event
 ```
 
 ### 3. Publishing Events

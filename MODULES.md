@@ -1,22 +1,29 @@
 # Module Selection Guide
 
-This guide helps you choose the right combination of Firefly Common Domain modules for your specific use case.
+This guide helps you understand the actual module structure and functionality of the Firefly Common Domain library.
 
-## 🎯 Quick Decision Matrix
+## ⚠️ Important: Current Module Reality
 
-| Use Case | Recommended Modules | Rationale |
+**The modular architecture described in previous versions of this documentation is not accurate.** Here's the actual situation:
+
+- **Core Module**: Contains ALL messaging dependencies and functionality
+- **Adapter Modules**: Provide minimal or no additional functionality beyond the core
+- **Functional Adapters**: Only Application Events and AWS SQS actually work
+
+## 🎯 Actual Decision Matrix
+
+| Use Case | Recommended Module | Rationale |
 |----------|-------------------|-----------|
-| **Getting Started** | `lib-common-domain-all` | All features included, easy setup |
-| **Production Microservice** | `core` + specific adapters | Minimal dependencies, faster builds |
-| **Multi-Cloud Deployment** | `core` + `kafka` + `sqs` | Flexibility across environments |
-| **Enterprise Integration** | `core` + `rabbit` | Complex routing, reliable messaging |
-| **Testing/Development** | `core` only | Application events for local testing |
-| **Serverless/Lambda** | `core` + `sqs` | Minimal footprint, cloud-native |
-| **Saga/Transactional Workflows** | `core` + transactional-engine + adapters | Step events for distributed transactions |
+| **Getting Started** | `lib-common-domain-core` | Contains all functionality, simplest setup |
+| **Production Applications** | `lib-common-domain-core` + AWS SQS SDK | For remote event publishing |
+| **Testing/Development** | `lib-common-domain-core` | Application events work out of the box |
+| **Cloud-Native/Serverless** | `lib-common-domain-core` + AWS SQS SDK | SQS is the only working remote adapter |
+| **Monolithic Applications** | `lib-common-domain-core` | Application events sufficient for single JVM |
+| **Saga/Transactional Workflows** | `lib-common-domain-core` + `lib-transactional-engine-core` | Step events reuse domain event adapters |
 
-## 📦 Module Combinations
+## 📦 Available Setups
 
-### Minimal Setup (Application Events Only)
+### Setup 1: Local Events Only (Default)
 ```xml
 <dependency>
     <groupId>com.catalis</groupId>
@@ -24,176 +31,92 @@ This guide helps you choose the right combination of Firefly Common Domain modul
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
+
+**What You Get:**
+- Spring Application Events (local JVM only)
+- `@EmitEvent` and `@OnDomainEvent` annotations
+- Health checks and metrics
+- All messaging dependencies included (but only ApplicationEvent adapter works)
 
 **Use When:**
 - Local development and testing
 - Monolithic applications
 - Simple event handling within single JVM
+- Getting started with the library
 
-**Features:**
-- Spring Application Events
-- `@EmitEvent` and `@OnDomainEvent` annotations
-- Health checks and metrics
-- No external messaging dependencies
-
-### Single Messaging System
-
-#### Kafka-Only Setup
+### Setup 2: Remote Events via AWS SQS
 ```xml
-<!-- Core module -->
+<!-- Core module (contains all functionality) -->
 <dependency>
     <groupId>com.catalis</groupId>
     <artifactId>lib-common-domain-core</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 
-<!-- Kafka adapter -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-kafka</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-
-<!-- Spring Kafka dependency -->
-<dependency>
-    <groupId>org.springframework.kafka</groupId>
-    <artifactId>spring-kafka</artifactId>
-</dependency>
-```
-
-**Use When:**
-- High-throughput event streaming
-- Distributed microservices architecture
-- Event sourcing patterns
-- Real-time analytics
-
-#### RabbitMQ-Only Setup
-```xml
-<!-- Core module -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-
-<!-- RabbitMQ adapter -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-rabbit</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-
-<!-- Spring AMQP dependency -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-amqp</artifactId>
-</dependency>
-```
-
-**Use When:**
-- Complex routing requirements
-- Enterprise integration patterns
-- Reliable message delivery guarantees
-- Legacy system integration
-
-#### AWS SQS-Only Setup
-```xml
-<!-- Core module (includes SQS functionality) -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-
-<!-- AWS SDK dependency -->
+<!-- AWS SDK for SQS functionality -->
 <dependency>
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>sqs</artifactId>
     <version>2.25.32</version>
 </dependency>
 ```
+
+**What You Get:**
+- All features from Setup 1
+- AWS SQS event publishing and consumption
+- Remote event distribution across services
+- Cloud-native messaging capabilities
 
 **Use When:**
 - AWS-native applications
+- Distributed microservices architecture
 - Serverless architectures
-- Managed queue service preference
-- Auto-scaling requirements
+- Production applications requiring remote events
 
-### Multi-Messaging Environments
+### ❌ What Doesn't Work
 
-#### Hybrid Cloud Setup
+**Important**: Despite the existence of separate modules, the following setups DO NOT provide the advertised functionality:
+
+#### Non-Functional: Kafka Setup
 ```xml
-<!-- Core module -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-
-<!-- Kafka for high-throughput events -->
+<!-- This setup does NOT work for domain events -->
 <dependency>
     <groupId>com.catalis</groupId>
     <artifactId>lib-common-domain-kafka</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
-
-<!-- SQS for AWS integration (included in core module) -->
-
-<!-- Required dependencies -->
-<dependency>
-    <groupId>org.springframework.kafka</groupId>
-    <artifactId>spring-kafka</artifactId>
-</dependency>
-<dependency>
-    <groupId>software.amazon.awssdk</groupId>
-    <artifactId>sqs</artifactId>
-    <version>2.25.32</version>
-</dependency>
 ```
+- The Kafka module only creates KafkaTemplate infrastructure beans
+- Domain events configured for Kafka fall back to Application Events
+- No actual domain event publishing to Kafka occurs
 
-**Configuration:**
-```yaml
-firefly:
-  events:
-    adapter: auto  # Will prioritize Kafka if available
-    # Can also route different events to different adapters programmatically
-```
-
-#### Enterprise Integration Setup
+#### Non-Functional: RabbitMQ Setup
 ```xml
-<!-- All adapters for maximum flexibility -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-kafka</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
+<!-- This setup does NOT work for domain events -->
 <dependency>
     <groupId>com.catalis</groupId>
     <artifactId>lib-common-domain-rabbit</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
-<!-- SQS functionality is included in core module - no separate dependency needed -->
 ```
+- The RabbitMQ module provides no functionality whatsoever
+- Domain events configured for RabbitMQ fall back to Application Events
+- No actual domain event publishing to RabbitMQ occurs
 
 ### Transactional Engine Integration
 
 For saga patterns and distributed transaction workflows using lib-transactional-engine-core.
 
-#### Basic Transactional Engine Setup
+#### Transactional Engine Setup
 ```xml
-<!-- Core module -->
+<!-- Core module (transactional engine already included) -->
 <dependency>
     <groupId>com.catalis</groupId>
     <artifactId>lib-common-domain-core</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 
-<!-- Transactional Engine -->
+<!-- Transactional Engine (if not using core module) -->
 <dependency>
     <groupId>com.catalis</groupId>
     <artifactId>lib-transactional-engine-core</artifactId>
@@ -201,36 +124,20 @@ For saga patterns and distributed transaction workflows using lib-transactional-
 </dependency>
 ```
 
-**Use When:**
-- Implementing saga patterns
-- Distributed transaction workflows
-- Step-by-step process orchestration
-- Complex business process management
-
-**Features:**
+**What Actually Works:**
 - `StepEventPublisher` integration via bridge pattern
-- Automatic reuse of domain event messaging adapters
-- Same configuration and monitoring as domain events
-- Consistent error handling and retry mechanisms
+- Step events reuse the same adapters as domain events
+- **Local Sagas**: Step events published as Application Events (default)
+- **Remote Sagas**: Step events published to SQS (if SQS is configured)
 
-#### With Kafka (Recommended for High-Throughput Sagas)
-```xml
-<!-- Add Kafka adapter -->
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-kafka</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-<dependency>
-    <groupId>org.springframework.kafka</groupId>
-    <artifactId>spring-kafka</artifactId>
-</dependency>
-```
+**Limitations:**
+- Step events are limited by the same adapter restrictions as domain events
+- Kafka and RabbitMQ configurations for step events fall back to Application Events
+- No dedicated messaging infrastructure for step events
 
-#### With SQS (Recommended for Cloud-Native Sagas)
+#### For Remote Step Events (SQS Only)
 ```xml
-<!-- SQS functionality is included in core module -->
-<!-- Only AWS SDK dependency is needed -->
+<!-- Add AWS SQS SDK for remote step event publishing -->
 <dependency>
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>sqs</artifactId>
@@ -240,14 +147,15 @@ For saga patterns and distributed transaction workflows using lib-transactional-
 
 ## 🔧 Configuration Strategies
 
-### Environment-Based Selection
+### Environment-Based Configuration
 
 #### Development Environment
 ```yaml
 # application-dev.yml
 firefly:
   events:
-    adapter: application_event  # Fast, no infrastructure needed
+    enabled: true
+    adapter: application_event  # Local events only, fast and simple
 ```
 
 #### Staging Environment
@@ -255,9 +163,10 @@ firefly:
 # application-staging.yml
 firefly:
   events:
-    adapter: kafka  # Production-like setup
-    kafka:
-      template-bean-name: stagingKafkaTemplate
+    enabled: true
+    adapter: sqs  # Test with remote events
+    sqs:
+      queue-url: "https://sqs.us-east-1.amazonaws.com/123456789012/staging-events"
 ```
 
 #### Production Environment
@@ -265,173 +174,119 @@ firefly:
 # application-prod.yml
 firefly:
   events:
-    adapter: auto  # Let the library choose based on available infrastructure
-    kafka:
-      use-messaging-if-available: true
-    rabbit:
-      exchange: "prod.events.${topic}"
-      routing-key: "${type}"
+    enabled: true
+    adapter: auto  # Will select sqs if available, otherwise application_event
+    sqs:
+      queue-url: "https://sqs.us-east-1.amazonaws.com/123456789012/prod-events"
 ```
 
-### Profile-Based Module Activation
+**Note**: The `auto` adapter selection only chooses between `application_event` (default) and `sqs` (if configured). Kafka and RabbitMQ configurations are ignored and fall back to `application_event`.
 
-```xml
-<!-- Conditional dependencies using Maven profiles -->
-<profiles>
-    <profile>
-        <id>kafka</id>
-        <dependencies>
-            <dependency>
-                <groupId>com.catalis</groupId>
-                <artifactId>lib-common-domain-kafka</artifactId>
-                <version>1.0.0-SNAPSHOT</version>
-            </dependency>
-        </dependencies>
-    </profile>
-    
-    <profile>
-        <id>rabbit</id>
-        <dependencies>
-            <dependency>
-                <groupId>com.catalis</groupId>
-                <artifactId>lib-common-domain-rabbit</artifactId>
-                <version>1.0.0-SNAPSHOT</version>
-            </dependency>
-        </dependencies>
-    </profile>
-</profiles>
+### SQS Configuration Example
+
+For remote event publishing via AWS SQS:
+
+```yaml
+firefly:
+  events:
+    enabled: true
+    adapter: sqs
+    sqs:
+      queue-url: "https://sqs.region.amazonaws.com/account-id/queue-name"
+      # OR use queue name (requires additional AWS configuration)
+      queue-name: "my-events-queue"
+      client-bean-name: "sqsAsyncClient"  # Optional, defaults to auto-detection
 ```
 
-Build with specific profile:
-```bash
-mvn clean package -Pkafka
+**AWS Configuration:**
+```yaml
+# AWS credentials and region
+aws:
+  region: us-east-1
+  credentials:
+    access-key: ${AWS_ACCESS_KEY_ID}
+    secret-key: ${AWS_SECRET_ACCESS_KEY}
 ```
 
-## 📊 Dependency Impact Analysis
+## 📊 Actual Dependency Impact
 
-### Size Comparison (Approximate)
+### Reality Check
 
-| Module Combination | JAR Size | Transitive Dependencies | Build Time Impact |
-|-------------------|----------|------------------------|-------------------|
-| Core only | ~500KB | Minimal | Fastest |
-| Core + Kafka | ~2MB | Spring Kafka, Kafka clients | Medium |
-| Core + RabbitMQ | ~1.5MB | Spring AMQP, RabbitMQ client | Medium |
-| Core + SQS | ~1MB | AWS SDK SQS | Medium |
-| All modules | ~4MB | All messaging libraries | Slowest |
+**Important**: Due to the core module including all messaging dependencies, the modular approach provides no size benefits.
 
-### Memory Footprint
+| Setup | JAR Size | Transitive Dependencies | Functional Adapters |
+|-------|----------|------------------------|-------------------|
+| Core only | ~4MB | ALL messaging libraries | ApplicationEvent only |
+| Core + SQS SDK | ~5MB | Core + AWS SQS | ApplicationEvent + SQS |
+| Any adapter module | ~4MB+ | Same as core | No additional functionality |
 
-| Configuration | Heap Usage | Connection Pools | Thread Pools |
-|--------------|------------|------------------|-------------|
-| Application Events | Minimal | None | Spring default |
-| Single Adapter | Low | 1 connection pool | 1 thread pool |
-| Multiple Adapters | Medium | Multiple pools | Multiple pools |
+### Memory Footprint Reality
 
-## 🚀 Migration Strategies
-
-### From Monolithic to Modular
-
-1. **Assessment Phase**
-   ```bash
-   # Analyze current dependencies
-   mvn dependency:tree | grep -E "(kafka|rabbit|sqs|amqp)"
-   ```
-
-2. **Gradual Migration**
-   ```xml
-   <!-- Step 1: Start with all-in-one -->
-   <dependency>
-       <groupId>com.catalis</groupId>
-       <artifactId>lib-common-domain-all</artifactId>
-       <version>1.0.0-SNAPSHOT</version>
-   </dependency>
-   
-   <!-- Step 2: Switch to modular approach -->
-   <!-- Replace with core + specific adapters -->
-   ```
-
-3. **Testing Strategy**
-   ```yaml
-   # Use application events for testing regardless of production setup
-   firefly:
-     events:
-       adapter: application_event
-   ```
-
-### Adding New Messaging Systems
-
-1. **Add Module Dependency**
-2. **Configure Adapter Settings**
-3. **Test Adapter Priority**
-4. **Update Health Checks**
+| Actual Configuration | Heap Usage | Active Connections | Notes |
+|---------------------|------------|-------------------|-------|
+| ApplicationEvent (default) | Minimal | None | Local JVM events only |
+| SQS configured | Low-Medium | AWS SQS connections | Remote event publishing |
+| Kafka/Rabbit configured | Minimal | None (fallback to ApplicationEvent) | Non-functional |
 
 ## 🔍 Troubleshooting
 
 ### Common Issues
 
-#### Multiple Adapters Detected
-```
-WARN: Multiple messaging adapters detected. Using priority order: kafka > rabbit > sqs > application_event
-```
-
-**Solution**: Explicitly specify adapter in configuration:
+#### Expecting Kafka/RabbitMQ but Getting Local Events
 ```yaml
+# This configuration doesn't work as expected
 firefly:
   events:
-    adapter: kafka  # Force specific adapter
+    adapter: kafka
 ```
 
-#### Missing Dependencies
-```
-ERROR: KafkaTemplate bean not found but kafka adapter is configured
+**Reality**: Events will be published as Application Events (local JVM), not to Kafka.
+
+**Solution**: Use SQS for remote events or accept Application Events for local events:
+```yaml
+# For remote events (only option that works)
+firefly:
+  events:
+    adapter: sqs
+    sqs:
+      queue-url: "your-sqs-queue-url"
 ```
 
-**Solution**: Add required Spring dependencies:
+```yaml  
+# For local events (honest configuration)
+firefly:
+  events:
+    adapter: application_event
+```
+
+#### SQS Configuration Issues
+```
+ERROR: SqsAsyncClient bean not found but sqs adapter is configured
+```
+
+**Solution**: Ensure AWS SQS SDK is included and properly configured:
 ```xml
 <dependency>
-    <groupId>org.springframework.kafka</groupId>
-    <artifactId>spring-kafka</artifactId>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>sqs</artifactId>
+    <version>2.25.32</version>
 </dependency>
 ```
 
-#### ClassPath Conflicts
-```
-ERROR: Multiple versions of messaging libraries detected
-```
-
-**Solution**: Use dependency management:
-```xml
-<dependencyManagement>
-    <dependencies>
-        <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
-            <version>${spring-kafka.version}</version>
-        </dependency>
-    </dependencies>
-</dependencyManagement>
-```
-
-## 📈 Best Practices
+## 📈 Realistic Best Practices
 
 ### Production Recommendations
 
-1. **Use Modular Approach**: Include only needed adapters
-2. **Explicit Configuration**: Don't rely on auto-detection in production
-3. **Health Check Monitoring**: Monitor all configured adapters
-4. **Graceful Degradation**: Configure fallback adapters
+1. **Be Honest About Messaging**: Only SQS provides actual remote messaging
+2. **Use Application Events for Local Communication**: They work reliably within a single JVM
+3. **Configure SQS Properly**: For distributed event communication
+4. **Monitor What Actually Works**: Focus on Application Event and SQS health checks
 
-### Development Recommendations
+### Development Approach
 
-1. **Start Simple**: Use `application_event` for initial development
-2. **Infrastructure Parity**: Match production messaging systems in staging
-3. **Testing Isolation**: Use separate modules for integration tests
-
-### Performance Optimization
-
-1. **Connection Pooling**: Configure appropriate pool sizes
-2. **Batch Processing**: Use adapter-specific batching features  
-3. **Async Processing**: Leverage reactive patterns consistently
+1. **Start with Application Events**: They work immediately without infrastructure
+2. **Test with SQS in Staging**: To verify remote event behavior
+3. **Don't Rely on Non-Functional Adapters**: Kafka and RabbitMQ configurations are misleading
 
 ## 🔗 Related Resources
 
