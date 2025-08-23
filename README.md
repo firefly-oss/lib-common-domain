@@ -89,31 +89,19 @@ firefly:
 
 ## 📦 Installation
 
-### Installation Options
+### Installation
 
-The library provides two main approaches for installation:
-
-#### Option 1: All-in-One Module (Recommended)
+The library is now provided as a single, consolidated module that includes all functionality:
 
 ```xml
 <dependency>
     <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-all</artifactId>
+    <artifactId>lib-common-domain</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
-#### Option 2: Core Module Only
-
-```xml
-<dependency>
-    <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
-```
-
-**Important Note**: The core module includes ALL messaging dependencies (Kafka, RabbitMQ, SQS) to ensure compatibility and avoid classpath issues. The separate adapter modules (kafka, rabbit, sqs) exist but provide no additional functionality beyond what's already included in the core module.
+**What's Included**: This single module includes ALL messaging dependencies (Kafka, RabbitMQ, SQS) and functionality. There are no separate adapter modules - everything you need is in this one dependency.
 
 ### Supported Messaging Adapters
 
@@ -219,9 +207,7 @@ For saga patterns and distributed transaction workflows:
 ### Gradle Installation
 
 ```groovy
-implementation 'com.catalis:lib-common-domain-all:1.0.0-SNAPSHOT'
-// or core module only
-implementation 'com.catalis:lib-common-domain-core:1.0.0-SNAPSHOT'
+implementation 'com.catalis:lib-common-domain:1.0.0-SNAPSHOT'
 ```
 
 ## 🚀 Quick Start
@@ -669,12 +655,12 @@ public class EventAnalyticsHandler {
 }
 ```
 
-## 📊 Modules
+## 📊 Architecture
 
-The library is designed with a modular architecture to minimize dependencies:
+The library uses a single-module architecture that includes all functionality:
 
-### Core Module (`lib-common-domain-core`)
-**Purpose**: Essential functionality and Application Events adapter
+### Single Module (`lib-common-domain`)
+**Purpose**: Complete functionality for domain events with all messaging adapters
 
 **Includes**:
 - Domain event interfaces and envelopes
@@ -683,32 +669,17 @@ The library is designed with a modular architecture to minimize dependencies:
 - Configuration properties and validation
 - Actuator support (health checks, metrics)
 - Distributed tracing utilities
-- Spring Application Events adapter
+- All messaging adapters: Application Events, Kafka, RabbitMQ, SQS
+- Transactional engine integration
+- Complete testing support for all messaging systems
 
-**Dependencies**: Spring Boot WebFlux, AOP, Actuator, Micrometer
+**Dependencies**: Spring Boot WebFlux, AOP, Actuator, Micrometer, Spring Kafka, Spring AMQP, AWS SQS SDK
 
-### Messaging Adapters
-
-#### Kafka Module (`lib-common-domain-kafka`)
-- Kafka-specific publishing and consumption
-- Spring Kafka integration
-- Testcontainers support for integration testing
-
-#### RabbitMQ Module (`lib-common-domain-rabbit`)
-- RabbitMQ publishing with configurable exchanges/routing
-- Spring AMQP integration
-- Testcontainers support for integration testing
-
-#### SQS Support (included in core module)
-- AWS SQS publishing and consumption (included in `lib-common-domain-core`)
-- AWS SDK v2 integration
-- LocalStack support for testing
-- No separate module required - only add AWS SDK dependency
-
-### All-in-One Module (`lib-common-domain-all`)
-**Purpose**: Convenience module including all adapters
-
-**Use When**: You need multiple messaging systems or want to avoid dependency management
+**Benefits of Single Module Approach**:
+- **Honest Architecture**: No misleading separate modules that don't provide additional functionality
+- **Simplified Dependency Management**: One dependency includes everything
+- **Reduced Maintenance Overhead**: No need to maintain multiple module structures
+- **Clear Expectations**: What you see is what you get - all messaging systems are available
 
 ## 📈 Monitoring & Health
 
