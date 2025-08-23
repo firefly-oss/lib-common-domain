@@ -38,9 +38,15 @@ public class DomainEventsAutoConfiguration {
         if (adapter == DomainEventsProperties.Adapter.SQS) {
             return new SqsAsyncClientDomainEventPublisher(ctx, props.getSqs());
         }
-        // For KAFKA and RABBIT adapters, fall back to ApplicationEvent if specific implementations not available
-        if (adapter == DomainEventsProperties.Adapter.KAFKA || adapter == DomainEventsProperties.Adapter.RABBIT) {
-            return new ApplicationEventDomainEventPublisher(applicationEventPublisher);
+        // For KAFKA and RABBIT adapters, they should be handled by their respective modules
+        // If we reach here with KAFKA or RABBIT, it means the module is not properly configured
+        if (adapter == DomainEventsProperties.Adapter.KAFKA) {
+            throw new IllegalStateException("Kafka adapter selected but no KafkaTemplateDomainEventPublisher found. " +
+                    "Make sure lib-common-domain-kafka is on classpath and properly configured.");
+        }
+        if (adapter == DomainEventsProperties.Adapter.RABBIT) {
+            throw new IllegalStateException("RabbitMQ adapter selected but no RabbitTemplateDomainEventPublisher found. " +
+                    "Make sure lib-common-domain-rabbit is on classpath and properly configured.");
         }
         // AUTO detection order: SQS -> ApplicationEvent (Kafka and Rabbit handled by their own modules)
         if (isSqsAvailable(ctx)) {

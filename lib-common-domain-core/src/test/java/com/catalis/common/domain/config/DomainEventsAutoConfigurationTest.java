@@ -31,7 +31,7 @@ class DomainEventsAutoConfigurationTest {
     }
 
     @Test
-    void kafkaAdapterFallsBackToApplicationEventInCore() {
+    void kafkaAdapterThrowsExceptionWhenNotProperlyConfigured() {
         DomainEventsAutoConfiguration cfg = new DomainEventsAutoConfiguration();
         ApplicationContext ctx = mock(ApplicationContext.class);
         when(ctx.getBeansOfType((Class) any())).thenAnswer(inv -> {
@@ -45,9 +45,10 @@ class DomainEventsAutoConfigurationTest {
         DomainEventsProperties props = new DomainEventsProperties();
         props.setAdapter(DomainEventsProperties.Adapter.KAFKA);
 
-        DomainEventPublisher dep = cfg.domainEventPublisher(ctx, appPublisher, props);
-        // Core module now falls back to ApplicationEvent when Kafka implementations are in separate modules
-        assertTrue(dep instanceof ApplicationEventDomainEventPublisher);
+        // Core module now throws exception when Kafka adapter is selected but module is not properly configured
+        IllegalStateException exception = assertThrows(IllegalStateException.class, 
+            () -> cfg.domainEventPublisher(ctx, appPublisher, props));
+        assertTrue(exception.getMessage().contains("Kafka adapter selected but no KafkaTemplateDomainEventPublisher found"));
     }
 
     @Test
