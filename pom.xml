@@ -12,87 +12,177 @@
     </parent>
 
     <groupId>com.catalis</groupId>
-    <artifactId>lib-common-domain-parent</artifactId>
+    <artifactId>lib-common-domain</artifactId>
     <version>1.0.0-SNAPSHOT</version>
-    <packaging>pom</packaging>
+    <packaging>jar</packaging>
 
-    <name>Firefly Common Domain Parent</name>
-    <description>Parent module for Firefly Common Domain Library with modular messaging adapters</description>
+    <name>Firefly Common Domain Library</name>
+    <description>A powerful Spring Boot library that enables domain-driven design (DDD) with reactive programming support, featuring multi-messaging adapter architecture and comprehensive event handling capabilities.</description>
 
     <properties>
-        <lib-common-domain.version>1.0.0-SNAPSHOT</lib-common-domain.version>
         <aws.sdk2.version>2.25.32</aws.sdk2.version>
     </properties>
 
-    <modules>
-        <module>lib-common-domain-core</module>
-        <module>lib-common-domain-kafka</module>
-        <module>lib-common-domain-rabbit</module>
-        <module>lib-common-domain-sqs</module>
-        <module>lib-common-domain-all</module>
-    </modules>
+    <dependencies>
+        <!-- Spring Boot WebFlux -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
 
-    <dependencyManagement>
-        <dependencies>
-            <!-- Core module -->
-            <dependency>
-                <groupId>com.catalis</groupId>
-                <artifactId>lib-common-domain-core</artifactId>
-                <version>${lib-common-domain.version}</version>
-            </dependency>
+        <!-- Authentication & Security -->
+        <dependency>
+            <groupId>com.catalis</groupId>
+            <artifactId>lib-common-auth</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
 
-            <!-- Adapter modules -->
-            <dependency>
-                <groupId>com.catalis</groupId>
-                <artifactId>lib-common-domain-kafka</artifactId>
-                <version>${lib-common-domain.version}</version>
-            </dependency>
+        <!-- Spring AOP -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
 
-            <dependency>
-                <groupId>com.catalis</groupId>
-                <artifactId>lib-common-domain-rabbit</artifactId>
-                <version>${lib-common-domain.version}</version>
-            </dependency>
+        <!-- Spring Retry for resilience patterns -->
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+        </dependency>
 
-            <dependency>
-                <groupId>com.catalis</groupId>
-                <artifactId>lib-common-domain-sqs</artifactId>
-                <version>${lib-common-domain.version}</version>
-            </dependency>
+        <!-- Spring Configuration Processor -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
 
-            <!-- All-in-one module -->
-            <dependency>
-                <groupId>com.catalis</groupId>
-                <artifactId>lib-common-domain-all</artifactId>
-                <version>${lib-common-domain.version}</version>
-            </dependency>
+        <!-- Spring Boot Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
 
-            <!-- External dependencies -->
-            <dependency>
-                <groupId>software.amazon.awssdk</groupId>
-                <artifactId>sqs</artifactId>
-                <version>${aws.sdk2.version}</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+        <!-- Micrometer Tracing for distributed tracing -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+
+        <!-- Logback JSON Encoder -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+        </dependency>
+        
+        <!-- Janino for logback conditional expressions -->
+        <dependency>
+            <groupId>org.codehaus.janino</groupId>
+            <artifactId>janino</artifactId>
+        </dependency>
+
+        <!-- Lombok for reducing boilerplate code -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- SpringDoc OpenAPI -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <!-- Testcontainers for integration testing -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>kafka</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>rabbitmq</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>localstack</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Transactional Engine -->
+        <dependency>
+            <groupId>com.catalis</groupId>
+            <artifactId>lib-transactional-engine-core</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
+        <!-- All messaging dependencies included (Application Events work by default, others require additional setup) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sqs</artifactId>
+            <version>${aws.sdk2.version}</version>
+        </dependency>
+    </dependencies>
 
     <build>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-maven-plugin</artifactId>
-                    <configuration>
-                        <excludes>
-                            <exclude>
-                                <groupId>org.projectlombok</groupId>
-                                <artifactId>lombok</artifactId>
-                            </exclude>
-                        </excludes>
-                        <classifier>exec</classifier>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                    <classifier>exec</classifier>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
 </project>
