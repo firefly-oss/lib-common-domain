@@ -1,0 +1,15 @@
+${AnsiColor.GREEN}
+  _____.__                _____.__
+_/ ____\__|______   _____/ ____\  | ___.__.
+\   __\|  \_  __ \_/ __ \   __\|  |<   |  |
+ |  |  |  ||  | \/\  ___/|  |  |  |_\___  |
+ |__|  |__||__|    \___  >__|  |____/ ____|
+                       \/           \/
+:: firefly-domain ::             (v2025-08)
+${AnsiColor.DEFAULT}-------------------------------------------
+Made with ${AnsiColor.RED}${AnsiStyle.BOLD}love${AnsiColor.DEFAULT}${AnsiStyle.NORMAL} by
+Firefly Software Solutions Inc
+-------------------------------------------
+${AnsiStyle.BOLD}Application:${AnsiStyle.NORMAL} ${spring.application.name}
+${AnsiStyle.BOLD}Spring Boot Version:${AnsiStyle.NORMAL} ${spring-boot.version}
+-------------------------------------------
