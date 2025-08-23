@@ -3,6 +3,9 @@ package com.catalis.common.domain.config;
 import com.catalis.common.domain.actuator.health.*;
 import com.catalis.common.domain.actuator.info.DomainEventsInfoContributor;
 import com.catalis.common.domain.actuator.metrics.DomainEventsMetrics;
+import com.catalis.common.domain.actuator.metrics.JvmMetrics;
+import com.catalis.common.domain.actuator.metrics.HttpClientMetrics;
+import com.catalis.common.domain.actuator.metrics.ApplicationStartupMetrics;
 import com.catalis.common.domain.events.properties.DomainEventsProperties;
 import com.catalis.common.domain.stepevents.StepEventAdapterUtils;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -61,6 +64,53 @@ public class DomainEventsActuatorAutoConfiguration {
     @ConditionalOnEnabledInfoContributor("domainEvents")
     public DomainEventsInfoContributor domainEventsInfoContributor(DomainEventsProperties properties) {
         return new DomainEventsInfoContributor(properties);
+    }
+
+    // Enhanced Observability Components
+
+    @Bean
+    @ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
+    @ConditionalOnBean(MeterRegistry.class)
+    @ConditionalOnProperty(prefix = "firefly.observability.jvm", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public JvmMetrics jvmMetrics(MeterRegistry meterRegistry) {
+        return new JvmMetrics(meterRegistry);
+    }
+
+    @Bean
+    @ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
+    @ConditionalOnBean(MeterRegistry.class)
+    @ConditionalOnProperty(prefix = "firefly.observability.http-client", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public HttpClientMetrics httpClientMetrics(MeterRegistry meterRegistry) {
+        return new HttpClientMetrics(meterRegistry);
+    }
+
+    @Bean
+    @ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
+    @ConditionalOnBean(MeterRegistry.class)
+    @ConditionalOnProperty(prefix = "firefly.observability.startup", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public ApplicationStartupMetrics applicationStartupMetrics(MeterRegistry meterRegistry) {
+        return new ApplicationStartupMetrics(meterRegistry);
+    }
+
+    @Bean
+    @ConditionalOnEnabledHealthIndicator("threadPool")
+    @ConditionalOnProperty(prefix = "firefly.observability.thread-pool", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public ThreadPoolHealthIndicator threadPoolHealthIndicator(ApplicationContext applicationContext) {
+        return new ThreadPoolHealthIndicator(applicationContext);
+    }
+
+    @Bean
+    @ConditionalOnEnabledHealthIndicator("httpClient")
+    @ConditionalOnProperty(prefix = "firefly.observability.http-client", name = "health-enabled", havingValue = "true", matchIfMissing = true)
+    public HttpClientHealthIndicator httpClientHealthIndicator() {
+        return new HttpClientHealthIndicator();
+    }
+
+    @Bean
+    @ConditionalOnEnabledHealthIndicator("cache")
+    @ConditionalOnProperty(prefix = "firefly.observability.cache", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public CacheHealthIndicator cacheHealthIndicator(ApplicationContext applicationContext) {
+        return new CacheHealthIndicator(applicationContext);
     }
 
     /**
