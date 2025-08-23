@@ -1,0 +1,110 @@
+package com.catalis.common.domain.actuator.health;
+
+import com.catalis.common.domain.events.properties.DomainEventsProperties;
+import com.catalis.common.domain.stepevents.StepEventAdapterUtils;
+import org.springframework.boot.actuate.health.Health;
+import org.springframework.context.ApplicationContext;
+import software.amazon.awssdk.services.sqs.SqsAsyncClient;
+import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
+import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
+
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Health indicator for SQS Domain Events adapter.
+ * Checks the availability and health of the SqsAsyncClient.
+ */
+public class SqsDomainEventsHealthIndicator extends DomainEventsHealthIndicator {
+
+    private final ApplicationContext applicationContext;
+
+    public SqsDomainEventsHealthIndicator(DomainEventsProperties properties, ApplicationContext applicationContext) {
+        super(properties);
+        this.applicationContext = applicationContext;
+    }
+
+    @Override
+    protected void performHealthCheck(Health.Builder builder) throws Exception {
+        try {
+            // Check if SqsAsyncClient is available
+            Object client = StepEventAdapterUtils.resolveBean(
+                    applicationContext,
+                    properties.getSqs().getClientBeanName(),
+                    "software.amazon.awssdk.services.sqs.SqsAsyncClient"
+            );
+
+            if (client == null) {
+                builder.down()
+                        .withDetail("status", "SqsAsyncClient not available")
+                        .withDetail("adapter", "sqs")
+                        .withDetail("clientBeanName", properties.getSqs().getClientBeanName());
+                return;
+            }
+
+            SqsAsyncClient sqsClient = (SqsAsyncClient) client;
+
+            // Check if queue URL or name is configured
+            String queueUrl = properties.getSqs().getQueueUrl();
+            String queueName = properties.getSqs().getQueueName();
+
+            if ((queueUrl == null || queueUrl.isEmpty()) && (queueName == null || queueName.isEmpty())) {
+                builder.up()
+                        .withDetail("status", "SQS client available but no queue configured")
+                        .withDetail("adapter", "sqs")
+                        .withDetail("clientBeanName", properties.getSqs().getClientBeanName());
+                return;
+            }
+
+            // Try to test SQS connectivity by getting queue attributes
+            try {
+                String testUrl = queueUrl;
+                if (testUrl == null || testUrl.isEmpty()) {
+                    // If we only have queue name, we can't easily test without additional AWS calls
+                    builder.up()
+                            .withDetail("status", "SQS client available, queue name configured")
+                            .withDetail("adapter", "sqs")
+                            .withDetail("queueName", queueName)
+                            .withDetail("clientBeanName", properties.getSqs().getClientBeanName());
+                    return;
+                }
+
+                GetQueueAttributesRequest request = GetQueueAttributesRequest.builder()
+                        .queueUrl(testUrl)
+                        .attributeNames(QueueAttributeName.QUEUE_ARN)
+                        .build();
+
+                CompletableFuture<Void> healthCheck = sqsClient.getQueueAttributes(request)
+                        .thenApply(response -> {
+                            // If we can get queue attributes, SQS is healthy
+                            return null;
+                        });
+
+                // Wait for up to 5 seconds for the health check
+                healthCheck.get(5, TimeUnit.SECONDS);
+
+                builder.up()
+                        .withDetail("status", "SQS queue accessible")
+                        .withDetail("adapter", "sqs")
+                        .withDetail("queueUrl", queueUrl)
+                        .withDetail("queueName", queueName)
+                        .withDetail("clientBeanName", properties.getSqs().getClientBeanName());
+
+            } catch (Exception e) {
+                builder.down()
+                        .withDetail("status", "Failed to access SQS queue")
+                        .withDetail("adapter", "sqs")
+                        .withDetail("queueUrl", queueUrl)
+                        .withDetail("queueName", queueName)
+                        .withDetail("error", e.getMessage());
+            }
+
+        } catch (Exception e) {
+            builder.down()
+                    .withDetail("status", "Error checking SQS health")
+                    .withDetail("adapter", "sqs")
+                    .withDetail("error", e.getMessage());
+        }
+    }
+}
