@@ -80,11 +80,19 @@ StepEventPublisher is auto-configured when:
 2. A `DomainEventPublisher` bean is available
 3. StepEvents are enabled (default: `true`)
 
+**Simplified Configuration:** Step Events always use Domain Events infrastructure - no separate configuration needed!
+
 ```yaml
 firefly:
   stepevents:
-    enabled: true  # Default: true
-    adapter: auto  # Uses same adapter as domain events
+    enabled: true     # Default: true - Only configuration needed!
+    
+  # Step Events automatically use whatever adapter is configured for Domain Events
+  events:
+    adapter: kafka    # StepEvents will use Kafka via bridge pattern
+    kafka:
+      bootstrap-servers: localhost:9092
+      # All other Kafka settings apply to both Domain Events AND Step Events
 ```
 
 ## 📦 Installation
@@ -101,31 +109,80 @@ The library is now provided as a single, consolidated module that includes all f
 </dependency>
 ```
 
-**What's Included**: This single module includes ALL messaging dependencies (Kafka, RabbitMQ, SQS) and functionality. There are no separate adapter modules - everything you need is in this one dependency.
+**What's Included**: This single module includes ALL messaging dependencies (Kafka, RabbitMQ, SQS, Kinesis) and functionality. There are no separate adapter modules - everything you need is in this one dependency.
 
 ### Supported Messaging Adapters
 
-Currently, the library supports only two functional messaging adapters:
+The library provides comprehensive support for all major messaging systems:
 
 **✅ Application Events (Default - Local Publishing)**
 - Works out of the box with no additional configuration
 - Events published within the same JVM using Spring's ApplicationEventPublisher
-- Ideal for monolithic applications and testing
+- Ideal for monolithic applications, testing, and development environments
 
-**✅ AWS SQS (Remote Publishing)**
-- Requires AWS SQS SDK dependency and configuration
-- Events published to AWS SQS queues
-- Ideal for cloud-native and distributed applications
-
-**✅ Kafka (Remote Publishing)**
-- Requires Apache Kafka dependency and configuration
-- Events published to Kafka topics using Spring Kafka
-- Ideal for high-throughput event streaming and distributed applications
+**✅ Apache Kafka (Remote Publishing)**
+- Full producer and consumer support with comprehensive configuration options
+- Events published to Kafka topics using Spring Kafka with headers support
+- Ideal for high-throughput event streaming, distributed applications, and event sourcing
+- Supports all Kafka producer configurations (serializers, retries, batching, etc.)
 
 **✅ RabbitMQ (Remote Publishing)**
-- Requires RabbitMQ dependency and connection configuration
+- Full publisher and subscriber support with flexible routing
 - Events published to RabbitMQ exchanges using Spring AMQP
-- Ideal for reliable messaging and distributed applications
+- Supports custom exchange and routing key patterns with placeholders
+- Ideal for reliable messaging, complex routing scenarios, and microservices
+
+**✅ AWS SQS (Remote Publishing)**
+- Complete integration with AWS SQS using SDK v2
+- Events published to SQS queues with automatic URL resolution
+- Supports both queue URL and queue name configuration
+- Ideal for cloud-native applications, serverless architectures, and AWS environments
+
+**✅ AWS Kinesis (Remote Publishing)**
+- Complete integration with AWS Kinesis Data Streams using SDK v2
+- Events published to Kinesis streams with automatic partitioning
+- Supports configurable partition keys and stream names
+- Ideal for real-time data streaming, event sourcing, and high-throughput event processing
+- Perfect for analytics, monitoring, and building event-driven architectures with AWS
+
+### AWS Kinesis Setup
+
+If you want to use Kinesis for remote event publishing, the AWS SDK dependency is already included:
+
+```yaml
+firefly:
+  events:
+    adapter: kinesis
+    kinesis:
+      # Optional: Bean name override
+      client-bean-name: myKinesisAsyncClient
+      
+      # Required: Kinesis stream name
+      stream-name: domain-events-stream
+      
+      # Optional: Partition key pattern (supports placeholders)
+      partition-key: "${key}"  # Default: uses event key, supports ${topic}, ${type}, ${key}
+    
+    # Optional: Consumer configuration for inbound events
+    consumer:
+      enabled: true
+      kinesis:
+        # Stream to consume from
+        stream-name: domain-events-stream
+        
+        # Application name for Kinesis Client Library
+        application-name: domain-events-consumer
+        
+        # Polling configuration
+        poll-delay-millis: 5000      # Delay between polls (1000-300000ms)
+
+# AWS SDK configuration
+aws:
+  region: us-east-1
+  credentials:
+    access-key: your-access-key
+    secret-key: your-secret-key
+```
 
 ### AWS SQS Setup
 
@@ -139,6 +196,43 @@ If you want to use SQS for remote event publishing, add the AWS SDK dependency:
 </dependency>
 ```
 
+And configure your SQS settings in `application.yml`:
+
+```yaml
+firefly:
+  events:
+    adapter: sqs
+    sqs:
+      # Optional: Bean name override
+      client-bean-name: mySqsAsyncClient
+      
+      # Option 1: Direct queue URL (validated format)
+      queue-url: https://sqs.us-east-1.amazonaws.com/123456789012/my-events-queue
+      
+      # Option 2: Queue name (auto-resolved via GetQueueUrl)
+      # queue-name: my-events-queue  # Supports alphanumeric, hyphens, underscores, .fifo
+    
+    # Optional: Consumer configuration for inbound events
+    consumer:
+      enabled: true
+      sqs:
+        # Consumer-specific queue configuration
+        queue-url: https://sqs.us-east-1.amazonaws.com/123456789012/my-consumer-queue
+        # OR queue-name: my-consumer-queue
+        
+        # Polling configuration
+        wait-time-seconds: 20        # Long polling (0-20 seconds)
+        max-messages: 10             # Max messages per poll (1-10)
+        poll-delay-millis: 1000      # Delay between polls (100-300000ms)
+
+# AWS SDK configuration
+aws:
+  region: us-east-1
+  credentials:
+    access-key: your-access-key
+    secret-key: your-secret-key
+```
+
 ### Kafka Setup
 
 If you want to use Kafka for remote event publishing, add the Spring Kafka dependency:
@@ -150,14 +244,41 @@ If you want to use Kafka for remote event publishing, add the Spring Kafka depen
 </dependency>
 ```
 
-And configure your Kafka bootstrap servers in `application.yml`:
+And configure your Kafka settings in `application.yml`:
 
 ```yaml
 firefly:
   events:
     adapter: kafka
     kafka:
+      # Required: Kafka bootstrap servers
       bootstrap-servers: localhost:9092
+      
+      # Optional: Bean name override
+      template-bean-name: myKafkaTemplate
+      
+      # Optional: Producer configuration
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      retries: 3
+      batch-size: 16384
+      linger-ms: 5
+      buffer-memory: 33554432
+      acks: "1"
+      
+      # Optional: Additional producer properties
+      properties:
+        compression.type: gzip
+        max.in.flight.requests.per.connection: 1
+    
+    # Optional: Consumer configuration for inbound events
+    consumer:
+      enabled: true
+      kafka:
+        topics:
+          - domain-events
+          - user-events
+        group-id: my-service-consumer
 ```
 
 ### RabbitMQ Setup
@@ -171,21 +292,39 @@ If you want to use RabbitMQ for remote event publishing, add the Spring AMQP dep
 </dependency>
 ```
 
-And configure your RabbitMQ connection in `application.yml`:
+And configure your RabbitMQ settings in `application.yml`:
 
 ```yaml
 firefly:
   events:
     adapter: rabbit
     rabbit:
-      exchange: "domain-events"
-      routing-key: "{topic}.{type}"
+      # Optional: Bean name override
+      template-bean-name: myRabbitTemplate
+      
+      # Exchange configuration (supports placeholders)
+      exchange: "domain-events"        # Default: ${topic}
+      routing-key: "${type}"           # Default: ${type}, supports ${topic}, ${type}, ${key}
+    
+    # Optional: Consumer configuration for inbound events
+    consumer:
+      enabled: true
+      rabbit:
+        queues:
+          - user-events-queue
+          - order-events-queue
+
+# Spring RabbitMQ connection configuration
 spring:
   rabbitmq:
     host: localhost
     port: 5672
     username: guest
     password: guest
+    virtual-host: /
+    connection-timeout: 60000
+    publisher-confirms: true
+    publisher-returns: true
 ```
 
 ### Transactional Engine Integration
@@ -230,24 +369,24 @@ firefly:
 
 ### 3. Publishing Events
 
-#### Declarative Approach with @EmitEvent
+#### Declarative Approach with @EventPublisher
 
 ```java
-import com.catalis.common.domain.events.outbound.EmitEvent;
+import com.catalis.common.domain.events.outbound.EventPublisher;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 @Service
 public class OrderService {
     
-    @EmitEvent(topic = "'orders'", type = "'order.created'", key = "#result.id")
+    @EventPublisher(topic = "'orders'", type = "'order.created'", key = "#result.id")
     public Mono<Order> createOrder(CreateOrderRequest request) {
         // Your business logic
         Order order = processOrder(request);
         return Mono.just(order);
     }
     
-    @EmitEvent(
+    @EventPublisher(
         topic = "'payments'", 
         type = "'payment.processed'",
         key = "#orderId",
@@ -296,13 +435,13 @@ public class OrderService {
 ### 4. Consuming Events
 
 ```java
-import com.catalis.common.domain.events.inbound.OnDomainEvent;
+import com.catalis.common.domain.events.inbound.EventListener;
 import org.springframework.stereotype.Component;
 
 @Component
 public class OrderEventHandler {
     
-    @OnDomainEvent(topic = "orders", type = "order.created")
+    @EventListener(topic = "orders", type = "order.created")
     public void handleOrderCreated(Order order) {
         log.info("New order created: {}", order.getId());
         // Process the event
@@ -310,7 +449,7 @@ public class OrderEventHandler {
         updateInventory(order.getItems());
     }
     
-    @OnDomainEvent(topic = "payments", type = "payment.completed")
+    @EventListener(topic = "payments", type = "payment.completed")
     public void handlePaymentCompleted(PaymentEvent event) {
         log.info("Payment completed for order: {}", event.getOrderId());
         // Update order status
@@ -378,18 +517,20 @@ public class OrderSagaOrchestrator {
 
 #### StepEvents Configuration
 
+**Simplified Configuration:** Step Events always use Domain Events infrastructure - no separate configuration needed!
+
 ```yaml
 firefly:
   stepevents:
-    enabled: true  # Default: true
-    adapter: auto  # Reuses domain events adapter configuration
+    enabled: true  # Default: true - Only configuration needed!
     
-  # Domain events configuration (shared with StepEvents)
+  # Step Events automatically use whatever adapter is configured for Domain Events
   events:
-    adapter: kafka  # StepEvents will use the same Kafka setup
+    adapter: kafka  # StepEvents will use Kafka via bridge pattern
     kafka:
       bootstrap-servers: "localhost:9092"
       template-bean-name: kafkaTemplate
+      # All other Kafka settings apply to both Domain Events AND Step Events
 ```
 
 **Key Benefits:**
@@ -527,9 +668,63 @@ firefly:
       type-header: "event_type"  # Header name for event type
       key-header: "event_key"    # Header name for event key
   stepevents:  # Integration with transactional engine
-    enabled: true
-    adapter: auto  # Uses same adapter as domain events
+    enabled: true  # Automatically uses Domain Events infrastructure
 ```
+
+### Configuration Validation
+
+The library provides comprehensive validation for all configuration properties to ensure correct setup and prevent runtime errors.
+
+#### Validation Examples
+
+**Valid SQS Configuration:**
+```yaml
+firefly:
+  events:
+    adapter: sqs
+    sqs:
+      # Valid queue URL format
+      queue-url: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
+      # OR valid queue name
+      queue-name: my-events-queue
+```
+
+**Invalid Configuration Examples and Error Messages:**
+
+```yaml
+# ❌ Invalid SQS queue URL format
+# queue-url: "invalid-url"
+# Error: Queue URL must be a valid SQS URL format
+
+# ❌ Invalid queue name characters  
+# queue-name: "my@queue!"
+# Error: Queue name can only contain alphanumeric characters, hyphens, underscores, and optional .fifo suffix
+
+# ❌ Invalid Kafka configuration
+# retries: -1              # Error: Retries must be 0 or greater
+# batch-size: 0            # Error: Batch size must be 1 or greater  
+# acks: "invalid"          # Error: Acks must be 'none', 'all', '1', or '-1'
+```
+
+#### Validation Constraints Reference
+
+| Property | Validation Rule | Error Message |
+|----------|----------------|---------------|
+| `sqs.queue-url` | Must match SQS URL pattern | Queue URL must be a valid SQS URL format |
+| `sqs.queue-name` | 1-80 chars, alphanumeric + hyphens/underscores + optional .fifo | Queue name validation message |
+| `kafka.bootstrap-servers` | Non-empty string | Bootstrap servers cannot be empty |
+| `kafka.retries` | ≥ 0 | Retries must be 0 or greater |
+| `kafka.batch-size` | ≥ 1 | Batch size must be 1 or greater |
+| `kafka.linger-ms` | ≥ 0 | Linger ms must be 0 or greater |
+| `kafka.buffer-memory` | ≥ 1 | Buffer memory must be 1 or greater |
+| `kafka.acks` | "none", "all", "1", or "-1" | Acks must be 'none', 'all', '1', or '-1' |
+
+#### Best Practices
+
+1. **Use Environment Variables**: Keep sensitive information like credentials in environment variables
+2. **Validate Early**: Enable validation during development to catch configuration issues early
+3. **Monitor Configuration**: Use Spring Boot Actuator to monitor configuration health
+4. **Test Configuration**: Use different profiles for different environments
 
 ## 💡 Usage Examples
 
@@ -543,14 +738,14 @@ public class EcommerceOrderService {
     private final OrderRepository orderRepository;
     private final PaymentService paymentService;
     
-    @EmitEvent(topic = "'orders'", type = "'order.placed'", key = "#result.id")
+    @EventPublisher(topic = "'orders'", type = "'order.placed'", key = "#result.id")
     public Mono<Order> placeOrder(PlaceOrderRequest request) {
         Order order = Order.create(request);
         return orderRepository.save(order)
             .doOnSuccess(savedOrder -> log.info("Order placed: {}", savedOrder.getId()));
     }
     
-    @EmitEvent(
+    @EventPublisher(
         topic = "'orders'", 
         type = "'order.status.changed'",
         key = "#orderId",
@@ -574,7 +769,7 @@ public class OrderEventHandlers {
     private final InventoryService inventoryService;
     private final NotificationService notificationService;
     
-    @OnDomainEvent(topic = "orders", type = "order.placed")
+    @EventListener(topic = "orders", type = "order.placed")
     public void handleOrderPlaced(Order order) {
         // Reserve inventory
         inventoryService.reserveItems(order.getItems())
@@ -585,14 +780,14 @@ public class OrderEventHandlers {
             .subscribe();
     }
     
-    @OnDomainEvent(topic = "payments", type = "payment.successful")
+    @EventListener(topic = "payments", type = "payment.successful")
     public void handlePaymentSuccessful(PaymentEvent event) {
         // Update order status to paid
         orderService.updateOrderStatus(event.getOrderId(), OrderStatus.PAID)
             .subscribe();
     }
     
-    @OnDomainEvent(topic = "orders", type = "order.status.changed")
+    @EventListener(topic = "orders", type = "order.status.changed")
     public void handleOrderStatusChange(OrderStatusChangeEvent event) {
         if (event.getNewStatus() == OrderStatus.SHIPPED) {
             // Send tracking information
@@ -610,13 +805,13 @@ public class OrderEventHandlers {
 @Service
 public class UserManagementService {
     
-    @EmitEvent(topic = "'users'", type = "'user.registered'", key = "#result.id")
+    @EventPublisher(topic = "'users'", type = "'user.registered'", key = "#result.id")
     public Mono<User> registerUser(UserRegistrationRequest request) {
         User user = User.create(request);
         return userRepository.save(user);
     }
     
-    @EmitEvent(topic = "'users'", type = "'user.profile.updated'", key = "#userId")
+    @EventPublisher(topic = "'users'", type = "'user.profile.updated'", key = "#userId")
     public Mono<User> updateProfile(String userId, UpdateProfileRequest request) {
         return userRepository.findById(userId)
             .map(user -> user.updateProfile(request))
@@ -628,13 +823,13 @@ public class UserManagementService {
 @Component
 public class UserNotificationHandler {
     
-    @OnDomainEvent(topic = "users", type = "user.registered")
+    @EventListener(topic = "users", type = "user.registered")
     public void sendWelcomeEmail(User user) {
         emailService.sendWelcomeEmail(user.getEmail(), user.getName())
             .subscribe();
     }
     
-    @OnDomainEvent(topic = "orders", type = "order.placed")
+    @EventListener(topic = "orders", type = "order.placed")
     public void notifyOrderPlaced(Order order) {
         smsService.sendOrderConfirmation(order.getCustomerPhone(), order.getId())
             .subscribe();
@@ -645,7 +840,7 @@ public class UserNotificationHandler {
 @Component 
 public class EventAnalyticsHandler {
     
-    @OnDomainEvent(topic = "*", type = "*")  // Listen to all events
+    @EventListener(topic = "*", type = "*")  // Listen to all events
     public void trackEvent(String eventPayload, 
                           @Header("event_type") String eventType,
                           @Header("event_topic") String topic) {
@@ -664,8 +859,8 @@ The library uses a single-module architecture that includes all functionality:
 
 **Includes**:
 - Domain event interfaces and envelopes
-- `@EmitEvent` aspect and SpEL processing
-- `@OnDomainEvent` event dispatcher
+- `@EventPublisher` aspect and SpEL processing
+- `@EventListener` event dispatcher
 - Configuration properties and validation
 - Actuator support (health checks, metrics)
 - Distributed tracing utilities

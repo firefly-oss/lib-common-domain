@@ -34,7 +34,7 @@ The library has been refactored from a confusing multi-module structure to an ho
 
 **What You Get:**
 - All messaging adapters (Application Events, Kafka, RabbitMQ, SQS)
-- `@EmitEvent` and `@OnDomainEvent` annotations
+- `@EventPublisher` and `@EventListener` annotations
 - Health checks and metrics
 - Transactional engine integration
 - Complete testing support for all messaging systems
@@ -74,21 +74,28 @@ For saga patterns and distributed transaction workflows using lib-transactional-
 - `StepEventPublisher` integration via bridge pattern
 - Step events reuse the same adapters as domain events
 - **Local Sagas**: Step events published as Application Events (default)
-- **Remote Sagas**: Step events published to SQS (if SQS is configured)
+- **Remote Sagas**: Step events published to Kafka, RabbitMQ, or SQS (based on configured adapter)
 
-**Limitations:**
-- Step events are limited by the same adapter restrictions as domain events
-- Kafka and RabbitMQ configurations for step events fall back to Application Events
-- No dedicated messaging infrastructure for step events
+#### Simplified Step Events Configuration
 
-#### For Remote Step Events (SQS Only)
-```xml
-<!-- Add AWS SQS SDK for remote step event publishing -->
-<dependency>
-    <groupId>software.amazon.awssdk</groupId>
-    <artifactId>sqs</artifactId>
-    <version>2.25.32</version>
-</dependency>
+Step Events **always** use Domain Events infrastructure - no separate configuration needed!
+
+**Key Benefits:**
+- **Zero Duplication**: No separate messaging configuration for Step Events
+- **Automatic Inheritance**: Step Events use whatever adapter is configured for Domain Events
+- **Single Source of Truth**: All messaging settings in `firefly.events.*` apply to both
+
+**Simple Configuration:**
+```yaml
+firefly:
+  stepevents:
+    enabled: true  # Only setting needed - defaults to true
+  
+  events:
+    adapter: kafka  # Step Events automatically use Kafka too
+    kafka:
+      bootstrap-servers: localhost:9092
+      # All settings apply to both Domain Events AND Step Events
 ```
 
 ## 🔧 Configuration Strategies
@@ -121,12 +128,18 @@ firefly:
 firefly:
   events:
     enabled: true
-    adapter: auto  # Will select sqs if available, otherwise application_event
+    adapter: auto  # Will auto-detect: Kafka -> RabbitMQ -> SQS -> ApplicationEvent
+    kafka:
+      bootstrap-servers: "localhost:9092"
+    # OR
+    rabbit:
+      exchange: "events"
+    # OR  
     sqs:
       queue-url: "https://sqs.us-east-1.amazonaws.com/123456789012/prod-events"
 ```
 
-**Note**: The `auto` adapter selection only chooses between `application_event` (default) and `sqs` (if configured). Kafka and RabbitMQ configurations are ignored and fall back to `application_event`.
+**Note**: The `auto` adapter selection chooses in priority order: Kafka (if KafkaTemplate available), RabbitMQ (if RabbitTemplate available), SQS (if SqsAsyncClient available), then Application Events as fallback.
 
 ### SQS Configuration Example
 
@@ -171,47 +184,44 @@ aws:
 | Actual Configuration | Heap Usage | Active Connections | Notes |
 |---------------------|------------|-------------------|-------|
 | ApplicationEvent (default) | Minimal | None | Local JVM events only |
-| SQS configured | Low-Medium | AWS SQS connections | Remote event publishing |
-| Kafka/Rabbit configured | Minimal | None (fallback to ApplicationEvent) | Non-functional |
+| Kafka configured | Low-Medium | Kafka broker connections | Remote event streaming |
+| RabbitMQ configured | Low-Medium | RabbitMQ connections | Remote reliable messaging |
+| SQS configured | Low-Medium | AWS SQS connections | Remote cloud queuing |
 
 ## 🔍 Troubleshooting
 
 ### Common Issues
 
-#### Expecting Kafka/RabbitMQ but Getting Local Events
+#### Messaging Adapter Not Working
+```
+ERROR: Kafka/RabbitMQ/SQS adapter selected but bean not found
+```
+
+**Kafka Issues:**
 ```yaml
-# This configuration doesn't work as expected
-firefly:
-  events:
-    adapter: kafka
+# Ensure Spring Kafka is configured
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
 ```
 
-**Reality**: Events will be published as Application Events (local JVM), not to Kafka.
-
-**Solution**: Use SQS for remote events or accept Application Events for local events:
+**RabbitMQ Issues:**
 ```yaml
-# For remote events (only option that works)
-firefly:
-  events:
-    adapter: sqs
-    sqs:
-      queue-url: "your-sqs-queue-url"
+# Ensure Spring AMQP is configured
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
 ```
 
-```yaml  
-# For local events (honest configuration)
-firefly:
-  events:
-    adapter: application_event
-```
-
-#### SQS Configuration Issues
-```
-ERROR: SqsAsyncClient bean not found but sqs adapter is configured
-```
-
-**Solution**: Ensure AWS SQS SDK is included and properly configured:
+**SQS Issues:**
 ```xml
+<!-- Ensure AWS SQS SDK is included -->
 <dependency>
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>sqs</artifactId>
@@ -219,20 +229,26 @@ ERROR: SqsAsyncClient bean not found but sqs adapter is configured
 </dependency>
 ```
 
-## 📈 Realistic Best Practices
+#### Auto-Detection Not Working as Expected
+If `adapter: auto` doesn't select your preferred messaging system, check:
+1. Required dependencies are on classpath
+2. Required beans (KafkaTemplate, RabbitTemplate, SqsAsyncClient) are configured
+3. Priority order: Kafka → RabbitMQ → SQS → Application Events
+
+## 📈 Best Practices
 
 ### Production Recommendations
 
-1. **Be Honest About Messaging**: Only SQS provides actual remote messaging
+1. **Choose the Right Messaging System**: All adapters (Kafka, RabbitMQ, SQS) provide remote messaging
 2. **Use Application Events for Local Communication**: They work reliably within a single JVM
-3. **Configure SQS Properly**: For distributed event communication
-4. **Monitor What Actually Works**: Focus on Application Event and SQS health checks
+3. **Configure Messaging Properly**: Ensure proper setup for your chosen adapter
+4. **Monitor All Adapters**: Health checks available for all messaging systems
 
 ### Development Approach
 
 1. **Start with Application Events**: They work immediately without infrastructure
-2. **Test with SQS in Staging**: To verify remote event behavior
-3. **Don't Rely on Non-Functional Adapters**: Kafka and RabbitMQ configurations are misleading
+2. **Test with Your Target Messaging System**: Verify behavior with your production adapter
+3. **Use Auto-Detection Wisely**: Understand the priority order for adapter selection
 
 ## 🔗 Related Resources
 
