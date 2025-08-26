@@ -148,7 +148,7 @@
         <!-- Transactional Engine -->
         <dependency>
             <groupId>com.catalis</groupId>
-            <artifactId>lib-transactional-engine-core</artifactId>
+            <artifactId>lib-transactional-engine</artifactId>
             <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
