@@ -37,6 +37,15 @@ public class DomainEventsInfoContributor implements InfoContributor {
             Map<String, Object> kafkaInfo = new HashMap<>();
             kafkaInfo.put("templateBeanName", properties.getKafka().getTemplateBeanName());
             kafkaInfo.put("useMessagingIfAvailable", properties.getKafka().isUseMessagingIfAvailable());
+            kafkaInfo.put("bootstrapServers", properties.getKafka().getBootstrapServers());
+            kafkaInfo.put("keySerializer", properties.getKafka().getKeySerializer());
+            kafkaInfo.put("valueSerializer", properties.getKafka().getValueSerializer());
+            kafkaInfo.put("retries", properties.getKafka().getRetries());
+            kafkaInfo.put("batchSize", properties.getKafka().getBatchSize());
+            kafkaInfo.put("lingerMs", properties.getKafka().getLingerMs());
+            kafkaInfo.put("bufferMemory", properties.getKafka().getBufferMemory());
+            kafkaInfo.put("acks", properties.getKafka().getAcks());
+            kafkaInfo.put("properties", properties.getKafka().getProperties());
             adaptersInfo.put("kafka", kafkaInfo);
             
             // RabbitMQ configuration
@@ -52,6 +61,13 @@ public class DomainEventsInfoContributor implements InfoContributor {
             sqsInfo.put("queueUrl", properties.getSqs().getQueueUrl());
             sqsInfo.put("queueName", properties.getSqs().getQueueName());
             adaptersInfo.put("sqs", sqsInfo);
+            
+            // Kinesis configuration
+            Map<String, Object> kinesisInfo = new HashMap<>();
+            kinesisInfo.put("clientBeanName", properties.getKinesis().getClientBeanName());
+            kinesisInfo.put("streamName", properties.getKinesis().getStreamName());
+            kinesisInfo.put("partitionKey", properties.getKinesis().getPartitionKey());
+            adaptersInfo.put("kinesis", kinesisInfo);
             
             domainEventsInfo.put("adapters", adaptersInfo);
         }
@@ -85,6 +101,13 @@ public class DomainEventsInfoContributor implements InfoContributor {
             sqsConsumerInfo.put("maxMessages", properties.getConsumer().getSqs().getMaxMessages());
             sqsConsumerInfo.put("pollDelayMillis", properties.getConsumer().getSqs().getPollDelayMillis());
             consumerAdaptersInfo.put("sqs", sqsConsumerInfo);
+            
+            // Kinesis consumer
+            Map<String, Object> kinesisConsumerInfo = new HashMap<>();
+            kinesisConsumerInfo.put("streamName", properties.getConsumer().getKinesis().getStreamName());
+            kinesisConsumerInfo.put("applicationName", properties.getConsumer().getKinesis().getApplicationName());
+            kinesisConsumerInfo.put("pollDelayMillis", properties.getConsumer().getKinesis().getPollDelayMillis());
+            consumerAdaptersInfo.put("kinesis", kinesisConsumerInfo);
             
             consumerInfo.put("adapters", consumerAdaptersInfo);
         }
