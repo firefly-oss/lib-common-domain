@@ -1,0 +1,165 @@
+package com.catalis.common.domain.events.outbound;
+
+import com.catalis.common.domain.events.DomainEventEnvelope;
+import com.catalis.common.domain.events.properties.DomainEventsProperties;
+import com.catalis.common.domain.util.DomainEventAdapterUtils;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.retry.support.RetryTemplate;
+import reactor.core.publisher.Mono;
+import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
+import software.amazon.awssdk.services.kinesis.model.PutRecordRequest;
+import software.amazon.awssdk.core.SdkBytes;
+
+/**
+ * AWS Kinesis adapter for DomainEventPublisher using AWS SDK v2 KinesisAsyncClient.
+ */
+public class KinesisDomainEventPublisher implements DomainEventPublisher {
+
+    private static final Logger log = LoggerFactory.getLogger(KinesisDomainEventPublisher.class);
+    private final KinesisAsyncClient kinesisClient;
+    private final ApplicationContext ctx;
+    private final DomainEventsProperties.Kinesis props;
+    private final RetryTemplate retryTemplate;
+
+    public KinesisDomainEventPublisher(ApplicationContext ctx, DomainEventsProperties.Kinesis props) {
+        this.ctx = ctx;
+        this.props = props;
+        Object client = DomainEventAdapterUtils.resolveBean(
+                ctx,
+                props.getClientBeanName(),
+                "software.amazon.awssdk.services.kinesis.KinesisAsyncClient"
+        );
+        if (client == null) {
+            throw new IllegalStateException("Kinesis adapter selected but KinesisAsyncClient bean was not found.");
+        }
+        this.kinesisClient = (KinesisAsyncClient) client;
+        
+        // Get retry template if available, otherwise use null (no retry)
+        RetryTemplate retryTemplateBean = null;
+        try {
+            retryTemplateBean = ctx.getBean("domainEventsRetryTemplate", RetryTemplate.class);
+            log.debug("Kinesis publisher configured with retry template");
+        } catch (Exception e) {
+            log.debug("Kinesis publisher configured without retry template");
+        }
+        this.retryTemplate = retryTemplateBean;
+    }
+
+    @Override
+    public Mono<Void> publish(DomainEventEnvelope e) {
+        if (retryTemplate != null) {
+            // Use retry template for resilient publishing
+            return Mono.fromCallable(() -> retryTemplate.execute(retryContext -> {
+                retryContext.setAttribute("operationName", "kinesis-event-publish:" + e.topic + ":" + e.type);
+                return trySendBlocking(e);
+            }))
+            .then()
+            .onErrorMap(throwable -> {
+                log.error("Failed to publish event after retries: topic={}, type={}, key={}", 
+                         e.topic, e.type, e.key, throwable);
+                return throwable;
+            });
+        } else {
+            // Fallback to reactive logic without retry
+            return trySendReactive(e)
+                    .onErrorMap(ex -> {
+                        log.error("Failed to publish event to Kinesis: topic={}, type={}, key={}: {}", 
+                                e.topic, e.type, e.key, ex.getMessage());
+                        return ex;
+                    });
+        }
+    }
+
+    private Void trySendBlocking(DomainEventEnvelope e) {
+        try {
+            String streamName = resolveStreamName(e);
+            String partitionKey = resolvePartitionKey(e);
+            String messageData = serializePayload(e);
+            
+            log.debug("Attempting to send event to Kinesis: topic={}, type={}, key={}, streamName={}, partitionKey={}", 
+                     e.topic, e.type, e.key, streamName, partitionKey);
+            
+            PutRecordRequest request = PutRecordRequest.builder()
+                    .streamName(streamName)
+                    .partitionKey(partitionKey)
+                    .data(SdkBytes.fromUtf8String(messageData))
+                    .build();
+            
+            kinesisClient.putRecord(request).get(); // Blocking call for retry template
+            
+            log.debug("Successfully sent event to Kinesis: topic={}, type={}, streamName={}, partitionKey={}", 
+                     e.topic, e.type, streamName, partitionKey);
+            
+            return null;
+        } catch (Exception ex) {
+            log.error("Failed to send event to Kinesis: topic={}, type={}, key={}: {}", 
+                     e.topic, e.type, e.key, ex.getMessage());
+            throw new RuntimeException("Kinesis send failed", ex);
+        }
+    }
+
+    private Mono<Void> trySendReactive(DomainEventEnvelope e) {
+        String streamName = resolveStreamName(e);
+        String partitionKey = resolvePartitionKey(e);
+        String messageData = serializePayload(e);
+        
+        log.debug("Attempting to send event to Kinesis: topic={}, type={}, key={}, streamName={}, partitionKey={}", 
+                 e.topic, e.type, e.key, streamName, partitionKey);
+        
+        PutRecordRequest request = PutRecordRequest.builder()
+                .streamName(streamName)
+                .partitionKey(partitionKey)
+                .data(SdkBytes.fromUtf8String(messageData))
+                .build();
+        
+        return Mono.fromFuture(kinesisClient.putRecord(request))
+                .doOnSuccess(response -> log.debug("Successfully sent event to Kinesis: topic={}, type={}, streamName={}, partitionKey={}, sequenceNumber={}", 
+                                                  e.topic, e.type, streamName, partitionKey, response.sequenceNumber()))
+                .then();
+    }
+
+    private String resolveStreamName(DomainEventEnvelope e) {
+        String streamName = props.getStreamName();
+        if (streamName != null && !streamName.isEmpty()) {
+            return streamName;
+        }
+        // Use topic as stream name if no specific stream configured
+        return e.topic;
+    }
+
+    private String resolvePartitionKey(DomainEventEnvelope e) {
+        String configuredPartitionKey = props.getPartitionKey();
+        if (configuredPartitionKey != null && !configuredPartitionKey.isEmpty()) {
+            // Support placeholder replacement
+            return configuredPartitionKey
+                    .replace("${topic}", e.topic != null ? e.topic : "")
+                    .replace("${type}", e.type != null ? e.type : "")
+                    .replace("${key}", e.key != null ? e.key : "");
+        }
+        // Use event key as partition key if available, otherwise use topic
+        return e.key != null ? e.key : e.topic;
+    }
+
+    private String serializePayload(DomainEventEnvelope e) {
+        try {
+            Object mapperObj = DomainEventAdapterUtils.resolveBean(ctx, null,
+                    "com.fasterxml.jackson.databind.ObjectMapper");
+            if (mapperObj instanceof ObjectMapper mapper) {
+                // Create a wrapper object that includes event metadata
+                var eventData = new java.util.HashMap<String, Object>();
+                eventData.put("topic", e.topic);
+                eventData.put("type", e.type);
+                eventData.put("key", e.key);
+                eventData.put("payload", e.payload);
+                eventData.put("headers", e.headers);
+                return mapper.writeValueAsString(eventData);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to serialize payload using ObjectMapper, falling back to String.valueOf: {}", ex.getMessage());
+        }
+        return String.valueOf(e.payload);
+    }
+}
