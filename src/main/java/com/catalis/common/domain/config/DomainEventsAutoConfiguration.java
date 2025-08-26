@@ -40,6 +40,10 @@ import java.util.Map;
 public class DomainEventsAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(DomainEventsAutoConfiguration.class);
+    
+    public DomainEventsAutoConfiguration() {
+        log.info("🚀 Firefly Domain Events Auto-Configuration - Starting initialization");
+    }
 
     // Infrastructure Bean Creation - These must come before the publisher beans
     
