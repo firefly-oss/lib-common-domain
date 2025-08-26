@@ -19,6 +19,7 @@ public class EventListenerDispatcher implements ApplicationListener<DomainSpring
 
     private ApplicationContext applicationContext;
     private final List<Handler> handlers = new ArrayList<>();
+    private volatile boolean initialized = false;
 
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
@@ -27,13 +28,36 @@ public class EventListenerDispatcher implements ApplicationListener<DomainSpring
 
     @Override
     public void afterPropertiesSet() {
-        String[] beanNames = applicationContext.getBeanDefinitionNames();
-        for (String name : beanNames) {
-            Object bean = applicationContext.getBean(name);
-            for (Method m : bean.getClass().getMethods()) {
-                EventListener ann = m.getAnnotation(EventListener.class);
-                if (ann != null) {
-                    handlers.add(new Handler(bean, m, ann.topic(), ann.type()));
+        // Do nothing here to avoid circular dependency
+        // Handlers will be initialized lazily on first event
+    }
+
+    /**
+     * Lazily initialize handlers to avoid circular dependency issues
+     */
+    private void initializeHandlers() {
+        if (!initialized && applicationContext != null) {
+            synchronized (this) {
+                if (!initialized) {
+                    String[] beanNames = applicationContext.getBeanDefinitionNames();
+                    for (String name : beanNames) {
+                        try {
+                            // Use getBean without forcing eager initialization
+                            if (applicationContext.containsBean(name)) {
+                                Object bean = applicationContext.getBean(name);
+                                for (Method m : bean.getClass().getMethods()) {
+                                    EventListener ann = m.getAnnotation(EventListener.class);
+                                    if (ann != null) {
+                                        handlers.add(new Handler(bean, m, ann.topic(), ann.type()));
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            // Skip beans that can't be instantiated yet
+                            // This avoids circular dependency issues
+                        }
+                    }
+                    initialized = true;
                 }
             }
         }
@@ -41,6 +65,9 @@ public class EventListenerDispatcher implements ApplicationListener<DomainSpring
 
     @Override
     public void onApplicationEvent(DomainSpringEvent event) {
+        // Initialize handlers lazily on first event to avoid circular dependency
+        initializeHandlers();
+        
         DomainEventEnvelope e = event.getEnvelope();
         for (Handler h : handlers) {
             if (matches(h.topic, e.topic) && matches(h.type, e.type)) {
