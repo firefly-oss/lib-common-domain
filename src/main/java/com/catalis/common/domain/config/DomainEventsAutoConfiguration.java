@@ -1,10 +1,10 @@
 package com.catalis.common.domain.config;
 
-import com.catalis.common.domain.events.inbound.OnDomainEventDispatcher;
+import com.catalis.common.domain.events.inbound.EventListenerDispatcher;
 import com.catalis.common.domain.events.inbound.SqsDomainEventsSubscriber;
 import com.catalis.common.domain.events.outbound.*;
 import com.catalis.common.domain.events.properties.DomainEventsProperties;
-import com.catalis.common.domain.stepevents.StepEventAdapterUtils;
+import com.catalis.common.domain.util.DomainEventAdapterUtils;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -29,94 +29,105 @@ public class DomainEventsAutoConfiguration {
                                                      ApplicationEventPublisher applicationEventPublisher,
                                                      DomainEventsProperties props) {
         DomainEventsProperties.Adapter adapter = props.getAdapter();
-        if (adapter == DomainEventsProperties.Adapter.NOOP) {
-            return new NoopDomainEventPublisher();
+        
+        // Handle explicit adapter selection
+        switch (adapter) {
+            case NOOP:
+                return new NoopDomainEventPublisher();
+            case APPLICATION_EVENT:
+                return new ApplicationEventDomainEventPublisher(applicationEventPublisher);
+            case SQS:
+                return new SqsAsyncClientDomainEventPublisher(ctx, props.getSqs());
+            case KAFKA:
+                return new KafkaDomainEventPublisher(ctx, props.getKafka());
+            case RABBIT:
+                return new RabbitMqDomainEventPublisher(ctx, props.getRabbit());
+            case KINESIS:
+                return new KinesisDomainEventPublisher(ctx, props.getKinesis());
+            case AUTO:
+            default:
+                // Auto-detection order: Kafka -> RabbitMQ -> Kinesis -> SQS -> ApplicationEvent
+                if (isKafkaAvailable(ctx)) {
+                    return new KafkaDomainEventPublisher(ctx, props.getKafka());
+                }
+                if (isRabbitMqAvailable(ctx)) {
+                    return new RabbitMqDomainEventPublisher(ctx, props.getRabbit());
+                }
+                if (isKinesisAvailable(ctx)) {
+                    return new KinesisDomainEventPublisher(ctx, props.getKinesis());
+                }
+                if (isSqsAvailable(ctx)) {
+                    return new SqsAsyncClientDomainEventPublisher(ctx, props.getSqs());
+                }
+                return new ApplicationEventDomainEventPublisher(applicationEventPublisher);
         }
-        if (adapter == DomainEventsProperties.Adapter.APPLICATION_EVENT) {
-            return new ApplicationEventDomainEventPublisher(applicationEventPublisher);
-        }
-        if (adapter == DomainEventsProperties.Adapter.SQS) {
-            return new SqsAsyncClientDomainEventPublisher(ctx, props.getSqs());
-        }
-        // For KAFKA and RABBIT adapters, they should be handled by their respective modules
-        // If we reach here with KAFKA or RABBIT, it means the module is not properly configured
-        if (adapter == DomainEventsProperties.Adapter.KAFKA) {
-            throw new IllegalStateException("Kafka adapter selected but no KafkaTemplateDomainEventPublisher found. " +
-                    "Make sure lib-common-domain-kafka is on classpath and properly configured.");
-        }
-        if (adapter == DomainEventsProperties.Adapter.RABBIT) {
-            throw new IllegalStateException("RabbitMQ adapter selected but no RabbitTemplateDomainEventPublisher found. " +
-                    "Make sure lib-common-domain-rabbit is on classpath and properly configured.");
-        }
-        // AUTO detection order: SQS -> ApplicationEvent (Kafka and Rabbit handled by their own modules)
-        if (isSqsAvailable(ctx)) {
-            return new SqsAsyncClientDomainEventPublisher(ctx, props.getSqs());
-        }
-        return new ApplicationEventDomainEventPublisher(applicationEventPublisher);
     }
 
     @Bean
-    public EmitEventAspect emitEventAspect(DomainEventPublisher publisher) {
-        return new EmitEventAspect(publisher);
+    public EventPublisherAspect eventPublisherAspect(DomainEventPublisher publisher) {
+        return new EventPublisherAspect(publisher);
     }
 
     @Bean
-    public OnDomainEventDispatcher onDomainEventDispatcher() {
-        return new OnDomainEventDispatcher();
+    public EventListenerDispatcher eventListenerDispatcher() {
+        return new EventListenerDispatcher();
     }
 
     // Inbound subscribers (conditional, disabled by default)
 
     @Bean
-    @ConditionalOnExpression("'${firefly.events.consumer.enabled:false}'=='true' and '${firefly.events.adapter:auto}'=='kafka'")
+    @ConditionalOnProperty(prefix = "firefly.events.consumer", name = "enabled", havingValue = "true")
+    @ConditionalOnExpression("'${firefly.events.adapter:auto}' == 'kafka' or '${firefly.events.adapter:auto}' == 'auto'")
     @ConditionalOnClass(name = {
-            "org.springframework.kafka.core.ConsumerFactory",
-            "org.springframework.kafka.listener.KafkaMessageListenerContainer"
+            "org.apache.kafka.clients.consumer.KafkaConsumer",
+            "org.apache.kafka.clients.consumer.ConsumerRecord"
     })
-    @ConditionalOnBean(type = "org.springframework.kafka.core.ConsumerFactory")
-    public SmartLifecycle domainEventsKafkaSubscriber(org.springframework.kafka.core.ConsumerFactory<Object, Object> consumerFactory,
+    public SmartLifecycle domainEventsKafkaSubscriber(ApplicationContext ctx,
                                                       DomainEventsProperties props,
                                                       ApplicationEventPublisher events) {
-        // Kafka subscriber implementation moved to kafka module, return no-op lifecycle
+        // Only create if Kafka is explicitly configured or auto-detected as the active adapter
+        DomainEventsProperties.Adapter adapter = props.getAdapter();
+        if (adapter == DomainEventsProperties.Adapter.KAFKA || 
+            (adapter == DomainEventsProperties.Adapter.AUTO && isKafkaAvailable(ctx))) {
+            return new com.catalis.common.domain.events.inbound.KafkaDomainEventsSubscriber(ctx, props, events);
+        }
         return noopLifecycle();
     }
 
     @Bean
-    @ConditionalOnExpression("'${firefly.events.consumer.enabled:false}'=='true' and '${firefly.events.adapter:auto}'=='rabbit'")
+    @ConditionalOnProperty(prefix = "firefly.events.consumer", name = "enabled", havingValue = "true")
+    @ConditionalOnExpression("'${firefly.events.adapter:auto}' == 'rabbit' or '${firefly.events.adapter:auto}' == 'auto'")
     @ConditionalOnClass(name = {
             "org.springframework.amqp.rabbit.connection.ConnectionFactory",
             "org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer"
     })
     @ConditionalOnBean(type = "org.springframework.amqp.rabbit.connection.ConnectionFactory")
-    public SmartLifecycle domainEventsRabbitSubscriber(org.springframework.amqp.rabbit.connection.ConnectionFactory connectionFactory,
+    public SmartLifecycle domainEventsRabbitSubscriber(ApplicationContext ctx,
                                                        DomainEventsProperties props,
                                                        ApplicationEventPublisher events) {
-        // Rabbit subscriber implementation moved to rabbit module, return no-op lifecycle
+        // Only create if RabbitMQ is explicitly configured or auto-detected as the active adapter
+        DomainEventsProperties.Adapter adapter = props.getAdapter();
+        if (adapter == DomainEventsProperties.Adapter.RABBIT || 
+            (adapter == DomainEventsProperties.Adapter.AUTO && isRabbitMqAvailable(ctx) && !isKafkaAvailable(ctx))) {
+            return new com.catalis.common.domain.events.inbound.RabbitMqDomainEventsSubscriber(ctx, props, events);
+        }
         return noopLifecycle();
     }
 
     @Bean
-    @ConditionalOnExpression("'${firefly.events.consumer.enabled:false}'=='true' and '${firefly.events.adapter:auto}'=='sqs'")
+    @ConditionalOnProperty(prefix = "firefly.events.consumer", name = "enabled", havingValue = "true")
+    @ConditionalOnExpression("'${firefly.events.adapter:auto}' == 'sqs' or '${firefly.events.adapter:auto}' == 'auto'")
     @ConditionalOnClass(name = "software.amazon.awssdk.services.sqs.SqsAsyncClient")
     @ConditionalOnBean(type = "software.amazon.awssdk.services.sqs.SqsAsyncClient")
     public SmartLifecycle domainEventsSqsSubscriber(ApplicationContext ctx,
                                                     DomainEventsProperties props,
                                                     ApplicationEventPublisher events) {
-        String url = props.getSqs().getQueueUrl();
-        String name = props.getConsumer().getSqs().getQueueName();
-        if ((url == null || url.isEmpty()) && (name == null || name.isEmpty())) {
-            return noopLifecycle();
-        }
-        return new SqsDomainEventsSubscriber(ctx, props, events);
-    }
-
-    @Bean
-    @ConditionalOnExpression("'${firefly.events.consumer.enabled:false}'=='true' and '${firefly.events.adapter:auto}'=='auto'")
-    public SmartLifecycle domainEventsAutoSubscriber(ApplicationContext ctx,
-                                                     DomainEventsProperties props,
-                                                     ApplicationEventPublisher events) {
-        // AUTO detection order for inbound: SQS only (Kafka and Rabbit handled by their own modules)
-        if (isSqsAvailable(ctx)) {
+        // Only create if SQS is explicitly configured or auto-detected as the active adapter
+        DomainEventsProperties.Adapter adapter = props.getAdapter();
+        if (adapter == DomainEventsProperties.Adapter.SQS || 
+            (adapter == DomainEventsProperties.Adapter.AUTO && isSqsAvailable(ctx) && 
+             !isKafkaAvailable(ctx) && !isRabbitMqAvailable(ctx))) {
+            
             String url = props.getSqs().getQueueUrl();
             String name = props.getConsumer().getSqs().getQueueName();
             if ((url == null || url.isEmpty()) && (name == null || name.isEmpty())) {
@@ -124,7 +135,32 @@ public class DomainEventsAutoConfiguration {
             }
             return new SqsDomainEventsSubscriber(ctx, props, events);
         }
-        // No inbound transport available in core module; provide a no-op lifecycle
+        return noopLifecycle();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "firefly.events.consumer", name = "enabled", havingValue = "true")
+    @ConditionalOnExpression("'${firefly.events.adapter:auto}' == 'kinesis' or '${firefly.events.adapter:auto}' == 'auto'")
+    @ConditionalOnClass(name = "software.amazon.awssdk.services.kinesis.KinesisAsyncClient")
+    @ConditionalOnBean(type = "software.amazon.awssdk.services.kinesis.KinesisAsyncClient")
+    public SmartLifecycle domainEventsKinesisSubscriber(ApplicationContext ctx,
+                                                        DomainEventsProperties props,
+                                                        ApplicationEventPublisher events) {
+        // Only create if Kinesis is explicitly configured or auto-detected as the active adapter
+        DomainEventsProperties.Adapter adapter = props.getAdapter();
+        if (adapter == DomainEventsProperties.Adapter.KINESIS || 
+            (adapter == DomainEventsProperties.Adapter.AUTO && isKinesisAvailable(ctx) && 
+             !isKafkaAvailable(ctx) && !isRabbitMqAvailable(ctx))) {
+            
+            String streamName = props.getConsumer().getKinesis().getStreamName();
+            if (streamName == null || streamName.isEmpty()) {
+                streamName = props.getKinesis().getStreamName();
+            }
+            if (streamName == null || streamName.isEmpty()) {
+                return noopLifecycle();
+            }
+            return new com.catalis.common.domain.events.inbound.KinesisDomainEventsSubscriber(ctx, props, events);
+        }
         return noopLifecycle();
     }
 
@@ -137,9 +173,23 @@ public class DomainEventsAutoConfiguration {
         };
     }
 
+    private boolean isKafkaAvailable(ApplicationContext ctx) {
+        return DomainEventAdapterUtils.isClassPresent("org.springframework.kafka.core.KafkaTemplate") &&
+                DomainEventAdapterUtils.resolveBean(ctx, null, "org.springframework.kafka.core.KafkaTemplate") != null;
+    }
+    
+    private boolean isRabbitMqAvailable(ApplicationContext ctx) {
+        return DomainEventAdapterUtils.isClassPresent("org.springframework.amqp.rabbit.core.RabbitTemplate") &&
+                DomainEventAdapterUtils.resolveBean(ctx, null, "org.springframework.amqp.rabbit.core.RabbitTemplate") != null;
+    }
 
     private boolean isSqsAvailable(ApplicationContext ctx) {
-        return StepEventAdapterUtils.isClassPresent("software.amazon.awssdk.services.sqs.SqsAsyncClient") &&
-                StepEventAdapterUtils.resolveBean(ctx, null, "software.amazon.awssdk.services.sqs.SqsAsyncClient") != null;
+        return DomainEventAdapterUtils.isClassPresent("software.amazon.awssdk.services.sqs.SqsAsyncClient") &&
+                DomainEventAdapterUtils.resolveBean(ctx, null, "software.amazon.awssdk.services.sqs.SqsAsyncClient") != null;
+    }
+
+    private boolean isKinesisAvailable(ApplicationContext ctx) {
+        return DomainEventAdapterUtils.isClassPresent("software.amazon.awssdk.services.kinesis.KinesisAsyncClient") &&
+                DomainEventAdapterUtils.resolveBean(ctx, null, "software.amazon.awssdk.services.kinesis.KinesisAsyncClient") != null;
     }
 }

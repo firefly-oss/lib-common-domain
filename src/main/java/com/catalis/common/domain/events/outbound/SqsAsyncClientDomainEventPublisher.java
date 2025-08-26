@@ -2,7 +2,7 @@ package com.catalis.common.domain.events.outbound;
 
 import com.catalis.common.domain.events.DomainEventEnvelope;
 import com.catalis.common.domain.events.properties.DomainEventsProperties;
-import com.catalis.common.domain.stepevents.StepEventAdapterUtils;
+import com.catalis.common.domain.util.DomainEventAdapterUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +30,7 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
     public SqsAsyncClientDomainEventPublisher(ApplicationContext ctx, DomainEventsProperties.Sqs props) {
         this.ctx = ctx;
         this.props = props;
-        Object client = StepEventAdapterUtils.resolveBean(
+        Object client = DomainEventAdapterUtils.resolveBean(
                 ctx,
                 props.getClientBeanName(),
                 "software.amazon.awssdk.services.sqs.SqsAsyncClient"
@@ -161,7 +161,7 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
 
     private String serializePayload(DomainEventEnvelope e) {
         try {
-            Object mapperObj = StepEventAdapterUtils.resolveBean(ctx, null,
+            Object mapperObj = DomainEventAdapterUtils.resolveBean(ctx, null,
                     "com.fasterxml.jackson.databind.ObjectMapper");
             if (mapperObj instanceof ObjectMapper mapper) {
                 return mapper.writeValueAsString(e.payload);

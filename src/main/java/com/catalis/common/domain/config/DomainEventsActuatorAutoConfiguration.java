@@ -7,7 +7,7 @@ import com.catalis.common.domain.actuator.metrics.JvmMetrics;
 import com.catalis.common.domain.actuator.metrics.HttpClientMetrics;
 import com.catalis.common.domain.actuator.metrics.ApplicationStartupMetrics;
 import com.catalis.common.domain.events.properties.DomainEventsProperties;
-import com.catalis.common.domain.stepevents.StepEventAdapterUtils;
+import com.catalis.common.domain.util.DomainEventAdapterUtils;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.actuate.autoconfigure.health.ConditionalOnEnabledHealthIndicator;
 import org.springframework.boot.actuate.autoconfigure.info.ConditionalOnEnabledInfoContributor;
@@ -47,6 +47,33 @@ public class DomainEventsActuatorAutoConfiguration {
     public ApplicationEventDomainEventsHealthIndicator applicationEventDomainEventsHealthIndicator(
             DomainEventsProperties properties, ApplicationEventPublisher applicationEventPublisher) {
         return new ApplicationEventDomainEventsHealthIndicator(properties, applicationEventPublisher);
+    }
+
+    @Bean
+    @ConditionalOnEnabledHealthIndicator("domainEventsKafka")
+    @ConditionalOnExpression("'${firefly.events.adapter:auto}'=='kafka' or '${firefly.events.adapter:auto}'=='auto'")
+    @ConditionalOnClass(name = "org.springframework.kafka.core.KafkaTemplate")
+    public KafkaDomainEventsHealthIndicator kafkaDomainEventsHealthIndicator(
+            DomainEventsProperties properties, ApplicationContext applicationContext) {
+        return new KafkaDomainEventsHealthIndicator(properties, applicationContext);
+    }
+
+    @Bean
+    @ConditionalOnEnabledHealthIndicator("domainEventsKinesis")
+    @ConditionalOnExpression("'${firefly.events.adapter:auto}'=='kinesis' or '${firefly.events.adapter:auto}'=='auto'")
+    @ConditionalOnClass(name = "software.amazon.awssdk.services.kinesis.KinesisAsyncClient")
+    public KinesisDomainEventsHealthIndicator kinesisDomainEventsHealthIndicator(
+            DomainEventsProperties properties, ApplicationContext applicationContext) {
+        return new KinesisDomainEventsHealthIndicator(properties, applicationContext);
+    }
+
+    @Bean
+    @ConditionalOnEnabledHealthIndicator("domainEventsRabbit")
+    @ConditionalOnExpression("'${firefly.events.adapter:auto}'=='rabbit' or '${firefly.events.adapter:auto}'=='auto'")
+    @ConditionalOnClass(name = "org.springframework.amqp.rabbit.core.RabbitTemplate")
+    public RabbitMqDomainEventsHealthIndicator rabbitMqDomainEventsHealthIndicator(
+            DomainEventsProperties properties, ApplicationContext applicationContext) {
+        return new RabbitMqDomainEventsHealthIndicator(properties, applicationContext);
     }
 
     // Metrics
@@ -135,8 +162,8 @@ public class DomainEventsActuatorAutoConfiguration {
 
 
         private boolean isSqsAvailable(ApplicationContext ctx) {
-            return StepEventAdapterUtils.isClassPresent("software.amazon.awssdk.services.sqs.SqsAsyncClient") &&
-                    StepEventAdapterUtils.resolveBean(ctx, null, "software.amazon.awssdk.services.sqs.SqsAsyncClient") != null;
+            return DomainEventAdapterUtils.isClassPresent("software.amazon.awssdk.services.sqs.SqsAsyncClient") &&
+                    DomainEventAdapterUtils.resolveBean(ctx, null, "software.amazon.awssdk.services.sqs.SqsAsyncClient") != null;
         }
     }
 }

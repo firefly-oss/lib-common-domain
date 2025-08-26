@@ -1,7 +1,7 @@
 package com.catalis.common.domain.actuator.health;
 
 import com.catalis.common.domain.events.properties.DomainEventsProperties;
-import com.catalis.common.domain.stepevents.StepEventAdapterUtils;
+import com.catalis.common.domain.util.DomainEventAdapterUtils;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.context.ApplicationContext;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
@@ -29,7 +29,7 @@ public class SqsDomainEventsHealthIndicator extends DomainEventsHealthIndicator 
     protected void performHealthCheck(Health.Builder builder) throws Exception {
         try {
             // Check if SqsAsyncClient is available
-            Object client = StepEventAdapterUtils.resolveBean(
+            Object client = DomainEventAdapterUtils.resolveBean(
                     applicationContext,
                     properties.getSqs().getClientBeanName(),
                     "software.amazon.awssdk.services.sqs.SqsAsyncClient"
