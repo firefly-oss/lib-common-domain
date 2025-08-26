@@ -337,7 +337,7 @@ Step events are automatically enabled when the transactional engine is on the cl
 
 ```yaml
 firefly:
-  step-events:
+  stepevents:
     enabled: true              # Default: true when lib-transactional-engine-core is present
 ```
 
