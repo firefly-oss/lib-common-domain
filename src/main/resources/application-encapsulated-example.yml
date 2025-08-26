@@ -1,0 +1,102 @@
+# Example of fully encapsulated Firefly configuration
+# Users now only need Firefly properties - no Spring-specific configuration required
+
+firefly:
+  events:
+    enabled: true
+    adapter: auto  # or explicitly: kafka, rabbit, sqs, kinesis
+    
+    # Kafka configuration - library will create KafkaTemplate automatically
+    kafka:
+      bootstrap-servers: localhost:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      retries: 3
+      batch-size: 16384
+      linger-ms: 1
+      buffer-memory: 33554432
+      acks: all
+      properties:
+        max.request.size: 1048576
+        
+    # RabbitMQ configuration - library will create ConnectionFactory and RabbitTemplate automatically
+    rabbit:
+      host: localhost
+      port: 5672
+      username: guest
+      password: guest
+      virtual-host: /
+      connection-timeout: 30000
+      publisher-confirms: true
+      publisher-returns: true
+      exchange: ${topic}
+      routing-key: ${type}
+      
+    # AWS SQS configuration - library will create SqsAsyncClient automatically
+    sqs:
+      region: us-east-1
+      queue-url: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
+      queue-name: my-queue
+      # Optional credentials (uses default AWS credential chain if not provided)
+      access-key-id: ${AWS_ACCESS_KEY_ID:}
+      secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+      # Optional endpoint override for local testing
+      endpoint-override: http://localhost:4566
+      
+    # AWS Kinesis configuration - library will create KinesisAsyncClient automatically  
+    kinesis:
+      region: us-east-1
+      stream-name: my-stream
+      partition-key: ${key}
+      # Optional credentials (uses default AWS credential chain if not provided)
+      access-key-id: ${AWS_ACCESS_KEY_ID:}
+      secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+      # Optional endpoint override for local testing
+      endpoint-override: http://localhost:4566
+      
+    # Consumer configuration (optional)
+    consumer:
+      enabled: false
+      type-header: event_type
+      key-header: event_key
+      
+      kafka:
+        topics:
+          - orders
+          - payments
+        group-id: my-service-group
+        
+      rabbit:
+        queues:
+          - order-events-queue
+          - payment-events-queue
+          
+      sqs:
+        queue-url: https://sqs.us-east-1.amazonaws.com/123456789012/consumer-queue
+        wait-time-seconds: 10
+        max-messages: 10
+        poll-delay-millis: 1000
+        
+      kinesis:
+        stream-name: consumer-stream
+        application-name: domain-events-consumer
+        poll-delay-millis: 5000
+
+# NO SPRING-SPECIFIC CONFIGURATION REQUIRED!
+# The library now handles all infrastructure creation internally
+# 
+# Before this change, users had to configure both:
+# 1. Spring infrastructure (spring.kafka.*, spring.rabbitmq.*, AWS clients)
+# 2. Firefly properties (firefly.events.*)
+#
+# After this change, users only need:
+# 1. Firefly properties (firefly.events.*)
+# 
+# The library automatically creates:
+# - KafkaTemplate and ProducerFactory for Kafka
+# - ConnectionFactory and RabbitTemplate for RabbitMQ  
+# - SqsAsyncClient for AWS SQS
+# - KinesisAsyncClient for AWS Kinesis
+#
+# This provides true encapsulation where the microservice doesn't need to
+# instance or configure infrastructure - just provide configuration to the library.
