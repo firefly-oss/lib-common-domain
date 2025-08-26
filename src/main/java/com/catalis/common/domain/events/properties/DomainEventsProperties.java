@@ -74,6 +74,23 @@ public class DomainEventsProperties {
         private String templateBeanName;
         private String exchange = "${topic}";
         private String routingKey = "${type}";
+        
+        // RabbitMQ connection properties for infrastructure creation
+        private String host = "localhost";
+        
+        @Min(value = 1, message = "Port must be greater than 0")
+        @Max(value = 65535, message = "Port must be less than 65536")
+        private Integer port = 5672;
+        
+        private String username = "guest";
+        private String password = "guest";
+        private String virtualHost = "/";
+        
+        // Connection factory settings
+        private Integer connectionTimeout;
+        private Integer requestedHeartbeat;
+        private boolean publisherConfirms = false;
+        private boolean publisherReturns = false;
     }
 
     @Data
@@ -88,6 +105,21 @@ public class DomainEventsProperties {
         @Pattern(regexp = "^[a-zA-Z0-9_-]+(\\.fifo)?$", 
                 message = "Queue name can only contain alphanumeric characters, hyphens, underscores, and optional .fifo suffix")
         private String queueName;
+        
+        // AWS configuration properties for infrastructure creation
+        @Pattern(regexp = "^[a-z0-9-]+$", message = "AWS region must be in valid format (e.g., us-east-1)")
+        private String region;
+        
+        // AWS credentials (optional - will use default credential chain if not provided)
+        private String accessKeyId;
+        private String secretAccessKey;
+        private String sessionToken;
+        
+        // SQS-specific client configuration
+        private String endpointOverride;
+        private Integer maxConcurrency;
+        private Integer connectionTimeoutMillis;
+        private Integer socketTimeoutMillis;
     }
 
     @Data
@@ -101,6 +133,21 @@ public class DomainEventsProperties {
         
         @Size(min = 1, max = 256, message = "Partition key must be between 1 and 256 characters")
         private String partitionKey = "${key}";
+        
+        // AWS configuration properties for infrastructure creation
+        @Pattern(regexp = "^[a-z0-9-]+$", message = "AWS region must be in valid format (e.g., us-east-1)")
+        private String region;
+        
+        // AWS credentials (optional - will use default credential chain if not provided)
+        private String accessKeyId;
+        private String secretAccessKey;
+        private String sessionToken;
+        
+        // Kinesis-specific client configuration
+        private String endpointOverride;
+        private Integer maxConcurrency;
+        private Integer connectionTimeoutMillis;
+        private Integer socketTimeoutMillis;
     }
 
     @Data
