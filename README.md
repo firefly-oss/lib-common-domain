@@ -61,15 +61,67 @@ firefly:
     adapter: auto             # Options: auto, kafka, rabbit, kinesis, sqs, application_event, noop
 ```
 
+### 🎯 Fully Encapsulated Configuration (Recommended)
+
+**NEW**: The library now creates all messaging infrastructure automatically from Firefly properties. No Spring-specific configuration required!
+
+#### Simple Kafka Setup
+```yaml
+firefly:
+  events:
+    adapter: kafka  # or 'auto' for auto-detection
+    kafka:
+      bootstrap-servers: localhost:9092
+      retries: 3
+      batch-size: 16384
+      acks: all
+```
+
+#### Simple RabbitMQ Setup
+```yaml
+firefly:
+  events:
+    adapter: rabbit  # or 'auto' for auto-detection
+    rabbit:
+      host: localhost
+      port: 5672
+      username: guest
+      password: guest
+```
+
+#### Simple AWS SQS Setup
+```yaml
+firefly:
+  events:
+    adapter: sqs  # or 'auto' for auto-detection
+    sqs:
+      region: us-east-1
+      queue-url: https://sqs.us-east-1.amazonaws.com/123456789012/my-queue
+```
+
+#### Simple AWS Kinesis Setup
+```yaml
+firefly:
+  events:
+    adapter: kinesis  # or 'auto' for auto-detection
+    kinesis:
+      region: us-east-1
+      stream-name: my-stream
+```
+
 ### Adapter Auto-Detection
 
 When `adapter: auto` is configured (default), the library automatically detects available messaging systems in this priority order:
 
-1. **Kafka** - if `KafkaTemplate` bean is available
-2. **RabbitMQ** - if `RabbitTemplate` bean is available
-3. **Kinesis** - if `KinesisAsyncClient` bean is available
-4. **SQS** - if `SqsAsyncClient` bean is available
+1. **Kafka** - if `KafkaTemplate` bean exists OR `bootstrap-servers` is configured
+2. **RabbitMQ** - if `RabbitTemplate` bean exists OR `host` is configured
+3. **Kinesis** - if `KinesisAsyncClient` bean exists OR `region` is configured
+4. **SQS** - if `SqsAsyncClient` bean exists OR `region` is configured  
 5. **Application Events** - fallback (always available)
+
+### 🔄 Backward Compatibility
+
+The library maintains full backward compatibility. If you have existing Spring beans (KafkaTemplate, RabbitTemplate, etc.), the library will use them instead of creating new ones.
 
 ## 🔌 Supported Adapters
 
