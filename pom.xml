@@ -166,6 +166,11 @@
             <artifactId>sqs</artifactId>
             <version>${aws.sdk2.version}</version>
         </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>kinesis</artifactId>
+            <version>${aws.sdk2.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
