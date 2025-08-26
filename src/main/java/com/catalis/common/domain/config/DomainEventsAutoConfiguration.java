@@ -21,6 +21,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
@@ -37,6 +39,8 @@ import java.util.Map;
 @ConditionalOnProperty(prefix = "firefly.events", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class DomainEventsAutoConfiguration {
 
+    private static final Logger log = LoggerFactory.getLogger(DomainEventsAutoConfiguration.class);
+
     // Infrastructure Bean Creation - These must come before the publisher beans
     
     /**
@@ -50,10 +54,12 @@ public class DomainEventsAutoConfiguration {
     @ConditionalOnMissingBean(name = "kafkaProducerFactory")
     @ConditionalOnProperty(prefix = "firefly.events.kafka", name = "bootstrap-servers")
     public ProducerFactory<String, String> kafkaProducerFactory(DomainEventsProperties props) {
+        log.info("🏗️  Creating Kafka ProducerFactory from Firefly properties");
         DomainEventsProperties.Kafka kafkaProps = props.getKafka();
         
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaProps.getBootstrapServers());
+        log.info("   • Bootstrap servers: {}", kafkaProps.getBootstrapServers());
         
         // Set serializers
         String keySerializer = kafkaProps.getKeySerializer() != null ? 
@@ -100,6 +106,7 @@ public class DomainEventsAutoConfiguration {
     @ConditionalOnMissingBean(name = "kafkaTemplate")
     @ConditionalOnBean(ProducerFactory.class)
     public KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> producerFactory) {
+        log.info("🏗️  Creating KafkaTemplate from ProducerFactory");
         return new KafkaTemplate<>(producerFactory);
     }
     
@@ -113,6 +120,7 @@ public class DomainEventsAutoConfiguration {
     @ConditionalOnClass(name = "org.springframework.amqp.rabbit.core.RabbitTemplate")
     @ConditionalOnMissingBean(ConnectionFactory.class)
     public ConnectionFactory rabbitConnectionFactory(DomainEventsProperties props) {
+        log.info("🏗️  Creating RabbitMQ ConnectionFactory from Firefly properties");
         DomainEventsProperties.Rabbit rabbitProps = props.getRabbit();
         
         CachingConnectionFactory factory = new CachingConnectionFactory();
@@ -120,6 +128,7 @@ public class DomainEventsAutoConfiguration {
         // Configure connection properties from Firefly configuration
         factory.setHost(rabbitProps.getHost());
         factory.setPort(rabbitProps.getPort());
+        log.info("   • Host: {}:{}", rabbitProps.getHost(), rabbitProps.getPort());
         factory.setUsername(rabbitProps.getUsername());
         factory.setPassword(rabbitProps.getPassword());
         factory.setVirtualHost(rabbitProps.getVirtualHost());
@@ -150,6 +159,7 @@ public class DomainEventsAutoConfiguration {
     @ConditionalOnMissingBean(name = "rabbitTemplate")
     @ConditionalOnBean(ConnectionFactory.class)
     public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
+        log.info("🏗️  Creating RabbitTemplate from ConnectionFactory");
         return new RabbitTemplate(connectionFactory);
     }
     
@@ -164,12 +174,14 @@ public class DomainEventsAutoConfiguration {
     @ConditionalOnMissingBean(SqsAsyncClient.class)
     @ConditionalOnProperty(prefix = "firefly.events.sqs", name = "region")
     public SqsAsyncClient sqsAsyncClient(DomainEventsProperties props) {
+        log.info("🏗️  Creating AWS SQS AsyncClient from Firefly properties");
         DomainEventsProperties.Sqs sqsProps = props.getSqs();
         
         var builder = SqsAsyncClient.builder();
         
         // Configure AWS region
         builder.region(software.amazon.awssdk.regions.Region.of(sqsProps.getRegion()));
+        log.info("   • Region: {}", sqsProps.getRegion());
         
         // Configure credentials if provided
         if (sqsProps.getAccessKeyId() != null && sqsProps.getSecretAccessKey() != null) {
@@ -210,12 +222,14 @@ public class DomainEventsAutoConfiguration {
     @ConditionalOnMissingBean(KinesisAsyncClient.class)
     @ConditionalOnProperty(prefix = "firefly.events.kinesis", name = "region")
     public KinesisAsyncClient kinesisAsyncClient(DomainEventsProperties props) {
+        log.info("🏗️  Creating AWS Kinesis AsyncClient from Firefly properties");
         DomainEventsProperties.Kinesis kinesisProps = props.getKinesis();
         
         var builder = KinesisAsyncClient.builder();
         
         // Configure AWS region
         builder.region(software.amazon.awssdk.regions.Region.of(kinesisProps.getRegion()));
+        log.info("   • Region: {}", kinesisProps.getRegion());
         
         // Configure credentials if provided
         if (kinesisProps.getAccessKeyId() != null && kinesisProps.getSecretAccessKey() != null) {
@@ -252,35 +266,56 @@ public class DomainEventsAutoConfiguration {
                                                      DomainEventsProperties props) {
         DomainEventsProperties.Adapter adapter = props.getAdapter();
         
+        log.info("🔥 Firefly Domain Events - Configuring event publisher adapter");
+        log.info("📋 Configuration: adapter={}, enabled={}", adapter, props.isEnabled());
+        
         // Handle explicit adapter selection
         switch (adapter) {
             case NOOP:
+                log.info("✅ Using NOOP adapter - events will be discarded");
                 return new NoopDomainEventPublisher();
             case APPLICATION_EVENT:
+                log.info("✅ Using APPLICATION_EVENT adapter - events published via Spring ApplicationEventPublisher");
+                log.info("📊 Bean status: ApplicationEventPublisher={}", 
+                        applicationEventPublisher != null ? "available" : "not available");
                 return new ApplicationEventDomainEventPublisher(applicationEventPublisher);
             case SQS:
+                logSqsConfiguration(ctx, props.getSqs(), true);
                 return new SqsAsyncClientDomainEventPublisher(ctx, props.getSqs());
             case KAFKA:
+                logKafkaConfiguration(ctx, props.getKafka(), true);
                 return new KafkaDomainEventPublisher(ctx, props.getKafka());
             case RABBIT:
+                logRabbitConfiguration(ctx, props.getRabbit(), true);
                 return new RabbitMqDomainEventPublisher(ctx, props.getRabbit());
             case KINESIS:
+                logKinesisConfiguration(ctx, props.getKinesis(), true);
                 return new KinesisDomainEventPublisher(ctx, props.getKinesis());
             case AUTO:
             default:
+                log.info("🔍 Auto-detecting available messaging adapter (priority: Kafka → RabbitMQ → Kinesis → SQS → ApplicationEvent)");
+                
                 // Auto-detection order: Kafka -> RabbitMQ -> Kinesis -> SQS -> ApplicationEvent
                 if (isKafkaAvailable(ctx)) {
+                    logKafkaConfiguration(ctx, props.getKafka(), false);
                     return new KafkaDomainEventPublisher(ctx, props.getKafka());
                 }
                 if (isRabbitMqAvailable(ctx)) {
+                    logRabbitConfiguration(ctx, props.getRabbit(), false);
                     return new RabbitMqDomainEventPublisher(ctx, props.getRabbit());
                 }
                 if (isKinesisAvailable(ctx)) {
+                    logKinesisConfiguration(ctx, props.getKinesis(), false);
                     return new KinesisDomainEventPublisher(ctx, props.getKinesis());
                 }
                 if (isSqsAvailable(ctx)) {
+                    logSqsConfiguration(ctx, props.getSqs(), false);
                     return new SqsAsyncClientDomainEventPublisher(ctx, props.getSqs());
                 }
+                
+                log.info("✅ Using APPLICATION_EVENT adapter (fallback) - events published via Spring ApplicationEventPublisher");
+                log.info("📊 Bean status: ApplicationEventPublisher={}", 
+                        applicationEventPublisher != null ? "available" : "not available");
                 return new ApplicationEventDomainEventPublisher(applicationEventPublisher);
         }
     }
@@ -393,6 +428,120 @@ public class DomainEventsAutoConfiguration {
             @Override public void stop() { running = false; }
             @Override public boolean isRunning() { return running; }
         };
+    }
+
+    private void logKafkaConfiguration(ApplicationContext ctx, DomainEventsProperties.Kafka kafkaProps, boolean explicit) {
+        String mode = explicit ? "explicitly configured" : "auto-detected";
+        log.info("✅ Using KAFKA adapter ({}) - events published to Apache Kafka", mode);
+        
+        // Check bean status
+        Object kafkaTemplate = DomainEventAdapterUtils.resolveBean(ctx, kafkaProps.getTemplateBeanName(), "org.springframework.kafka.core.KafkaTemplate");
+        String kafkaTemplateBeanName = kafkaProps.getTemplateBeanName() != null ? kafkaProps.getTemplateBeanName() : "kafkaTemplate";
+        
+        if (kafkaTemplate != null) {
+            log.info("📊 Bean status: KafkaTemplate bean '{}' found (user-provided)", kafkaTemplateBeanName);
+        } else {
+            log.info("📊 Bean status: KafkaTemplate bean '{}' not found, using Firefly-created infrastructure", kafkaTemplateBeanName);
+        }
+        
+        // Configuration details
+        log.info("⚙️  Kafka configuration:");
+        log.info("   • Bootstrap servers: {}", kafkaProps.getBootstrapServers() != null ? kafkaProps.getBootstrapServers() : "not configured");
+        log.info("   • Key serializer: {}", kafkaProps.getKeySerializer() != null ? kafkaProps.getKeySerializer() : "default (StringSerializer)");
+        log.info("   • Value serializer: {}", kafkaProps.getValueSerializer() != null ? kafkaProps.getValueSerializer() : "default (StringSerializer)");
+        if (kafkaProps.getRetries() != null) {
+            log.info("   • Retries: {}", kafkaProps.getRetries());
+        }
+        if (kafkaProps.getBatchSize() != null) {
+            log.info("   • Batch size: {}", kafkaProps.getBatchSize());
+        }
+        if (kafkaProps.getAcks() != null) {
+            log.info("   • Acks: {}", kafkaProps.getAcks());
+        }
+    }
+
+    private void logRabbitConfiguration(ApplicationContext ctx, DomainEventsProperties.Rabbit rabbitProps, boolean explicit) {
+        String mode = explicit ? "explicitly configured" : "auto-detected";
+        log.info("✅ Using RABBIT adapter ({}) - events published to RabbitMQ", mode);
+        
+        // Check bean status
+        Object rabbitTemplate = DomainEventAdapterUtils.resolveBean(ctx, rabbitProps.getTemplateBeanName(), "org.springframework.amqp.rabbit.core.RabbitTemplate");
+        String rabbitTemplateBeanName = rabbitProps.getTemplateBeanName() != null ? rabbitProps.getTemplateBeanName() : "rabbitTemplate";
+        
+        if (rabbitTemplate != null) {
+            log.info("📊 Bean status: RabbitTemplate bean '{}' found (user-provided)", rabbitTemplateBeanName);
+        } else {
+            log.info("📊 Bean status: RabbitTemplate bean '{}' not found, using Firefly-created infrastructure", rabbitTemplateBeanName);
+        }
+        
+        // Configuration details
+        log.info("⚙️  RabbitMQ configuration:");
+        log.info("   • Host: {}", rabbitProps.getHost() != null ? rabbitProps.getHost() : "not configured");
+        log.info("   • Port: {}", rabbitProps.getPort() != null ? rabbitProps.getPort() : "not configured");
+        log.info("   • Username: {}", rabbitProps.getUsername() != null ? rabbitProps.getUsername() : "not configured");
+        log.info("   • Virtual host: {}", rabbitProps.getVirtualHost() != null ? rabbitProps.getVirtualHost() : "not configured");
+        log.info("   • Exchange pattern: {}", rabbitProps.getExchange() != null ? rabbitProps.getExchange() : "not configured");
+        log.info("   • Routing key pattern: {}", rabbitProps.getRoutingKey() != null ? rabbitProps.getRoutingKey() : "not configured");
+        log.info("   • Publisher confirms: {}", rabbitProps.isPublisherConfirms());
+        log.info("   • Publisher returns: {}", rabbitProps.isPublisherReturns());
+    }
+
+    private void logSqsConfiguration(ApplicationContext ctx, DomainEventsProperties.Sqs sqsProps, boolean explicit) {
+        String mode = explicit ? "explicitly configured" : "auto-detected";
+        log.info("✅ Using SQS adapter ({}) - events published to AWS SQS", mode);
+        
+        // Check bean status
+        Object sqsClient = DomainEventAdapterUtils.resolveBean(ctx, sqsProps.getClientBeanName(), "software.amazon.awssdk.services.sqs.SqsAsyncClient");
+        String sqsClientBeanName = sqsProps.getClientBeanName() != null ? sqsProps.getClientBeanName() : "sqsAsyncClient";
+        
+        if (sqsClient != null) {
+            log.info("📊 Bean status: SqsAsyncClient bean '{}' found (user-provided)", sqsClientBeanName);
+        } else {
+            log.info("📊 Bean status: SqsAsyncClient bean '{}' not found, using Firefly-created infrastructure", sqsClientBeanName);
+        }
+        
+        // Configuration details
+        log.info("⚙️  AWS SQS configuration:");
+        log.info("   • Region: {}", sqsProps.getRegion() != null ? sqsProps.getRegion() : "not configured");
+        log.info("   • Queue URL: {}", sqsProps.getQueueUrl() != null ? sqsProps.getQueueUrl() : "not configured");
+        log.info("   • Queue name: {}", sqsProps.getQueueName() != null ? sqsProps.getQueueName() : "not configured");
+        if (sqsProps.getEndpointOverride() != null) {
+            log.info("   • Endpoint override: {}", sqsProps.getEndpointOverride());
+        }
+        if (sqsProps.getAccessKeyId() != null) {
+            log.info("   • Credentials: configured (access key provided)");
+        } else {
+            log.info("   • Credentials: using default AWS credential chain");
+        }
+    }
+
+    private void logKinesisConfiguration(ApplicationContext ctx, DomainEventsProperties.Kinesis kinesisProps, boolean explicit) {
+        String mode = explicit ? "explicitly configured" : "auto-detected";
+        log.info("✅ Using KINESIS adapter ({}) - events published to AWS Kinesis", mode);
+        
+        // Check bean status
+        Object kinesisClient = DomainEventAdapterUtils.resolveBean(ctx, kinesisProps.getClientBeanName(), "software.amazon.awssdk.services.kinesis.KinesisAsyncClient");
+        String kinesisClientBeanName = kinesisProps.getClientBeanName() != null ? kinesisProps.getClientBeanName() : "kinesisAsyncClient";
+        
+        if (kinesisClient != null) {
+            log.info("📊 Bean status: KinesisAsyncClient bean '{}' found (user-provided)", kinesisClientBeanName);
+        } else {
+            log.info("📊 Bean status: KinesisAsyncClient bean '{}' not found, using Firefly-created infrastructure", kinesisClientBeanName);
+        }
+        
+        // Configuration details
+        log.info("⚙️  AWS Kinesis configuration:");
+        log.info("   • Region: {}", kinesisProps.getRegion() != null ? kinesisProps.getRegion() : "not configured");
+        log.info("   • Stream name: {}", kinesisProps.getStreamName() != null ? kinesisProps.getStreamName() : "not configured");
+        log.info("   • Partition key pattern: {}", kinesisProps.getPartitionKey() != null ? kinesisProps.getPartitionKey() : "not configured");
+        if (kinesisProps.getEndpointOverride() != null) {
+            log.info("   • Endpoint override: {}", kinesisProps.getEndpointOverride());
+        }
+        if (kinesisProps.getAccessKeyId() != null) {
+            log.info("   • Credentials: configured (access key provided)");
+        } else {
+            log.info("   • Credentials: using default AWS credential chain");
+        }
     }
 
     private boolean isKafkaAvailable(ApplicationContext ctx) {
