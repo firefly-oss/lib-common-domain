@@ -541,7 +541,7 @@ firefly:
         application-name: domain-events-consumer
         poll-delay-millis: 5000
         
-  step-events:
+  stepevents:
     enabled: true
     
   observability:
