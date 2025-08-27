@@ -37,9 +37,11 @@ public class StepEventPublisherBridge implements StepEventPublisher {
         if(e.getKey() == null || e.getKey().isEmpty()){
             e.setKey(e.getSagaName().concat(":").concat(e.getSagaId()));
         }
-        String topic = e.getTopic() == null || e.getTopic().isEmpty() ? defaultTopic : e.getTopic();
-        e.setTopic(topic);
-        DomainEventEnvelope env = new DomainEventEnvelope(topic, e.getType(), e.getKey(), e, e.getTimestamp(), hdrs, metadata);
+        if(e.getTopic() == null || e.getTopic().isEmpty()){
+            e.setTopic(defaultTopic);
+        }
+
+        DomainEventEnvelope env = new DomainEventEnvelope(e.getTopic(), e.getType(), e.getKey(), e, e.getTimestamp(), hdrs, metadata);
 
         return delegate.publish(env);
     }
