@@ -61,15 +61,15 @@ public class TopicFilter implements EventFilter {
 
     @Override
     public boolean accept(DomainEventEnvelope envelope) {
-        if (envelope.topic == null) {
+        if (envelope.getTopic() == null) {
             return false;
         }
 
         if (mode == FilterMode.EXACT) {
-            return exactTopics.contains(envelope.topic);
+            return exactTopics.contains(envelope.getTopic());
         }
 
-        return patterns.stream().anyMatch(pattern -> pattern.matcher(envelope.topic).matches());
+        return patterns.stream().anyMatch(pattern -> pattern.matcher(envelope.getTopic()).matches());
     }
 
     @Override

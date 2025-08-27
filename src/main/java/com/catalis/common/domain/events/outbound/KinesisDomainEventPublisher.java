@@ -53,13 +53,13 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
         if (retryTemplate != null) {
             // Use retry template for resilient publishing
             return Mono.fromCallable(() -> retryTemplate.execute(retryContext -> {
-                retryContext.setAttribute("operationName", "kinesis-event-publish:" + e.topic + ":" + e.type);
+                retryContext.setAttribute("operationName", "kinesis-event-publish:" + e.getTopic() + ":" + e.getType());
                 return trySendBlocking(e);
             }))
             .then()
             .onErrorMap(throwable -> {
                 log.error("Failed to publish event after retries: topic={}, type={}, key={}", 
-                         e.topic, e.type, e.key, throwable);
+                         e.getTopic(), e.getType(), e.getKey(), throwable);
                 return throwable;
             });
         } else {
@@ -67,7 +67,7 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
             return trySendReactive(e)
                     .onErrorMap(ex -> {
                         log.error("Failed to publish event to Kinesis: topic={}, type={}, key={}: {}", 
-                                e.topic, e.type, e.key, ex.getMessage());
+                                e.getTopic(), e.getType(), e.getKey(), ex.getMessage());
                         return ex;
                     });
         }
@@ -80,7 +80,7 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
             String messageData = serializePayload(e);
             
             log.debug("Attempting to send event to Kinesis: topic={}, type={}, key={}, streamName={}, partitionKey={}", 
-                     e.topic, e.type, e.key, streamName, partitionKey);
+                     e.getTopic(), e.getType(), e.getKey(), streamName, partitionKey);
             
             PutRecordRequest request = PutRecordRequest.builder()
                     .streamName(streamName)
@@ -91,12 +91,12 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
             kinesisClient.putRecord(request).get(); // Blocking call for retry template
             
             log.debug("Successfully sent event to Kinesis: topic={}, type={}, streamName={}, partitionKey={}", 
-                     e.topic, e.type, streamName, partitionKey);
+                     e.getTopic(), e.getType(), streamName, partitionKey);
             
             return null;
         } catch (Exception ex) {
             log.error("Failed to send event to Kinesis: topic={}, type={}, key={}: {}", 
-                     e.topic, e.type, e.key, ex.getMessage());
+                     e.getTopic(), e.getType(), e.getKey(), ex.getMessage());
             throw new RuntimeException("Kinesis send failed", ex);
         }
     }
@@ -107,7 +107,7 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
         String messageData = serializePayload(e);
         
         log.debug("Attempting to send event to Kinesis: topic={}, type={}, key={}, streamName={}, partitionKey={}", 
-                 e.topic, e.type, e.key, streamName, partitionKey);
+                 e.getTopic(), e.getType(), e.getKey(), streamName, partitionKey);
         
         PutRecordRequest request = PutRecordRequest.builder()
                 .streamName(streamName)
@@ -117,7 +117,7 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
         
         return Mono.fromFuture(kinesisClient.putRecord(request))
                 .doOnSuccess(response -> log.debug("Successfully sent event to Kinesis: topic={}, type={}, streamName={}, partitionKey={}, sequenceNumber={}", 
-                                                  e.topic, e.type, streamName, partitionKey, response.sequenceNumber()))
+                                                  e.getTopic(), e.getType(), streamName, partitionKey, response.sequenceNumber()))
                 .then();
     }
 
@@ -127,7 +127,7 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
             return streamName;
         }
         // Use topic as stream name if no specific stream configured
-        return e.topic;
+        return e.getTopic();
     }
 
     private String resolvePartitionKey(DomainEventEnvelope e) {
@@ -135,12 +135,12 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
         if (configuredPartitionKey != null && !configuredPartitionKey.isEmpty()) {
             // Support placeholder replacement
             return configuredPartitionKey
-                    .replace("${topic}", e.topic != null ? e.topic : "")
-                    .replace("${type}", e.type != null ? e.type : "")
-                    .replace("${key}", e.key != null ? e.key : "");
+                    .replace("${topic}", e.getTopic() != null ? e.getTopic() : "")
+                    .replace("${type}", e.getType() != null ? e.getType() : "")
+                    .replace("${key}", e.getKey() != null ? e.getKey() : "");
         }
         // Use event key as partition key if available, otherwise use topic
-        return e.key != null ? e.key : e.topic;
+        return e.getKey() != null ? e.getKey() : e.getTopic();
     }
 
     private String serializePayload(DomainEventEnvelope e) {
@@ -150,16 +150,16 @@ public class KinesisDomainEventPublisher implements DomainEventPublisher {
             if (mapperObj instanceof ObjectMapper mapper) {
                 // Create a wrapper object that includes event metadata
                 var eventData = new java.util.HashMap<String, Object>();
-                eventData.put("topic", e.topic);
-                eventData.put("type", e.type);
-                eventData.put("key", e.key);
-                eventData.put("payload", e.payload);
-                eventData.put("headers", e.headers);
+                eventData.put("topic", e.getTopic());
+                eventData.put("type", e.getType());
+                eventData.put("key", e.getKey());
+                eventData.put("payload", e.getPayload());
+                eventData.put("headers", e.getHeaders());
                 return mapper.writeValueAsString(eventData);
             }
         } catch (Exception ex) {
             log.warn("Failed to serialize payload using ObjectMapper, falling back to String.valueOf: {}", ex.getMessage());
         }
-        return String.valueOf(e.payload);
+        return String.valueOf(e.getPayload());
     }
 }

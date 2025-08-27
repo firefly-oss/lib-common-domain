@@ -53,13 +53,13 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
         if (retryTemplate != null) {
             // Use retry template for resilient publishing
             return Mono.fromCallable(() -> retryTemplate.execute(retryContext -> {
-                retryContext.setAttribute("operationName", "rabbitmq-event-publish:" + e.topic + ":" + e.type);
+                retryContext.setAttribute("operationName", "rabbitmq-event-publish:" + e.getTopic() + ":" + e.getType());
                 return trySendBlocking(e);
             }))
             .then()
             .onErrorMap(throwable -> {
                 log.error("Failed to publish event after retries: topic={}, type={}, key={}", 
-                         e.topic, e.type, e.key, throwable);
+                         e.getTopic(), e.getType(), e.getKey(), throwable);
                 return throwable;
             });
         } else {
@@ -67,7 +67,7 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             return trySendReactive(e)
                     .onErrorMap(ex -> {
                         log.error("Failed to publish event to RabbitMQ: topic={}, type={}, key={}: {}", 
-                                e.topic, e.type, e.key, ex.getMessage());
+                                e.getTopic(), e.getType(), e.getKey(), ex.getMessage());
                         return ex;
                     });
         }
@@ -80,13 +80,13 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             String messageBody = serializePayload(e);
             
             log.debug("Attempting to send event to RabbitMQ: topic={}, type={}, key={}, exchange={}, routingKey={}", 
-                     e.topic, e.type, e.key, exchange, routingKey);
+                     e.getTopic(), e.getType(), e.getKey(), exchange, routingKey);
             
             MessageProperties messageProperties = new MessageProperties();
             
             // Add headers if available
-            if (e.headers != null && !e.headers.isEmpty()) {
-                e.headers.forEach((key, value) -> {
+            if (e.getHeaders() != null && !e.getHeaders().isEmpty()) {
+                e.getHeaders().forEach((key, value) -> {
                     if (value != null) {
                         messageProperties.setHeader(key, value);
                     }
@@ -94,14 +94,14 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             }
             
             // Add event metadata as headers
-            if (e.type != null) {
-                messageProperties.setHeader("event-type", e.type);
+            if (e.getType() != null) {
+                messageProperties.setHeader("event-type", e.getType());
             }
-            if (e.topic != null) {
-                messageProperties.setHeader("event-topic", e.topic);
+            if (e.getTopic() != null) {
+                messageProperties.setHeader("event-topic", e.getTopic());
             }
-            if (e.key != null) {
-                messageProperties.setHeader("event-key", e.key);
+            if (e.getKey() != null) {
+                messageProperties.setHeader("event-key", e.getKey());
             }
             
             Message message = new Message(messageBody.getBytes(), messageProperties);
@@ -109,12 +109,12 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             rabbitTemplate.send(exchange, routingKey, message);
             
             log.debug("Successfully sent event to RabbitMQ: topic={}, type={}, exchange={}, routingKey={}", 
-                     e.topic, e.type, exchange, routingKey);
+                     e.getTopic(), e.getType(), exchange, routingKey);
             
             return null;
         } catch (Exception ex) {
             log.error("Failed to send event to RabbitMQ: topic={}, type={}, key={}: {}", 
-                     e.topic, e.type, e.key, ex.getMessage());
+                     e.getTopic(), e.getType(), e.getKey(), ex.getMessage());
             throw new RuntimeException("RabbitMQ send failed", ex);
         }
     }
@@ -126,13 +126,13 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             String messageBody = serializePayload(e);
             
             log.debug("Attempting to send event to RabbitMQ: topic={}, type={}, key={}, exchange={}, routingKey={}", 
-                     e.topic, e.type, e.key, exchange, routingKey);
+                     e.getTopic(), e.getType(), e.getKey(), exchange, routingKey);
             
             MessageProperties messageProperties = new MessageProperties();
             
             // Add headers if available
-            if (e.headers != null && !e.headers.isEmpty()) {
-                e.headers.forEach((key, value) -> {
+            if (e.getHeaders() != null && !e.getHeaders().isEmpty()) {
+                e.getHeaders().forEach((key, value) -> {
                     if (value != null) {
                         messageProperties.setHeader(key, value);
                     }
@@ -140,14 +140,14 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             }
             
             // Add event metadata as headers
-            if (e.type != null) {
-                messageProperties.setHeader("event-type", e.type);
+            if (e.getType() != null) {
+                messageProperties.setHeader("event-type", e.getType());
             }
-            if (e.topic != null) {
-                messageProperties.setHeader("event-topic", e.topic);
+            if (e.getTopic() != null) {
+                messageProperties.setHeader("event-topic", e.getTopic());
             }
-            if (e.key != null) {
-                messageProperties.setHeader("event-key", e.key);
+            if (e.getKey() != null) {
+                messageProperties.setHeader("event-key", e.getKey());
             }
             
             Message message = new Message(messageBody.getBytes(), messageProperties);
@@ -155,7 +155,7 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             rabbitTemplate.send(exchange, routingKey, message);
             
             log.debug("Successfully sent event to RabbitMQ: topic={}, type={}, exchange={}, routingKey={}", 
-                     e.topic, e.type, exchange, routingKey);
+                     e.getTopic(), e.getType(), exchange, routingKey);
             
             return null;
         })
@@ -168,7 +168,7 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             return configuredExchange;
         }
         // Use topic as exchange name if no specific exchange configured
-        return e.topic;
+        return e.getTopic();
     }
 
     private String resolveRoutingKey(DomainEventEnvelope e) {
@@ -177,7 +177,7 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             return configuredRoutingKey;
         }
         // Use event type as routing key if no specific routing key configured
-        return e.type != null ? e.type : "";
+        return e.getType() != null ? e.getType() : "";
     }
 
     private String serializePayload(DomainEventEnvelope e) {
@@ -185,11 +185,11 @@ public class RabbitMqDomainEventPublisher implements DomainEventPublisher {
             Object mapperObj = DomainEventAdapterUtils.resolveBean(ctx, null,
                     "com.fasterxml.jackson.databind.ObjectMapper");
             if (mapperObj instanceof ObjectMapper mapper) {
-                return mapper.writeValueAsString(e.payload);
+                return mapper.writeValueAsString(e.getPayload());
             }
         } catch (Exception ex) {
             log.warn("Failed to serialize payload using ObjectMapper, falling back to String.valueOf: {}", ex.getMessage());
         }
-        return String.valueOf(e.payload);
+        return String.valueOf(e.getPayload());
     }
 }

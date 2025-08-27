@@ -70,7 +70,7 @@ public class EventListenerDispatcher implements ApplicationListener<DomainSpring
         
         DomainEventEnvelope e = event.getEnvelope();
         for (Handler h : handlers) {
-            if (matches(h.topic, e.topic) && matches(h.type, e.type)) {
+            if (matches(h.topic, e.getTopic()) && matches(h.type, e.getType())) {
                 invoke(h, e);
             }
         }
@@ -88,9 +88,9 @@ public class EventListenerDispatcher implements ApplicationListener<DomainSpring
                 Object arg;
                 if (paramTypes[0].isAssignableFrom(DomainEventEnvelope.class)) {
                     arg = e;
-                } else if (e.payload != null && paramTypes[0].isInstance(e.payload)) {
-                    arg = e.payload;
-                } else if (e.payload instanceof String s) {
+                } else if (e.getPayload() != null && paramTypes[0].isInstance(e.getPayload())) {
+                    arg = e.getPayload();
+                } else if (e.getPayload() instanceof String s) {
                     Object mapper = tryGetObjectMapper();
                     if (mapper != null) {
                         Method read = mapper.getClass().getMethod("readValue", String.class, Class.class);
@@ -99,7 +99,7 @@ public class EventListenerDispatcher implements ApplicationListener<DomainSpring
                         arg = s;
                     }
                 } else {
-                    arg = e.payload;
+                    arg = e.getPayload();
                 }
                 h.method.invoke(h.bean, arg);
             } else if (paramTypes.length == 0) {

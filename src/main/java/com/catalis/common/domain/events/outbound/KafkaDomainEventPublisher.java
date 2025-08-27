@@ -54,13 +54,13 @@ public class KafkaDomainEventPublisher implements DomainEventPublisher {
         if (retryTemplate != null) {
             // Use retry template for resilient publishing
             return Mono.fromCallable(() -> retryTemplate.execute(retryContext -> {
-                retryContext.setAttribute("operationName", "kafka-event-publish:" + e.topic + ":" + e.type);
+                retryContext.setAttribute("operationName", "kafka-event-publish:" + e.getTopic() + ":" + e.getType());
                 return trySendBlocking(e);
             }))
             .then()
             .onErrorMap(throwable -> {
                 log.error("Failed to publish event after retries: topic={}, type={}, key={}", 
-                         e.topic, e.type, e.key, throwable);
+                         e.getTopic(), e.getType(), e.getKey(), throwable);
                 return throwable;
             });
         } else {
@@ -68,7 +68,7 @@ public class KafkaDomainEventPublisher implements DomainEventPublisher {
             return trySendReactive(e)
                     .onErrorMap(ex -> {
                         log.error("Failed to publish event to Kafka: topic={}, type={}, key={}: {}", 
-                                e.topic, e.type, e.key, ex.getMessage());
+                                e.getTopic(), e.getType(), e.getKey(), ex.getMessage());
                         return ex;
                     });
         }
@@ -78,16 +78,16 @@ public class KafkaDomainEventPublisher implements DomainEventPublisher {
         try {
             String topic = resolveTopic(e);
             String messageValue = serializePayload(e);
-            String messageKey = e.key;
+            String messageKey = e.getKey();
             
             log.debug("Attempting to send event to Kafka: topic={}, type={}, key={}", 
-                     e.topic, e.type, e.key);
+                     e.getTopic(), e.getType(), e.getKey());
             
             ProducerRecord<String, String> record = new ProducerRecord<>(topic, messageKey, messageValue);
             
             // Add headers if available
-            if (e.headers != null && !e.headers.isEmpty()) {
-                e.headers.forEach((key, value) -> {
+            if (e.getHeaders() != null && !e.getHeaders().isEmpty()) {
+                e.getHeaders().forEach((key, value) -> {
                     if (value != null) {
                         record.headers().add(key, String.valueOf(value).getBytes());
                     }
@@ -95,19 +95,19 @@ public class KafkaDomainEventPublisher implements DomainEventPublisher {
             }
             
             // Add event type as header
-            if (e.type != null) {
-                record.headers().add("event-type", e.type.getBytes());
+            if (e.getType() != null) {
+                record.headers().add("event-type", e.getType().getBytes());
             }
             
             SendResult<String, String> result = kafkaTemplate.send(record).get(); // Blocking call for retry template
             
             log.debug("Successfully sent event to Kafka: topic={}, type={}, partition={}, offset={}", 
-                     e.topic, e.type, result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
+                     e.getTopic(), e.getType(), result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
             
             return null;
         } catch (Exception ex) {
             log.error("Failed to send event to Kafka: topic={}, type={}, key={}: {}", 
-                     e.topic, e.type, e.key, ex.getMessage());
+                     e.getTopic(), e.getType(), e.getKey(), ex.getMessage());
             throw new RuntimeException("Kafka send failed", ex);
         }
     }
@@ -115,16 +115,16 @@ public class KafkaDomainEventPublisher implements DomainEventPublisher {
     private Mono<Void> trySendReactive(DomainEventEnvelope e) {
         String topic = resolveTopic(e);
         String messageValue = serializePayload(e);
-        String messageKey = e.key;
+        String messageKey = e.getKey();
         
         log.debug("Attempting to send event to Kafka: topic={}, type={}, key={}", 
-                 e.topic, e.type, e.key);
+                 e.getTopic(), e.getType(), e.getKey());
         
         ProducerRecord<String, String> record = new ProducerRecord<>(topic, messageKey, messageValue);
         
         // Add headers if available
-        if (e.headers != null && !e.headers.isEmpty()) {
-            e.headers.forEach((key, value) -> {
+        if (e.getHeaders() != null && !e.getHeaders().isEmpty()) {
+            e.getHeaders().forEach((key, value) -> {
                 if (value != null) {
                     record.headers().add(key, String.valueOf(value).getBytes());
                 }
@@ -132,19 +132,19 @@ public class KafkaDomainEventPublisher implements DomainEventPublisher {
         }
         
         // Add event type as header
-        if (e.type != null) {
-            record.headers().add("event-type", e.type.getBytes());
+        if (e.getType() != null) {
+            record.headers().add("event-type", e.getType().getBytes());
         }
         
         return Mono.fromFuture(kafkaTemplate.send(record))
                 .doOnSuccess(result -> log.debug("Successfully sent event to Kafka: topic={}, type={}, partition={}, offset={}", 
-                                               e.topic, e.type, result.getRecordMetadata().partition(), result.getRecordMetadata().offset()))
+                                               e.getTopic(), e.getType(), result.getRecordMetadata().partition(), result.getRecordMetadata().offset()))
                 .then();
     }
 
     private String resolveTopic(DomainEventEnvelope e) {
         // Use the event's topic directly for Kafka
-        return e.topic;
+        return e.getTopic();
     }
 
     private String serializePayload(DomainEventEnvelope e) {
@@ -152,11 +152,11 @@ public class KafkaDomainEventPublisher implements DomainEventPublisher {
             Object mapperObj = DomainEventAdapterUtils.resolveBean(ctx, null,
                     "com.fasterxml.jackson.databind.ObjectMapper");
             if (mapperObj instanceof ObjectMapper mapper) {
-                return mapper.writeValueAsString(e.payload);
+                return mapper.writeValueAsString(e.getPayload());
             }
         } catch (Exception ex) {
             log.warn("Failed to serialize payload using ObjectMapper, falling back to String.valueOf: {}", ex.getMessage());
         }
-        return String.valueOf(e.payload);
+        return String.valueOf(e.getPayload());
     }
 }

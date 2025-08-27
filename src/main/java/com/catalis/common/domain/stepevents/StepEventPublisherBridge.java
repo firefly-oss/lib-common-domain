@@ -12,9 +12,11 @@ import reactor.core.publisher.Mono;
 public class StepEventPublisherBridge implements StepEventPublisher {
 
     private final DomainEventPublisher delegate;
+    private final String defaultTopic;
 
-    public StepEventPublisherBridge(DomainEventPublisher delegate) {
+    public StepEventPublisherBridge(String defaultTopic, DomainEventPublisher delegate) {
         this.delegate = delegate;
+        this.defaultTopic = defaultTopic;
     }
 
     @Override
@@ -35,14 +37,10 @@ public class StepEventPublisherBridge implements StepEventPublisher {
         if(e.getKey() == null || e.getKey().isEmpty()){
             e.setKey(e.getSagaName().concat(":").concat(e.getSagaId()));
         }
-        DomainEventEnvelope env = DomainEventEnvelope.builder()
-                .topic(e.getTopic())
-                .type(e.getType())
-                .key(e.getKey())
-                .payload(e)
-                .headers(hdrs)
-                .metadata(metadata)
-                .build();
+        String topic = e.getTopic() == null || e.getTopic().isEmpty() ? defaultTopic : e.getTopic();
+        e.setTopic(topic);
+        DomainEventEnvelope env = new DomainEventEnvelope(topic, e.getType(), e.getKey(), e, e.getTimestamp(), hdrs, metadata);
+
         return delegate.publish(env);
     }
 }

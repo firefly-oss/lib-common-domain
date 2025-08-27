@@ -155,7 +155,7 @@ public class KinesisDomainEventsSubscriber implements SmartLifecycle {
             events.publishEvent(new DomainSpringEvent(envelope));
             
             log.debug("Processed Kinesis record: sequenceNumber={}, partitionKey={}, type={}", 
-                     record.sequenceNumber(), record.partitionKey(), envelope.type);
+                     record.sequenceNumber(), record.partitionKey(), envelope.getType());
                      
         } catch (Exception e) {
             log.error("Error processing Kinesis record: sequenceNumber={}, partitionKey={}", 

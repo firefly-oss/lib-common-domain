@@ -25,11 +25,11 @@ public class HeaderFilter implements EventFilter {
 
     @Override
     public boolean accept(DomainEventEnvelope envelope) {
-        if (envelope.headers == null || envelope.headers.isEmpty()) {
+        if (envelope.getHeaders() == null || envelope.getHeaders().isEmpty()) {
             return false;
         }
         
-        Object headerValue = envelope.headers.get(headerName);
+        Object headerValue = envelope.getHeaders().get(headerName);
         return headerPredicate.test(headerValue);
     }
 
@@ -166,10 +166,10 @@ public class HeaderFilter implements EventFilter {
             envelope -> {
                 if (envelope instanceof DomainEventEnvelope) {
                     DomainEventEnvelope env = (DomainEventEnvelope) envelope;
-                    if (env.headers == null) return false;
+                    if (env.getHeaders() == null) return false;
                     
                     return requiredHeaders.entrySet().stream()
-                        .anyMatch(entry -> Objects.equals(env.headers.get(entry.getKey()), entry.getValue()));
+                        .anyMatch(entry -> Objects.equals(env.getHeaders().get(entry.getKey()), entry.getValue()));
                 }
                 return false;
             },
@@ -184,10 +184,10 @@ public class HeaderFilter implements EventFilter {
             envelope -> {
                 if (envelope instanceof DomainEventEnvelope) {
                     DomainEventEnvelope env = (DomainEventEnvelope) envelope;
-                    if (env.headers == null) return false;
+                    if (env.getHeaders() == null) return false;
                     
                     return requiredHeaders.entrySet().stream()
-                        .allMatch(entry -> Objects.equals(env.headers.get(entry.getKey()), entry.getValue()));
+                        .allMatch(entry -> Objects.equals(env.getHeaders().get(entry.getKey()), entry.getValue()));
                 }
                 return false;
             },

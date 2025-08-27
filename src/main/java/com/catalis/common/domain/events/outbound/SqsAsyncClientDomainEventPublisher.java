@@ -56,13 +56,13 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
         if (retryTemplate != null) {
             // Use retry template for resilient publishing
             return Mono.fromCallable(() -> retryTemplate.execute(retryContext -> {
-                retryContext.setAttribute("operationName", "sqs-event-publish:" + e.topic + ":" + e.type);
+                retryContext.setAttribute("operationName", "sqs-event-publish:" + e.getTopic() + ":" + e.getType());
                 return trySendBlocking(e);
             }))
             .then()
             .onErrorMap(throwable -> {
                 log.error("Failed to publish event after retries: topic={}, type={}, key={}", 
-                         e.topic, e.type, e.key, throwable);
+                         e.getTopic(), e.getType(), e.getKey(), throwable);
                 return throwable;
             });
         } else {
@@ -70,7 +70,7 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
             return trySendReactive(e)
                     .onErrorMap(ex -> {
                         log.error("Failed to publish event to SQS: topic={}, type={}, key={}: {}", 
-                                e.topic, e.type, e.key, ex.getMessage());
+                                e.getTopic(), e.getType(), e.getKey(), ex.getMessage());
                         return ex;
                     });
         }
@@ -82,7 +82,7 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
             String messageBody = serializePayload(e);
             
             log.debug("Attempting to send event to SQS: topic={}, type={}, key={}, queueUrl={}", 
-                     e.topic, e.type, e.key, queueUrl);
+                     e.getTopic(), e.getType(), e.getKey(), queueUrl);
             
             SendMessageRequest request = SendMessageRequest.builder()
                     .queueUrl(queueUrl)
@@ -92,12 +92,12 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
             sqsClient.sendMessage(request).get(); // Blocking call for retry template
             
             log.debug("Successfully sent event to SQS: topic={}, type={}, queueUrl={}", 
-                     e.topic, e.type, queueUrl);
+                     e.getTopic(), e.getType(), queueUrl);
             
             return null;
         } catch (Exception ex) {
             log.error("Failed to send event to SQS: topic={}, type={}, key={}: {}", 
-                     e.topic, e.type, e.key, ex.getMessage());
+                     e.getTopic(), e.getType(), e.getKey(), ex.getMessage());
             throw new RuntimeException("SQS send failed", ex);
         }
     }
@@ -108,7 +108,7 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
                     String messageBody = serializePayload(e);
                     
                     log.debug("Attempting to send event to SQS: topic={}, type={}, key={}, queueUrl={}", 
-                             e.topic, e.type, e.key, queueUrl);
+                             e.getTopic(), e.getType(), e.getKey(), queueUrl);
                     
                     SendMessageRequest request = SendMessageRequest.builder()
                             .queueUrl(queueUrl)
@@ -117,7 +117,7 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
                     
                     return Mono.fromFuture(sqsClient.sendMessage(request))
                             .doOnSuccess(response -> log.debug("Successfully sent event to SQS: topic={}, type={}, queueUrl={}", 
-                                                              e.topic, e.type, queueUrl))
+                                                              e.getTopic(), e.getType(), queueUrl))
                             .then();
                 });
     }
@@ -129,7 +129,7 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
         }
         
         String queueName = props.getQueueName() != null && !props.getQueueName().isEmpty() 
-                ? props.getQueueName() : e.topic;
+                ? props.getQueueName() : e.getTopic();
         
         GetQueueUrlRequest request = GetQueueUrlRequest.builder()
                 .queueName(queueName)
@@ -145,7 +145,7 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
         }
         
         final String queueName = props.getQueueName() != null && !props.getQueueName().isEmpty() 
-                ? props.getQueueName() : e.topic;
+                ? props.getQueueName() : e.getTopic();
         
         GetQueueUrlRequest request = GetQueueUrlRequest.builder()
                 .queueName(queueName)
@@ -164,11 +164,11 @@ public class SqsAsyncClientDomainEventPublisher implements DomainEventPublisher 
             Object mapperObj = DomainEventAdapterUtils.resolveBean(ctx, null,
                     "com.fasterxml.jackson.databind.ObjectMapper");
             if (mapperObj instanceof ObjectMapper mapper) {
-                return mapper.writeValueAsString(e.payload);
+                return mapper.writeValueAsString(e.getPayload());
             }
         } catch (Exception ex) {
             log.warn("Failed to serialize payload using ObjectMapper, falling back to String.valueOf: {}", ex.getMessage());
         }
-        return String.valueOf(e.payload);
+        return String.valueOf(e.getPayload());
     }
 }

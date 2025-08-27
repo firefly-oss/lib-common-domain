@@ -61,15 +61,15 @@ public class TypeFilter implements EventFilter {
 
     @Override
     public boolean accept(DomainEventEnvelope envelope) {
-        if (envelope.type == null) {
+        if (envelope.getType() == null) {
             return false;
         }
 
         if (mode == FilterMode.EXACT) {
-            return exactTypes.contains(envelope.type);
+            return exactTypes.contains(envelope.getType());
         }
 
-        return patterns.stream().anyMatch(pattern -> pattern.matcher(envelope.type).matches());
+        return patterns.stream().anyMatch(pattern -> pattern.matcher(envelope.getType()).matches());
     }
 
     @Override
