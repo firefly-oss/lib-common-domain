@@ -338,6 +338,6 @@ Enable debug logging for observability components:
 ```yaml
 logging:
   level:
-    com.catalis.common.domain.actuator: DEBUG
+    com.firefly.common.domain.actuator: DEBUG
     org.springframework.boot.actuate: DEBUG
 ```

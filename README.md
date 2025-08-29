@@ -36,7 +36,7 @@ The Firefly Common Domain Library enables event-driven architectures by providin
 
 ```xml
 <dependency>
-    <groupId>com.catalis</groupId>
+    <groupId>com.firefly</groupId>
     <artifactId>lib-common-domain</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
@@ -45,7 +45,7 @@ The Firefly Common Domain Library enables event-driven architectures by providin
 ### Gradle
 
 ```groovy
-implementation 'com.catalis:lib-common-domain:1.0.0-SNAPSHOT'
+implementation 'com.firefly:lib-common-domain:1.0.0-SNAPSHOT'
 ```
 
 ## ⚙️ Configuration
@@ -214,7 +214,7 @@ firefly:
 The `@EventPublisher` annotation enables automatic event publishing from method results:
 
 ```java
-import com.catalis.common.domain.events.outbound.EventPublisher;
+import com.firefly.common.domain.events.outbound.EventPublisher;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -245,8 +245,8 @@ public class OrderService {
 Direct use of DomainEventPublisher:
 
 ```java
-import com.catalis.common.domain.events.outbound.DomainEventPublisher;
-import com.catalis.common.domain.events.DomainEventEnvelope;
+import com.firefly.common.domain.events.outbound.DomainEventPublisher;
+import com.firefly.common.domain.events.DomainEventEnvelope;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -346,8 +346,8 @@ firefly:
 Create event listeners using the `@EventListener` annotation:
 
 ```java
-import com.catalis.common.domain.events.inbound.EventListener;
-import com.catalis.common.domain.events.DomainEventEnvelope;
+import com.firefly.common.domain.events.inbound.EventListener;
+import com.firefly.common.domain.events.DomainEventEnvelope;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -377,7 +377,7 @@ The library integrates with `lib-transactional-engine-core` to bridge step event
 
 ```xml
 <dependency>
-    <groupId>com.catalis</groupId>
+    <groupId>com.firefly</groupId>
     <artifactId>lib-transactional-engine-core</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
