@@ -482,7 +482,6 @@ public interface ServiceClient {
         RestClientBuilder timeout(Duration timeout);
         RestClientBuilder maxConnections(int maxConnections);
         RestClientBuilder defaultHeader(String name, String value);
-        RestClientBuilder defaultHeaders(Map<String, String> headers);
         ServiceClient build();
     }
 

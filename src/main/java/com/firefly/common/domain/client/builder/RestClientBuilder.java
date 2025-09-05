@@ -126,14 +126,6 @@ public class RestClientBuilder implements ServiceClient.RestClientBuilder {
         return this;
     }
 
-    @Override
-    public RestClientBuilder defaultHeaders(Map<String, String> headers) {
-        if (headers != null) {
-            headers.forEach(this::defaultHeader);
-        }
-        return this;
-    }
-
     /**
      * Sets a custom WebClient instance.
      * 
