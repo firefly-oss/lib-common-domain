@@ -37,8 +37,13 @@ import reactor.netty.resources.ConnectionProvider;
 import java.time.Duration;
 
 /**
- * Auto-configuration for ServiceClient framework components.
- * Provides automatic setup of WebClient, gRPC channels, circuit breakers, and retry mechanisms.
+ * Enhanced auto-configuration for ServiceClient framework components.
+ *
+ * <p>Provides automatic setup of WebClient, gRPC channels, circuit breakers, retry mechanisms,
+ * and environment-specific configurations with validation and monitoring support.
+ *
+ * @author Firefly Software Solutions Inc
+ * @since 2.0.0
  */
 @Slf4j
 @AutoConfiguration
@@ -50,30 +55,67 @@ public class ServiceClientAutoConfiguration {
 
     public ServiceClientAutoConfiguration(ServiceClientProperties properties) {
         this.properties = properties;
+
+        // Apply environment-specific defaults
+        properties.applyEnvironmentDefaults();
+
+        log.info("Initializing ServiceClient framework with environment: {}",
+                properties.getEnvironment());
+        log.debug("ServiceClient configuration: REST max connections={}, gRPC plaintext={}, SDK auto-shutdown={}",
+                properties.getRest().getMaxConnections(),
+                properties.getGrpc().isUsePlaintextByDefault(),
+                properties.getSdk().isAutoShutdownEnabled());
     }
 
     @Bean
     @ConditionalOnMissingBean
     public WebClient.Builder webClientBuilder() {
-        log.info("Configuring WebClient builder for REST service clients");
-        
-        // Configure connection pool
+        log.info("Configuring enhanced WebClient builder for REST service clients");
+
+        ServiceClientProperties.Rest restConfig = properties.getRest();
+
+        // Configure connection pool with enhanced settings
         ConnectionProvider connectionProvider = ConnectionProvider.builder("rest-service-client")
-                .maxConnections(properties.getRest().getMaxConnections())
-                .maxIdleTime(properties.getRest().getMaxIdleTime())
-                .maxLifeTime(properties.getRest().getMaxLifeTime())
-                .pendingAcquireTimeout(properties.getRest().getPendingAcquireTimeout())
+                .maxConnections(restConfig.getMaxConnections())
+                .maxIdleTime(restConfig.getMaxIdleTime())
+                .maxLifeTime(restConfig.getMaxLifeTime())
+                .pendingAcquireTimeout(restConfig.getPendingAcquireTimeout())
                 .evictInBackground(Duration.ofSeconds(120))
                 .build();
 
+        // Configure HTTP client with enhanced features
         HttpClient httpClient = HttpClient.create(connectionProvider)
-                .responseTimeout(properties.getRest().getResponseTimeout());
+                .responseTimeout(restConfig.getResponseTimeout())
+                .followRedirect(restConfig.isFollowRedirects());
 
-        return WebClient.builder()
+        // Enable compression if configured
+        if (restConfig.isCompressionEnabled()) {
+            httpClient = httpClient.compress(true);
+        }
+
+        WebClient.Builder builder = WebClient.builder()
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .codecs(configurer -> {
-                    configurer.defaultCodecs().maxInMemorySize(properties.getRest().getMaxInMemorySize());
+                    configurer.defaultCodecs().maxInMemorySize(restConfig.getMaxInMemorySize());
                 });
+
+        // Add default headers
+        if (restConfig.getDefaultContentType() != null) {
+            builder.defaultHeader("Content-Type", restConfig.getDefaultContentType());
+        }
+        if (restConfig.getDefaultAcceptType() != null) {
+            builder.defaultHeader("Accept", restConfig.getDefaultAcceptType());
+        }
+
+        // Add global default headers
+        properties.getDefaultHeaders().forEach(builder::defaultHeader);
+
+        log.debug("WebClient configured with {} max connections, compression={}, follow redirects={}",
+                restConfig.getMaxConnections(),
+                restConfig.isCompressionEnabled(),
+                restConfig.isFollowRedirects());
+
+        return builder;
     }
 
     @Bean
@@ -140,7 +182,7 @@ public class ServiceClientAutoConfiguration {
 
     /**
      * Factory method to create retry instances for specific services.
-     * 
+     *
      * @param serviceName the service name
      * @param retryRegistry the retry registry
      * @return a retry instance for the service
@@ -148,4 +190,6 @@ public class ServiceClientAutoConfiguration {
     public static Retry createRetry(String serviceName, RetryRegistry retryRegistry) {
         return retryRegistry.retry(serviceName);
     }
+
+    // Additional beans can be added here as needed
 }
