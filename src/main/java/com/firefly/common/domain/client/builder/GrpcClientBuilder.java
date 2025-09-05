@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-package com.firefly.common.domain.client;
+package com.firefly.common.domain.client.builder;
 
+import com.firefly.common.domain.client.ServiceClient;
+import com.firefly.common.domain.client.impl.GrpcServiceClientImpl;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import io.grpc.ManagedChannel;
