@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-package com.firefly.commondomain.integration;
+package com.firefly.common.domain.integration;
 
-import com.firefly.commondomain.cqrs.Command;
-import com.firefly.commondomain.cqrs.Query;
-import com.firefly.commondomain.cqrs.ValidationResult;
+import com.firefly.common.domain.cqrs.command.Command;
+import com.firefly.common.domain.cqrs.query.Query;
+import com.firefly.common.domain.validation.ValidationResult;
 import lombok.Builder;
 import lombok.Data;
 import reactor.core.publisher.Mono;

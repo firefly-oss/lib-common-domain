@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-package com.firefly.commondomain.integration;
+package com.firefly.common.domain.integration;
 
-import com.firefly.commondomain.cqrs.CommandBus;
-import com.firefly.commondomain.cqrs.CommandHandler;
-import com.firefly.commondomain.cqrs.QueryBus;
-import com.firefly.commondomain.cqrs.QueryHandler;
+import com.firefly.common.domain.cqrs.command.CommandBus;
+import com.firefly.common.domain.cqrs.command.CommandHandler;
+import com.firefly.common.domain.cqrs.query.QueryBus;
+import com.firefly.common.domain.cqrs.query.QueryHandler;
+import com.firefly.transactionalengine.core.SagaResult;
 import com.firefly.transactionalengine.engine.SagaEngine;
 import com.firefly.transactionalengine.engine.StepInputs;
-import com.firefly.transactionalengine.engine.SagaResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,7 +38,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
-import static com.firefly.commondomain.integration.CustomerRegistrationTestData.*;
+import static com.firefly.common.domain.integration.CustomerRegistrationTestData.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -88,28 +88,30 @@ class CqrsSagaIntegrationTest {
         StepVerifier.create(sagaExecution)
             .assertNext(result -> {
                 assertThat(result.isSuccess()).isTrue();
-                assertThat(result.completedSteps()).containsExactly(
+                assertThat(result.failedSteps()).isEmpty();
+                assertThat(result.steps()).hasSize(5);
+                assertThat(result.steps().keySet()).containsExactlyInAnyOrder(
                     "validate-customer",
-                    "create-profile", 
+                    "create-profile",
                     "kyc-verification",
                     "create-account",
                     "send-welcome"
                 );
-                
+
                 // Verify step results
                 CustomerValidationResult validation = result.resultOf("validate-customer", CustomerValidationResult.class)
                     .orElseThrow(() -> new AssertionError("Validation step result not found"));
                 assertThat(validation.isValid()).isTrue();
-                
+
                 CustomerProfileResult profile = result.resultOf("create-profile", CustomerProfileResult.class)
                     .orElseThrow(() -> new AssertionError("Profile creation step result not found"));
                 assertThat(profile.getCustomerId()).isEqualTo(request.getCustomerId());
                 assertThat(profile.getStatus()).isEqualTo("CREATED");
-                
+
                 KycResult kyc = result.resultOf("kyc-verification", KycResult.class)
                     .orElseThrow(() -> new AssertionError("KYC step result not found"));
                 assertThat(kyc.isApproved()).isTrue();
-                
+
                 AccountCreationResult account = result.resultOf("create-account", AccountCreationResult.class)
                     .orElseThrow(() -> new AssertionError("Account creation step result not found"));
                 assertThat(account.getAccountNumber()).isNotNull();
@@ -136,7 +138,7 @@ class CqrsSagaIntegrationTest {
 
         // When: Execute the customer registration saga
         StepInputs inputs = StepInputs.of("validate-customer", request);
-        
+
         Mono<SagaResult> sagaExecution = sagaEngine.execute("customer-registration", inputs);
 
         // Then: Saga should fail and compensate completed steps
@@ -144,10 +146,9 @@ class CqrsSagaIntegrationTest {
             .assertNext(result -> {
                 assertThat(result.isSuccess()).isFalse();
                 assertThat(result.failedSteps()).contains("kyc-verification");
-                assertThat(result.compensatedSteps()).contains("create-profile");
-                
+
                 // Verify that profile was created but then compensated
-                assertThat(result.completedSteps()).contains("validate-customer", "create-profile");
+                assertThat(result.steps().keySet()).contains("validate-customer", "create-profile", "kyc-verification");
                 assertThat(result.compensatedSteps()).contains("create-profile");
             })
             .expectComplete()
@@ -225,8 +226,9 @@ class CqrsSagaIntegrationTest {
         StepVerifier.create(sagaExecution)
             .assertNext(result -> {
                 assertThat(result.isSuccess()).isTrue();
-                assertThat(result.completedSteps()).hasSize(5);
-                
+                assertThat(result.steps()).hasSize(5);
+                assertThat(result.failedSteps()).isEmpty();
+
                 // Type-safe result extraction
                 CustomerProfileResult profile = result.resultOf("create-profile", CustomerProfileResult.class)
                     .orElseThrow(() -> new AssertionError("Profile creation step result not found"));
@@ -278,31 +280,31 @@ class CqrsSagaIntegrationTest {
 
         @Bean
         @Primary
-        public ValidateCustomerHandler validateCustomerHandler() {
+        public MockValidateCustomerHandler validateCustomerHandler() {
             return new MockValidateCustomerHandler();
         }
 
         @Bean
         @Primary
-        public CreateCustomerProfileHandler createCustomerProfileHandler() {
+        public MockCreateCustomerProfileHandler createCustomerProfileHandler() {
             return new MockCreateCustomerProfileHandler();
         }
 
         @Bean
         @Primary
-        public StartKycVerificationHandler startKycVerificationHandler() {
+        public MockStartKycVerificationHandler startKycVerificationHandler() {
             return new MockStartKycVerificationHandler();
         }
 
         @Bean
         @Primary
-        public CreateAccountHandler createAccountHandler() {
+        public MockCreateAccountHandler createAccountHandler() {
             return new MockCreateAccountHandler();
         }
 
         @Bean
         @Primary
-        public GetCustomerProfileHandler getCustomerProfileHandler() {
+        public MockGetCustomerProfileHandler getCustomerProfileHandler() {
             return new MockGetCustomerProfileHandler();
         }
     }
@@ -311,8 +313,10 @@ class CqrsSagaIntegrationTest {
     static class MockValidateCustomerHandler implements QueryHandler<ValidateCustomerQuery, CustomerValidationResult> {
         @Override
         public Mono<CustomerValidationResult> handle(ValidateCustomerQuery query) {
+            // Use email hash to ensure consistent customer ID for caching tests
+            String customerId = "VALIDATED-" + Math.abs(query.getEmail().hashCode());
             return Mono.just(CustomerValidationResult.builder()
-                .customerId("VALIDATED-" + UUID.randomUUID().toString())
+                .customerId(customerId)
                 .isValid(true)
                 .validationErrors(List.of())
                 .build())
@@ -359,11 +363,16 @@ class CqrsSagaIntegrationTest {
             // Simulate KYC failure for invalid documents
             boolean approved = !command.getDocumentType().equals("INVALID_DOCUMENT");
 
+            if (!approved) {
+                // Return an error for invalid documents to trigger saga failure
+                return Mono.error(new RuntimeException("KYC verification failed for invalid document type"));
+            }
+
             return Mono.just(KycResult.builder()
                 .kycId("KYC-" + UUID.randomUUID().toString())
                 .customerId(command.getCustomerId())
-                .isApproved(approved)
-                .verificationStatus(approved ? "APPROVED" : "REJECTED")
+                .isApproved(true)
+                .verificationStatus("APPROVED")
                 .build())
                 .delayElement(Duration.ofMillis(500));
         }

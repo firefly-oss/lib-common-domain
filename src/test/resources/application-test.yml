@@ -11,8 +11,6 @@ spring:
 firefly:
   cqrs:
     enabled: true
-    saga:
-      enabled: true
   events:
     enabled: true
     adapter: APPLICATION_EVENT

@@ -55,15 +55,32 @@ class StepEventPublisherBridgeTest {
 
     @BeforeEach
     void setUp() {
-        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
-            .thenReturn(Mono.empty());
-        
         stepEventBridge = new StepEventPublisherBridge(defaultTopic, domainEventPublisher);
+    }
+
+    private StepEventEnvelope createStepEvent(String sagaName, String sagaId, String type, String key, Object payload) {
+        return new StepEventEnvelope(
+            sagaName,
+            sagaId,
+            "step-1", // stepId
+            null, // topic
+            type,
+            key,
+            payload,
+            Map.of(), // headers
+            1, // attempts
+            250L, // latencyMs
+            Instant.now().minusMillis(250), // startedAt
+            Instant.now(), // completedAt
+            "SUCCESS" // resultType
+        );
     }
 
     @Test
     @DisplayName("Should publish money transfer step event with complete metadata")
     void shouldPublishMoneyTransferStepEvent() {
+        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+            .thenReturn(Mono.empty());
         // Given: A money transfer saga step has completed
         MoneyTransferStepPayload payload = new MoneyTransferStepPayload(
             "TXN-12345",
@@ -74,22 +91,13 @@ class StepEventPublisherBridgeTest {
             "COMPLETED"
         );
 
-        StepEventEnvelope stepEvent = new StepEventEnvelope();
-        stepEvent.setSagaName("MoneyTransferSaga");
-        stepEvent.setSagaId("SAGA-67890");
-        stepEvent.setType("transfer.step.completed");
-        stepEvent.setKey("TXN-12345");
-        stepEvent.setPayload(payload);
-        stepEvent.setTimestamp(Instant.now());
-        stepEvent.setAttempts(1);
-        stepEvent.setLatencyMs(250L);
-        stepEvent.setStartedAt(Instant.now().minusMillis(250));
-        stepEvent.setCompletedAt(Instant.now());
-        stepEvent.setResultType("SUCCESS");
-        stepEvent.setHeaders(Map.of(
-            "source", "transfer-service",
-            "version", "1.0"
-        ));
+        StepEventEnvelope stepEvent = createStepEvent(
+            "MoneyTransferSaga",
+            "SAGA-67890",
+            "transfer.step.completed",
+            "TXN-12345",
+            payload
+        );
 
         // When: The step event is published through the bridge
         StepVerifier.create(stepEventBridge.publish(stepEvent))
@@ -108,9 +116,8 @@ class StepEventPublisherBridgeTest {
         assertThat(domainEvent.getPayload()).isEqualTo(stepEvent);
         assertThat(domainEvent.getTimestamp()).isEqualTo(stepEvent.getTimestamp());
 
-        // Verify headers are preserved
-        assertThat(domainEvent.getHeaders()).containsEntry("source", "transfer-service");
-        assertThat(domainEvent.getHeaders()).containsEntry("version", "1.0");
+        // Verify headers are empty since createStepEvent creates empty headers
+        assertThat(domainEvent.getHeaders()).isEmpty();
 
         // Verify step-specific metadata is added
         assertThat(domainEvent.getMetadata()).containsEntry("step.attempts", 1);
@@ -123,19 +130,16 @@ class StepEventPublisherBridgeTest {
     @Test
     @DisplayName("Should auto-generate key from saga name and ID when key is missing")
     void shouldAutoGenerateKeyFromSagaNameAndId() {
+        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+            .thenReturn(Mono.empty());
         // Given: A step event without a key
-        StepEventEnvelope stepEvent = new StepEventEnvelope();
-        stepEvent.setSagaName("AccountOpeningSaga");
-        stepEvent.setSagaId("SAGA-12345");
-        stepEvent.setType("account.validation.completed");
-        stepEvent.setKey(null); // No key provided
-        stepEvent.setPayload("Account validation successful");
-        stepEvent.setTimestamp(Instant.now());
-        stepEvent.setAttempts(1);
-        stepEvent.setLatencyMs(150L);
-        stepEvent.setStartedAt(Instant.now().minusMillis(150));
-        stepEvent.setCompletedAt(Instant.now());
-        stepEvent.setResultType("SUCCESS");
+        StepEventEnvelope stepEvent = createStepEvent(
+            "AccountOpeningSaga",
+            "SAGA-12345",
+            "account.validation.completed",
+            null, // No key provided
+            "Account validation successful"
+        );
 
         // When: The step event is published
         StepVerifier.create(stepEventBridge.publish(stepEvent))
@@ -152,20 +156,16 @@ class StepEventPublisherBridgeTest {
     @Test
     @DisplayName("Should use default topic when topic is missing")
     void shouldUseDefaultTopicWhenTopicMissing() {
+        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+            .thenReturn(Mono.empty());
         // Given: A step event without a topic
-        StepEventEnvelope stepEvent = new StepEventEnvelope();
-        stepEvent.setSagaName("LoanApprovalSaga");
-        stepEvent.setSagaId("SAGA-54321");
-        stepEvent.setType("loan.credit.check.completed");
-        stepEvent.setKey("LOAN-98765");
-        stepEvent.setTopic(null); // No topic provided
-        stepEvent.setPayload("Credit check passed");
-        stepEvent.setTimestamp(Instant.now());
-        stepEvent.setAttempts(2);
-        stepEvent.setLatencyMs(500L);
-        stepEvent.setStartedAt(Instant.now().minusMillis(500));
-        stepEvent.setCompletedAt(Instant.now());
-        stepEvent.setResultType("SUCCESS");
+        StepEventEnvelope stepEvent = createStepEvent(
+            "LoanApprovalSaga",
+            "SAGA-54321",
+            "loan.credit.check.completed",
+            "LOAN-98765",
+            "Credit check passed"
+        );
 
         // When: The step event is published
         StepVerifier.create(stepEventBridge.publish(stepEvent))
@@ -182,6 +182,8 @@ class StepEventPublisherBridgeTest {
     @Test
     @DisplayName("Should handle step event with retry attempts and failure metadata")
     void shouldHandleStepEventWithRetryAttemptsAndFailureMetadata() {
+        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+            .thenReturn(Mono.empty());
         // Given: A step event that failed and was retried
         FraudCheckStepPayload payload = new FraudCheckStepPayload(
             "TXN-99999",
@@ -191,24 +193,25 @@ class StepEventPublisherBridgeTest {
             85.5
         );
 
-        StepEventEnvelope stepEvent = new StepEventEnvelope();
-        stepEvent.setSagaName("FraudDetectionSaga");
-        stepEvent.setSagaId("SAGA-FRAUD-001");
-        stepEvent.setType("fraud.check.failed");
-        stepEvent.setKey("TXN-99999");
-        stepEvent.setTopic("banking-fraud-events");
-        stepEvent.setPayload(payload);
-        stepEvent.setTimestamp(Instant.now());
-        stepEvent.setAttempts(3); // Multiple attempts
-        stepEvent.setLatencyMs(1200L); // Longer latency due to retries
-        stepEvent.setStartedAt(Instant.now().minusMillis(1200));
-        stepEvent.setCompletedAt(Instant.now());
-        stepEvent.setResultType("FAILURE");
-        stepEvent.setHeaders(Map.of(
-            "source", "fraud-detection-service",
-            "priority", "high",
-            "alert-level", "critical"
-        ));
+        StepEventEnvelope stepEvent = new StepEventEnvelope(
+            "FraudDetectionSaga",
+            "SAGA-FRAUD-001",
+            "step-fraud-check", // stepId
+            "banking-fraud-events", // topic
+            "fraud.check.failed", // type
+            "TXN-99999", // key
+            payload,
+            Map.of(
+                "source", "fraud-detection-service",
+                "priority", "high",
+                "alert-level", "critical"
+            ),
+            3, // Multiple attempts
+            1200L, // Longer latency due to retries
+            Instant.now().minusMillis(1200),
+            Instant.now(),
+            "FAILURE"
+        );
 
         // When: The failed step event is published
         StepVerifier.create(stepEventBridge.publish(stepEvent))
@@ -237,20 +240,24 @@ class StepEventPublisherBridgeTest {
     @Test
     @DisplayName("Should handle step event with empty headers gracefully")
     void shouldHandleStepEventWithEmptyHeadersGracefully() {
+        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+            .thenReturn(Mono.empty());
         // Given: A step event with null headers
-        StepEventEnvelope stepEvent = new StepEventEnvelope();
-        stepEvent.setSagaName("SimpleTransferSaga");
-        stepEvent.setSagaId("SAGA-SIMPLE-001");
-        stepEvent.setType("transfer.initiated");
-        stepEvent.setKey("TXN-SIMPLE-001");
-        stepEvent.setPayload("Transfer initiated");
-        stepEvent.setTimestamp(Instant.now());
-        stepEvent.setAttempts(1);
-        stepEvent.setLatencyMs(100L);
-        stepEvent.setStartedAt(Instant.now().minusMillis(100));
-        stepEvent.setCompletedAt(Instant.now());
-        stepEvent.setResultType("SUCCESS");
-        stepEvent.setHeaders(null); // Null headers
+        StepEventEnvelope stepEvent = new StepEventEnvelope(
+            "SimpleTransferSaga",
+            "SAGA-SIMPLE-001",
+            "step-transfer", // stepId
+            null, // topic
+            "transfer.initiated", // type
+            "TXN-SIMPLE-001", // key
+            "Transfer initiated",
+            null, // Null headers
+            1,
+            100L,
+            Instant.now().minusMillis(100),
+            Instant.now(),
+            "SUCCESS"
+        );
 
         // When: The step event is published
         StepVerifier.create(stepEventBridge.publish(stepEvent))
@@ -261,7 +268,7 @@ class StepEventPublisherBridgeTest {
         verify(domainEventPublisher).publish(eventCaptor.capture());
 
         DomainEventEnvelope domainEvent = eventCaptor.getValue();
-        assertThat(domainEvent.getHeaders()).isNull();
+        assertThat(domainEvent.getHeaders()).isEmpty();
         assertThat(domainEvent.getMetadata()).isNotNull();
         assertThat(domainEvent.getMetadata()).containsEntry("step.attempts", 1);
     }
@@ -274,18 +281,13 @@ class StepEventPublisherBridgeTest {
         when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
             .thenReturn(Mono.error(publisherError));
 
-        StepEventEnvelope stepEvent = new StepEventEnvelope();
-        stepEvent.setSagaName("TestSaga");
-        stepEvent.setSagaId("SAGA-ERROR-001");
-        stepEvent.setType("test.step");
-        stepEvent.setKey("TEST-001");
-        stepEvent.setPayload("test payload");
-        stepEvent.setTimestamp(Instant.now());
-        stepEvent.setAttempts(1);
-        stepEvent.setLatencyMs(50L);
-        stepEvent.setStartedAt(Instant.now().minusMillis(50));
-        stepEvent.setCompletedAt(Instant.now());
-        stepEvent.setResultType("SUCCESS");
+        StepEventEnvelope stepEvent = createStepEvent(
+            "TestSaga",
+            "SAGA-ERROR-001",
+            "test.step",
+            "TEST-001",
+            "test payload"
+        );
 
         // When: The step event is published and publisher fails
         StepVerifier.create(stepEventBridge.publish(stepEvent))

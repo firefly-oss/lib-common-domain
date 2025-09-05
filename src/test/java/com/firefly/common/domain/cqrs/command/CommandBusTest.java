@@ -16,6 +16,8 @@
 
 package com.firefly.common.domain.cqrs.command;
 
+import com.firefly.common.domain.cqrs.command.DefaultCommandBus.CommandHandlerNotFoundException;
+import com.firefly.common.domain.cqrs.command.DefaultCommandBus.CommandProcessingException;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import com.firefly.common.domain.validation.ValidationResult;
 import lombok.Data;
@@ -278,7 +280,7 @@ class CommandBusTest {
             return command.validate()
                 .flatMap(validation -> {
                     if (!validation.isValid()) {
-                        return Mono.error(new CommandProcessingException("Validation failed: " + validation.getErrors()));
+                        return Mono.error(new CommandProcessingException("Validation failed: " + validation.getErrors(), new RuntimeException("Validation error")));
                     }
                     
                     // Simulate account creation
@@ -309,7 +311,7 @@ class CommandBusTest {
             return command.validate()
                 .flatMap(validation -> {
                     if (!validation.isValid()) {
-                        return Mono.error(new CommandProcessingException("Transfer validation failed: " + validation.getErrors()));
+                        return Mono.error(new CommandProcessingException("Transfer validation failed: " + validation.getErrors(), new RuntimeException("Transfer validation error")));
                     }
                     
                     // Simulate money transfer

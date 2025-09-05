@@ -54,7 +54,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * of the Firefly Common Domain library. Tests cross-component interactions,
  * event-driven workflows, and complete customer journey scenarios.
  */
-@SpringBootTest(classes = BankingWorkflowIntegrationTest.TestConfiguration.class)
+@SpringBootTest(
+    classes = BankingWorkflowIntegrationTest.TestConfiguration.class,
+    properties = {
+        "firefly.events.adapter=APPLICATION_EVENT",
+        "firefly.events.enabled=true"
+    }
+)
 @TestPropertySource(locations = "classpath:application-test.yml")
 @DisplayName("Banking Workflow Integration - Complete Customer Journey")
 class BankingWorkflowIntegrationTest {
@@ -173,29 +179,32 @@ class BankingWorkflowIntegrationTest {
     @DisplayName("Should publish and consume step events through bridge")
     void shouldPublishAndConsumeStepEventsThroughBridge() throws InterruptedException {
         // Given: A step event from a transaction saga
-        StepEventEnvelope stepEvent = new StepEventEnvelope();
-        stepEvent.setSagaName("PaymentProcessingSaga");
-        stepEvent.setSagaId("SAGA-PAY-001");
-        stepEvent.setType("payment.validation.completed");
-        stepEvent.setKey("TXN-98765");
-        stepEvent.setPayload("Payment validation successful");
-        stepEvent.setTimestamp(Instant.now());
-        stepEvent.setAttempts(1);
-        stepEvent.setLatencyMs(150L);
-        stepEvent.setStartedAt(Instant.now().minusMillis(150));
-        stepEvent.setCompletedAt(Instant.now());
-        stepEvent.setResultType("SUCCESS");
+        StepEventEnvelope stepEvent = new StepEventEnvelope(
+            "PaymentProcessingSaga",
+            "SAGA-PAY-001",
+            "step-payment-validation", // stepId
+            null, // topic
+            "payment.step.validation.completed", // type - contains "step" for proper categorization
+            "TXN-98765", // key
+            "Payment validation successful",
+            Map.of(), // headers
+            1, // attempts
+            150L, // latencyMs
+            Instant.now().minusMillis(150), // startedAt
+            Instant.now(), // completedAt
+            "SUCCESS" // resultType
+        );
 
         // When: The step event is published through the bridge
         StepVerifier.create(stepEventBridge.publish(stepEvent))
             .verifyComplete();
 
         // Then: Step event should be received as domain event
-        boolean eventReceived = eventListener.waitForStepEvent("payment.validation.completed", 5, TimeUnit.SECONDS);
+        boolean eventReceived = eventListener.waitForStepEvent("payment.step.validation.completed", 5, TimeUnit.SECONDS);
         assertThat(eventReceived).isTrue();
 
         DomainEventEnvelope receivedEvent = eventListener.getLastStepEvent();
-        assertThat(receivedEvent.getType()).isEqualTo("payment.validation.completed");
+        assertThat(receivedEvent.getType()).isEqualTo("payment.step.validation.completed");
         assertThat(receivedEvent.getKey()).isEqualTo("TXN-98765");
         assertThat(receivedEvent.getMetadata()).containsEntry("step.attempts", 1);
         assertThat(receivedEvent.getMetadata()).containsEntry("step.result_type", "SUCCESS");
@@ -368,18 +377,21 @@ class BankingWorkflowIntegrationTest {
                     );
                     
                     // Publish step event
-                    StepEventEnvelope stepEvent = new StepEventEnvelope();
-                    stepEvent.setSagaName("MoneyTransferSaga");
-                    stepEvent.setSagaId("SAGA-" + transactionId);
-                    stepEvent.setType("transfer.step.completed");
-                    stepEvent.setKey(transactionId);
-                    stepEvent.setPayload("Transfer step completed");
-                    stepEvent.setTimestamp(Instant.now());
-                    stepEvent.setAttempts(1);
-                    stepEvent.setLatencyMs(100L);
-                    stepEvent.setStartedAt(Instant.now().minusMillis(100));
-                    stepEvent.setCompletedAt(Instant.now());
-                    stepEvent.setResultType("SUCCESS");
+                    StepEventEnvelope stepEvent = new StepEventEnvelope(
+                        "MoneyTransferSaga",
+                        "SAGA-" + transactionId,
+                        "step-transfer", // stepId
+                        null, // topic
+                        "transfer.step.completed", // type
+                        transactionId, // key
+                        "Transfer step completed",
+                        Map.of(), // headers
+                        1, // attempts
+                        100L, // latencyMs
+                        Instant.now().minusMillis(100), // startedAt
+                        Instant.now(), // completedAt
+                        "SUCCESS" // resultType
+                    );
                     
                     // Publish domain event
                     DomainEventEnvelope domainEvent = DomainEventEnvelope.builder()
@@ -471,8 +483,33 @@ class BankingWorkflowIntegrationTest {
         }
     }
 
-    @org.springframework.boot.test.context.TestConfiguration
+    @org.springframework.boot.SpringBootConfiguration
+    @org.springframework.boot.autoconfigure.EnableAutoConfiguration(
+        exclude = {
+            org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration.class,
+            org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration.class
+        }
+    )
+    @org.springframework.context.annotation.ComponentScan(
+        basePackages = "com.firefly.common.domain",
+        excludeFilters = {
+            @org.springframework.context.annotation.ComponentScan.Filter(
+                type = org.springframework.context.annotation.FilterType.REGEX,
+                pattern = "com\\.firefly\\.common\\.domain\\.examples\\..*"
+            ),
+            @org.springframework.context.annotation.ComponentScan.Filter(
+                type = org.springframework.context.annotation.FilterType.REGEX,
+                pattern = "com\\.firefly\\.common\\.domain\\.actuator\\..*"
+            )
+        }
+    )
     static class TestConfiguration {
-        // Test configuration beans if needed
+
+        @org.springframework.context.annotation.Bean
+        @org.springframework.context.annotation.Primary
+        public org.springframework.context.ApplicationEventPublisher applicationEventPublisher(
+                org.springframework.context.ApplicationContext applicationContext) {
+            return applicationContext;
+        }
     }
 }

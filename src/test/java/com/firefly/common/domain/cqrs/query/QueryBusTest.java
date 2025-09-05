@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.cqrs.query;
 
+import com.firefly.common.domain.cqrs.query.DefaultQueryBus.QueryHandlerNotFoundException;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import lombok.Data;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
 
 /**
  * Comprehensive test suite for QueryBus functionality using banking domain examples.
@@ -64,10 +66,10 @@ class QueryBusTest {
     void setUp() {
         when(applicationContext.getBeansOfType(QueryHandler.class))
             .thenReturn(Map.of());
-        
+
         mockCache = new ConcurrentMapCache("query-cache");
-        when(cacheManager.getCache(anyString())).thenReturn(mockCache);
-        
+        lenient().when(cacheManager.getCache(anyString())).thenReturn(mockCache);
+
         queryBus = new DefaultQueryBus(applicationContext, correlationContext, cacheManager);
     }
 

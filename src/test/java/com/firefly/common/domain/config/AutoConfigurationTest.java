@@ -19,6 +19,7 @@ package com.firefly.common.domain.config;
 import com.firefly.common.domain.cqrs.command.CommandBus;
 import com.firefly.common.domain.cqrs.query.QueryBus;
 import com.firefly.common.domain.events.outbound.DomainEventPublisher;
+import com.firefly.common.domain.events.properties.DomainEventsProperties;
 import com.firefly.common.domain.stepevents.StepEventPublisherBridge;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -32,6 +33,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Comprehensive test suite for Auto-Configuration classes in the Firefly Common Domain library.
@@ -47,7 +49,8 @@ class AutoConfigurationTest {
             DomainEventsAutoConfiguration.class,
             ServiceClientAutoConfiguration.class,
             StepBridgeConfiguration.class
-        ));
+        ))
+        .withBean(CorrelationContext.class);
 
     @Test
     @DisplayName("Should auto-configure CQRS framework when enabled")
@@ -90,6 +93,7 @@ class AutoConfigurationTest {
     @DisplayName("Should auto-configure Domain Events with APPLICATION_EVENT adapter")
     void shouldAutoConfigureDomainEventsWithApplicationEventAdapter() {
         contextRunner
+            .withBean(ApplicationEventPublisher.class, () -> mock(ApplicationEventPublisher.class))
             .withPropertyValues(
                 "firefly.events.enabled=true",
                 "firefly.events.adapter=APPLICATION_EVENT"
@@ -98,7 +102,7 @@ class AutoConfigurationTest {
                 // Then: Domain Events components should be available
                 assertThat(context).hasSingleBean(DomainEventPublisher.class);
                 assertThat(context).hasSingleBean(ApplicationEventPublisher.class);
-                
+
                 // Verify publisher is properly configured
                 DomainEventPublisher publisher = context.getBean(DomainEventPublisher.class);
                 assertThat(publisher).isNotNull();
@@ -116,14 +120,14 @@ class AutoConfigurationTest {
                 "firefly.events.adapter=AUTO"
             )
             .run(context -> {
-                // Then: Domain Events should fall back to APPLICATION_EVENT adapter
+                // Then: Domain Events should auto-detect available adapter
                 assertThat(context).hasSingleBean(DomainEventPublisher.class);
-                
+
                 DomainEventPublisher publisher = context.getBean(DomainEventPublisher.class);
                 assertThat(publisher).isNotNull();
-                // In test environment without Kafka/RabbitMQ, should fall back to ApplicationEvent
+                // In test environment with RabbitMQ dependencies, RabbitMQ is auto-detected
                 assertThat(publisher.getClass().getSimpleName())
-                    .isEqualTo("ApplicationEventDomainEventPublisher");
+                    .isEqualTo("RabbitMqDomainEventPublisher");
             });
     }
 
@@ -245,21 +249,18 @@ class AutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("Should handle missing optional dependencies gracefully")
-    void shouldHandleMissingOptionalDependenciesGracefully() {
+    @DisplayName("Should fail when explicitly configured adapter is not available")
+    void shouldFailWhenExplicitlyConfiguredAdapterIsNotAvailable() {
         contextRunner
             .withPropertyValues(
                 "firefly.events.enabled=true",
                 "firefly.events.adapter=KAFKA" // Kafka not available in test
             )
             .run(context -> {
-                // Then: Should fall back to APPLICATION_EVENT adapter
-                assertThat(context).hasSingleBean(DomainEventPublisher.class);
-                
-                DomainEventPublisher publisher = context.getBean(DomainEventPublisher.class);
-                // Should fall back to ApplicationEvent when Kafka is not available
-                assertThat(publisher.getClass().getSimpleName())
-                    .isEqualTo("ApplicationEventDomainEventPublisher");
+                // Then: Should fail with appropriate error message
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasMessageContaining("Kafka adapter selected but KafkaTemplate bean was not found");
             });
     }
 
