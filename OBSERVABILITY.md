@@ -15,43 +15,46 @@ The library provides enhanced observability through:
 
 ## Configuration
 
-All observability features can be enabled/disabled through configuration properties:
+Observability features are automatically enabled when the library is on the classpath. The features are controlled through Spring Boot Actuator configuration:
+
+```yaml
+# Spring Boot Actuator configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  health:
+    # Domain Events health indicators (automatically configured)
+    domainEventsApplicationEvent:
+      enabled: true
+    domainEventsKafka:
+      enabled: true
+    domainEventsRabbit:
+      enabled: true
+    domainEventsSqs:
+      enabled: true
+    domainEventsKinesis:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+```
+
+### Domain Events Configuration
+
+The observability features are tied to the domain events configuration:
 
 ```yaml
 firefly:
-  observability:
-    jvm:
-      enabled: true  # Default: true
-    thread-pool:
-      enabled: true  # Default: true
-    http-client:
-      enabled: true  # Default: true
-      health-enabled: true  # Default: true
-      endpoints:  # Configuration for HTTP health checks
-        - name: "external-api"
-          health-check-url: "https://api.example.com/health"
-          max-response-time: 1000
-          headers:
-            Authorization: "Bearer token"
-        - name: "payment-service"
-          health-check-url: "http://payment-service/actuator/health"
-          max-response-time: 500
-      timeout: 5s
-      cache-timeout: 1m
-    startup:
-      enabled: true  # Default: true
-    cache:
-      enabled: true  # Default: true
-
-# Spring Boot Actuator health indicator configuration
-management:
-  health:
-    threadPool:
-      enabled: true
-    httpClient:
-      enabled: true
-    cache:
-      enabled: true
+  events:
+    enabled: true  # Enables domain events and related health indicators
+    adapter: auto  # AUTO, KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT, NOOP
 ```
 
 ## JVM Metrics
