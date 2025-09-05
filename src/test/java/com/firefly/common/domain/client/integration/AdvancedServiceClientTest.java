@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-package com.firefly.common.domain.client;
+package com.firefly.common.domain.client.integration;
 
+import com.firefly.common.domain.client.ServiceClient;
 import com.firefly.common.domain.client.health.ServiceClientHealthManager;
 import com.firefly.common.domain.client.interceptor.LoggingInterceptor;
 import com.firefly.common.domain.client.interceptor.MetricsInterceptor;
@@ -96,26 +97,28 @@ class AdvancedServiceClientTest {
         // Given: A healthy service client
         when(mockServiceClient.getServiceName()).thenReturn("test-service");
         when(mockServiceClient.healthCheck()).thenReturn(Mono.empty());
-        
+
         healthManager.registerClient(mockServiceClient);
-        
+
         // When: Performing health check
         StepVerifier.create(healthManager.performHealthCheck("test-service", mockServiceClient))
-            .assertNext(status -> {
-                assertThat(status.getServiceName()).isEqualTo("test-service");
-                assertThat(status.getState()).isEqualTo(ServiceClientHealthManager.HealthState.HEALTHY);
-                assertThat(status.isHealthy()).isTrue();
+            .assertNext(healthStatus -> {
+                // Then: Should be healthy
+                assertThat(healthStatus.getServiceName()).isEqualTo("test-service");
+                assertThat(healthStatus.getState()).isEqualTo(ServiceClientHealthManager.HealthState.HEALTHY);
+                assertThat(healthStatus.isHealthy()).isTrue();
             })
             .verifyComplete();
-        
+
         // When: Service starts failing
         when(mockServiceClient.healthCheck()).thenReturn(Mono.error(new RuntimeException("Service unavailable")));
-        
+
         StepVerifier.create(healthManager.performHealthCheck("test-service", mockServiceClient))
-            .assertNext(status -> {
-                assertThat(status.getState()).isEqualTo(ServiceClientHealthManager.HealthState.DEGRADED);
-                assertThat(status.getConsecutiveFailures()).isEqualTo(1);
-                assertThat(status.isHealthy()).isFalse();
+            .assertNext(failureStatus -> {
+                // Then: Should be degraded
+                assertThat(failureStatus.getState()).isEqualTo(ServiceClientHealthManager.HealthState.DEGRADED);
+                assertThat(failureStatus.getConsecutiveFailures()).isEqualTo(1);
+                assertThat(failureStatus.isHealthy()).isFalse();
             })
             .verifyComplete();
     }
@@ -252,18 +255,22 @@ class AdvancedServiceClientTest {
 
         healthManager.registerClient(mockServiceClient);
 
-        // When: Monitoring health over time
-        StepVerifier.create(
-            healthManager.performHealthCheck("degrading-service", mockServiceClient)
-                .then(healthManager.performHealthCheck("degrading-service", mockServiceClient))
-                .then(healthManager.performHealthCheck("degrading-service", mockServiceClient))
-                .then(healthManager.performHealthCheck("degrading-service", mockServiceClient))
-        )
-        .assertNext(finalStatus -> {
-            // Then: Should detect recovery
-            assertThat(finalStatus.getState()).isEqualTo(ServiceClientHealthManager.HealthState.HEALTHY);
-        })
-        .verifyComplete();
+        // When & Then: Monitoring health over time
+        StepVerifier.create(healthManager.performHealthCheck("degrading-service", mockServiceClient))
+            .assertNext(status -> assertThat(status.getState()).isEqualTo(ServiceClientHealthManager.HealthState.HEALTHY))
+            .verifyComplete();
+
+        StepVerifier.create(healthManager.performHealthCheck("degrading-service", mockServiceClient))
+            .assertNext(status -> assertThat(status.getState()).isEqualTo(ServiceClientHealthManager.HealthState.DEGRADED))
+            .verifyComplete();
+
+        StepVerifier.create(healthManager.performHealthCheck("degrading-service", mockServiceClient))
+            .assertNext(status -> assertThat(status.getState()).isEqualTo(ServiceClientHealthManager.HealthState.DEGRADED))
+            .verifyComplete();
+
+        StepVerifier.create(healthManager.performHealthCheck("degrading-service", mockServiceClient))
+            .assertNext(status -> assertThat(status.getState()).isEqualTo(ServiceClientHealthManager.HealthState.HEALTHY))
+            .verifyComplete();
     }
 
     // Helper methods and classes for testing
