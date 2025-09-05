@@ -15,6 +15,7 @@
  */
 package com.firefly.common.domain.client.builder;
 
+import com.firefly.common.domain.client.config.AuthenticationConfiguration;
 import com.firefly.common.domain.client.grpc.GrpcServiceClient;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -25,10 +26,13 @@ import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.retry.RetryRegistry;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Metadata;
 import io.grpc.stub.AbstractAsyncStub;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -54,6 +58,16 @@ public class GrpcServiceClientBuilder<T extends AbstractAsyncStub<T>>
     private Retry retry;
     private CorrelationContext correlationContext;
     private Duration timeout = Duration.ofSeconds(30);
+
+    // Enhanced configuration options
+    private AuthenticationConfiguration authConfig;
+    private final Map<String, String> defaultMetadata = new HashMap<>();
+    private final Map<String, Object> defaultQueryParams = new HashMap<>();
+    private String defaultContentType;
+    private String defaultAcceptType;
+    private final Map<Class<?>, Function<String, ?>> customDeserializers = new HashMap<>();
+    private final Map<Class<?>, Function<?, Boolean>> responseValidators = new HashMap<>();
+    private final Map<Class<?>, Function<?, ?>> responseTransformers = new HashMap<>();
     
     // gRPC-specific settings
     private Duration keepAliveTime = Duration.ofMinutes(5);
@@ -345,5 +359,193 @@ public class GrpcServiceClientBuilder<T extends AbstractAsyncStub<T>>
                 .build();
 
         return RetryRegistry.of(config).retry(serviceName);
+    }
+
+    // Enhanced configuration method implementations
+
+    @Override
+    public GrpcServiceClientBuilder<T> authentication(AuthenticationConfiguration authConfig) {
+        this.authConfig = authConfig;
+        return this;
+    }
+
+    @Override
+    public GrpcServiceClientBuilder<T> defaultHeader(String name, String value) {
+        if (name != null && value != null) {
+            this.defaultMetadata.put(name, value);
+        }
+        return this;
+    }
+
+    @Override
+    public GrpcServiceClientBuilder<T> defaultHeaders(Map<String, String> headers) {
+        if (headers != null) {
+            this.defaultMetadata.putAll(headers);
+        }
+        return this;
+    }
+
+    @Override
+    public GrpcServiceClientBuilder<T> defaultQueryParam(String name, Object value) {
+        if (name != null && value != null) {
+            this.defaultQueryParams.put(name, value);
+        }
+        return this;
+    }
+
+    @Override
+    public GrpcServiceClientBuilder<T> defaultQueryParams(Map<String, Object> queryParams) {
+        if (queryParams != null) {
+            this.defaultQueryParams.putAll(queryParams);
+        }
+        return this;
+    }
+
+    @Override
+    public GrpcServiceClientBuilder<T> defaultContentType(String contentType) {
+        this.defaultContentType = contentType;
+        return this;
+    }
+
+    @Override
+    public GrpcServiceClientBuilder<T> defaultAcceptType(String acceptType) {
+        this.defaultAcceptType = acceptType;
+        return this;
+    }
+
+    @Override
+    public GrpcServiceClientBuilder<T> defaultJsonContentType() {
+        this.defaultContentType = "application/json";
+        this.defaultAcceptType = "application/json";
+        return this;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R> GrpcServiceClientBuilder<T> customDeserializer(Class<R> responseType,
+                                                            Function<String, R> deserializer) {
+        if (responseType != null && deserializer != null) {
+            this.customDeserializers.put(responseType, (Function<String, ?>) deserializer);
+        }
+        return this;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R> GrpcServiceClientBuilder<T> responseValidator(Class<R> responseType,
+                                                           Function<R, Boolean> validator) {
+        if (responseType != null && validator != null) {
+            this.responseValidators.put(responseType, (Function<?, Boolean>) validator);
+        }
+        return this;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R> GrpcServiceClientBuilder<T> responseTransformer(Class<R> responseType,
+                                                             Function<R, R> transformer) {
+        if (responseType != null && transformer != null) {
+            this.responseTransformers.put(responseType, (Function<?, ?>) transformer);
+        }
+        return this;
+    }
+
+    /**
+     * Adds default gRPC metadata that will be included in all requests.
+     *
+     * @param key the metadata key
+     * @param value the metadata value
+     * @return this builder instance for method chaining
+     */
+    public GrpcServiceClientBuilder<T> defaultMetadata(String key, String value) {
+        if (key != null && value != null) {
+            this.defaultMetadata.put(key, value);
+        }
+        return this;
+    }
+
+    /**
+     * Adds multiple default gRPC metadata entries.
+     *
+     * @param metadata map of metadata to add
+     * @return this builder instance for method chaining
+     */
+    public GrpcServiceClientBuilder<T> defaultMetadata(Map<String, String> metadata) {
+        if (metadata != null) {
+            this.defaultMetadata.putAll(metadata);
+        }
+        return this;
+    }
+
+    /**
+     * Gets the authentication configuration.
+     *
+     * @return the authentication configuration, or null if not set
+     */
+    public AuthenticationConfiguration getAuthenticationConfiguration() {
+        return authConfig;
+    }
+
+    /**
+     * Gets the default metadata.
+     *
+     * @return immutable map of default metadata
+     */
+    public Map<String, String> getDefaultMetadata() {
+        return Map.copyOf(defaultMetadata);
+    }
+
+    /**
+     * Gets the default query parameters.
+     *
+     * @return immutable map of default query parameters
+     */
+    public Map<String, Object> getDefaultQueryParams() {
+        return Map.copyOf(defaultQueryParams);
+    }
+
+    /**
+     * Gets the default content type.
+     *
+     * @return the default content type, or null if not set
+     */
+    public String getDefaultContentType() {
+        return defaultContentType;
+    }
+
+    /**
+     * Gets the default accept type.
+     *
+     * @return the default accept type, or null if not set
+     */
+    public String getDefaultAcceptType() {
+        return defaultAcceptType;
+    }
+
+    /**
+     * Gets the custom deserializers map.
+     *
+     * @return immutable map of custom deserializers
+     */
+    public Map<Class<?>, Function<String, ?>> getCustomDeserializers() {
+        return Map.copyOf(customDeserializers);
+    }
+
+    /**
+     * Gets the response validators map.
+     *
+     * @return immutable map of response validators
+     */
+    public Map<Class<?>, Function<?, Boolean>> getResponseValidators() {
+        return Map.copyOf(responseValidators);
+    }
+
+    /**
+     * Gets the response transformers map.
+     *
+     * @return immutable map of response transformers
+     */
+    public Map<Class<?>, Function<?, ?>> getResponseTransformers() {
+        return Map.copyOf(responseTransformers);
     }
 }

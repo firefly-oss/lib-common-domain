@@ -15,6 +15,7 @@
  */
 package com.firefly.common.domain.client.builder;
 
+import com.firefly.common.domain.client.config.AuthenticationConfiguration;
 import com.firefly.common.domain.client.rest.RestServiceClient;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -33,7 +34,10 @@ import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 /**
  * Builder for creating REST ServiceClient instances with fluent API.
@@ -53,6 +57,16 @@ public class RestServiceClientBuilder implements ServiceClientBuilder<RestServic
     private Retry retry;
     private CorrelationContext correlationContext;
     private Duration timeout = Duration.ofSeconds(30);
+
+    // Enhanced configuration options
+    private AuthenticationConfiguration authConfig;
+    private final Map<String, String> defaultHeaders = new HashMap<>();
+    private final Map<String, Object> defaultQueryParams = new HashMap<>();
+    private String defaultContentType;
+    private String defaultAcceptType;
+    private final Map<Class<?>, Function<String, ?>> customDeserializers = new HashMap<>();
+    private final Map<Class<?>, Function<?, Boolean>> responseValidators = new HashMap<>();
+    private final Map<Class<?>, Function<?, ?>> responseTransformers = new HashMap<>();
     
     // Connection pool settings
     private int maxConnections = 100;
@@ -302,5 +316,166 @@ public class RestServiceClientBuilder implements ServiceClientBuilder<RestServic
                 .build();
 
         return RetryRegistry.of(config).retry(serviceName);
+    }
+
+    // Enhanced configuration method implementations
+
+    @Override
+    public RestServiceClientBuilder authentication(AuthenticationConfiguration authConfig) {
+        this.authConfig = authConfig;
+        return this;
+    }
+
+    @Override
+    public RestServiceClientBuilder defaultHeader(String name, String value) {
+        if (name != null && value != null) {
+            this.defaultHeaders.put(name, value);
+        }
+        return this;
+    }
+
+    @Override
+    public RestServiceClientBuilder defaultHeaders(Map<String, String> headers) {
+        if (headers != null) {
+            this.defaultHeaders.putAll(headers);
+        }
+        return this;
+    }
+
+    @Override
+    public RestServiceClientBuilder defaultQueryParam(String name, Object value) {
+        if (name != null && value != null) {
+            this.defaultQueryParams.put(name, value);
+        }
+        return this;
+    }
+
+    @Override
+    public RestServiceClientBuilder defaultQueryParams(Map<String, Object> queryParams) {
+        if (queryParams != null) {
+            this.defaultQueryParams.putAll(queryParams);
+        }
+        return this;
+    }
+
+    @Override
+    public RestServiceClientBuilder defaultContentType(String contentType) {
+        this.defaultContentType = contentType;
+        return this;
+    }
+
+    @Override
+    public RestServiceClientBuilder defaultAcceptType(String acceptType) {
+        this.defaultAcceptType = acceptType;
+        return this;
+    }
+
+    @Override
+    public RestServiceClientBuilder defaultJsonContentType() {
+        this.defaultContentType = "application/json";
+        this.defaultAcceptType = "application/json";
+        return this;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R> RestServiceClientBuilder customDeserializer(Class<R> responseType,
+                                                          Function<String, R> deserializer) {
+        if (responseType != null && deserializer != null) {
+            this.customDeserializers.put(responseType, (Function<String, ?>) deserializer);
+        }
+        return this;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R> RestServiceClientBuilder responseValidator(Class<R> responseType,
+                                                        Function<R, Boolean> validator) {
+        if (responseType != null && validator != null) {
+            this.responseValidators.put(responseType, (Function<?, Boolean>) validator);
+        }
+        return this;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R> RestServiceClientBuilder responseTransformer(Class<R> responseType,
+                                                          Function<R, R> transformer) {
+        if (responseType != null && transformer != null) {
+            this.responseTransformers.put(responseType, (Function<?, ?>) transformer);
+        }
+        return this;
+    }
+
+    /**
+     * Gets the authentication configuration.
+     *
+     * @return the authentication configuration, or null if not set
+     */
+    public AuthenticationConfiguration getAuthenticationConfiguration() {
+        return authConfig;
+    }
+
+    /**
+     * Gets the default headers.
+     *
+     * @return immutable map of default headers
+     */
+    public Map<String, String> getDefaultHeaders() {
+        return Map.copyOf(defaultHeaders);
+    }
+
+    /**
+     * Gets the default query parameters.
+     *
+     * @return immutable map of default query parameters
+     */
+    public Map<String, Object> getDefaultQueryParams() {
+        return Map.copyOf(defaultQueryParams);
+    }
+
+    /**
+     * Gets the default content type.
+     *
+     * @return the default content type, or null if not set
+     */
+    public String getDefaultContentType() {
+        return defaultContentType;
+    }
+
+    /**
+     * Gets the default accept type.
+     *
+     * @return the default accept type, or null if not set
+     */
+    public String getDefaultAcceptType() {
+        return defaultAcceptType;
+    }
+
+    /**
+     * Gets the custom deserializers map.
+     *
+     * @return immutable map of custom deserializers
+     */
+    public Map<Class<?>, Function<String, ?>> getCustomDeserializers() {
+        return Map.copyOf(customDeserializers);
+    }
+
+    /**
+     * Gets the response validators map.
+     *
+     * @return immutable map of response validators
+     */
+    public Map<Class<?>, Function<?, Boolean>> getResponseValidators() {
+        return Map.copyOf(responseValidators);
+    }
+
+    /**
+     * Gets the response transformers map.
+     *
+     * @return immutable map of response transformers
+     */
+    public Map<Class<?>, Function<?, ?>> getResponseTransformers() {
+        return Map.copyOf(responseTransformers);
     }
 }

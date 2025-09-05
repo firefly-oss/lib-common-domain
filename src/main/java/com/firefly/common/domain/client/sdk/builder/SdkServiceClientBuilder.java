@@ -17,6 +17,7 @@
 package com.firefly.common.domain.client.sdk.builder;
 
 import com.firefly.common.domain.client.builder.ServiceClientBuilder;
+import com.firefly.common.domain.client.config.AuthenticationConfiguration;
 import com.firefly.common.domain.client.sdk.SdkServiceClient;
 import com.firefly.common.domain.client.sdk.DefaultSdkServiceClient;
 import com.firefly.common.domain.tracing.CorrelationContext;
@@ -29,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -66,6 +68,22 @@ public class SdkServiceClientBuilder<S> implements ServiceClientBuilder<SdkServi
     @Override
     public SdkServiceClientBuilder<S> serviceName(String serviceName) {
         this.serviceName = serviceName;
+        return this;
+    }
+
+    /**
+     * Sets the base URL for this SDK client.
+     * Note: For SDK clients, the base URL is typically configured within the SDK itself.
+     * This implementation is provided for interface compatibility.
+     * 
+     * @param baseUrl the base URL
+     * @return this builder
+     */
+    @Override
+    public SdkServiceClientBuilder<S> baseUrl(String baseUrl) {
+        // SDK clients typically configure their base URL internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Base URL configured: {} (SDK client implementation)", baseUrl);
         return this;
     }
 
@@ -188,6 +206,177 @@ public class SdkServiceClientBuilder<S> implements ServiceClientBuilder<SdkServi
      */
     public SdkServiceClientBuilder<S> sdkVersion(String sdkVersion) {
         this.sdkVersion = sdkVersion;
+        return this;
+    }
+
+    /**
+     * Sets the authentication configuration for this client.
+     * Note: SDK clients typically handle authentication internally.
+     *
+     * @param authConfig the authentication configuration
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public SdkServiceClientBuilder<S> authentication(AuthenticationConfiguration authConfig) {
+        // SDK clients typically handle authentication internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Authentication configuration provided (SDK client implementation)");
+        return this;
+    }
+
+    /**
+     * Adds a default header that will be included in all requests.
+     * Note: SDK clients typically handle headers internally.
+     *
+     * @param name the header name
+     * @param value the header value
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public SdkServiceClientBuilder<S> defaultHeader(String name, String value) {
+        // SDK clients typically handle headers internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Default header configured: {} (SDK client implementation)", name);
+        return this;
+    }
+
+    /**
+     * Adds multiple default headers that will be included in all requests.
+     * Note: SDK clients typically handle headers internally.
+     *
+     * @param headers map of headers to add
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public SdkServiceClientBuilder<S> defaultHeaders(Map<String, String> headers) {
+        // SDK clients typically handle headers internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Default headers configured: {} (SDK client implementation)", headers.size());
+        return this;
+    }
+
+    /**
+     * Adds a default query parameter that will be included in all requests.
+     * Note: SDK clients typically handle query parameters internally.
+     *
+     * @param name the parameter name
+     * @param value the parameter value
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public SdkServiceClientBuilder<S> defaultQueryParam(String name, Object value) {
+        // SDK clients typically handle query parameters internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Default query parameter configured: {} (SDK client implementation)", name);
+        return this;
+    }
+
+    /**
+     * Adds multiple default query parameters that will be included in all requests.
+     * Note: SDK clients typically handle query parameters internally.
+     *
+     * @param queryParams map of query parameters to add
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public SdkServiceClientBuilder<S> defaultQueryParams(Map<String, Object> queryParams) {
+        // SDK clients typically handle query parameters internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Default query parameters configured: {} (SDK client implementation)", queryParams.size());
+        return this;
+    }
+
+    /**
+     * Sets the default content type for requests.
+     * Note: SDK clients typically handle content types internally.
+     *
+     * @param contentType the content type
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public SdkServiceClientBuilder<S> defaultContentType(String contentType) {
+        // SDK clients typically handle content types internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Default content type configured: {} (SDK client implementation)", contentType);
+        return this;
+    }
+
+    /**
+     * Sets the default accept type for requests.
+     * Note: SDK clients typically handle accept types internally.
+     *
+     * @param acceptType the accept type
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public SdkServiceClientBuilder<S> defaultAcceptType(String acceptType) {
+        // SDK clients typically handle accept types internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Default accept type configured: {} (SDK client implementation)", acceptType);
+        return this;
+    }
+
+    /**
+     * Sets both default content type and accept type to application/json.
+     * Note: SDK clients typically handle content types internally.
+     *
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public SdkServiceClientBuilder<S> defaultJsonContentType() {
+        // SDK clients typically handle content types internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Default JSON content type configured (SDK client implementation)");
+        return this;
+    }
+
+    /**
+     * Sets a custom response deserializer for the specified type.
+     * Note: SDK clients typically handle deserialization internally.
+     *
+     * @param responseType the response type class
+     * @param deserializer function to deserialize response string to object
+     * @param <R> the response type
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public <R> SdkServiceClientBuilder<S> customDeserializer(Class<R> responseType, Function<String, R> deserializer) {
+        // SDK clients typically handle deserialization internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Custom deserializer configured for type {} (SDK client implementation)", responseType.getSimpleName());
+        return this;
+    }
+
+    /**
+     * Enables response validation for the specified type.
+     * Note: SDK clients typically handle validation internally.
+     *
+     * @param responseType the response type class
+     * @param validator function to validate responses
+     * @param <R> the response type
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public <R> SdkServiceClientBuilder<S> responseValidator(Class<R> responseType, Function<R, Boolean> validator) {
+        // SDK clients typically handle validation internally
+        // This is a no-op implementation for interface compatibility
+        log.debug("Response validator configured for type {} (SDK client implementation)", responseType.getSimpleName());
+        return this;
+    }
+
+    /**
+     * Sets a response transformer for the specified type.
+     *
+     * @param responseType the response type class
+     * @param transformer function to transform responses
+     * @param <R> the response type
+     * @return this builder instance for method chaining
+     */
+    @Override
+    public <R> SdkServiceClientBuilder<S> responseTransformer(Class<R> responseType, Function<R, R> transformer) {
+        // SDK clients typically don't handle response transformation at this level
+        // This is a no-op implementation that maintains interface compatibility
+        log.debug("Response transformer configured for type {} (SDK client implementation)", responseType.getSimpleName());
         return this;
     }
 

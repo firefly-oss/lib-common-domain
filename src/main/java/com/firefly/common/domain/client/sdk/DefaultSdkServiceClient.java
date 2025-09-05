@@ -16,8 +16,13 @@
 
 package com.firefly.common.domain.client.sdk;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.firefly.common.domain.client.config.RequestConfiguration;
+import com.firefly.common.domain.client.config.ResponseConfiguration;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
+import io.github.resilience4j.reactor.retry.RetryOperator;
 import io.github.resilience4j.retry.Retry;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -90,8 +95,8 @@ public class DefaultSdkServiceClient<S> implements SdkServiceClient<S> {
             return operation.apply(sdkInstance);
         })
         .timeout(timeout)
-        .transform(circuitBreaker.transformDecorator())
-        .transform(retry.transformDecorator())
+        .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
+        .transformDeferred(RetryOperator.of(retry))
         .doOnSuccess(result -> log.debug("SDK operation completed successfully for service '{}'", serviceName))
         .doOnError(error -> log.error("SDK operation failed for service '{}': {}", serviceName, error.getMessage()));
     }
@@ -113,8 +118,8 @@ public class DefaultSdkServiceClient<S> implements SdkServiceClient<S> {
             return operation.apply(sdkInstance);
         })
         .timeout(timeout)
-        .transform(circuitBreaker.transformDecorator())
-        .transform(retry.transformDecorator())
+        .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
+        .transformDeferred(RetryOperator.of(retry))
         .doOnSuccess(result -> log.debug("Async SDK operation completed successfully for service '{}'", serviceName))
         .doOnError(error -> log.error("Async SDK operation failed for service '{}': {}", serviceName, error.getMessage()));
     }
@@ -148,7 +153,7 @@ public class DefaultSdkServiceClient<S> implements SdkServiceClient<S> {
             return Mono.error(new IllegalStateException("SDK client has been shut down"));
         }
 
-        return Mono.fromCallable(() -> {
+        return Mono.<Void>fromCallable(() -> {
             // Basic health check - verify SDK instance is available
             if (sdkInstance == null) {
                 throw new IllegalStateException("SDK instance is null");
@@ -190,6 +195,162 @@ public class DefaultSdkServiceClient<S> implements SdkServiceClient<S> {
     @Override
     public String getServiceName() {
         return serviceName;
+    }
+
+    @Override
+    public String getBaseUrl() {
+        throw new UnsupportedOperationException("SDK clients do not use base URLs. Use execute() or executeAsync() methods instead.");
+    }
+
+    // HTTP methods are not supported for SDK clients - they should use execute() methods
+    @Override
+    public <R> Mono<R> get(String endpoint, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, Map<String, Object> queryParams, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> post(String endpoint, Object request, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP POST not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> put(String endpoint, Object request, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP PUT not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> delete(String endpoint, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP DELETE not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> patch(String endpoint, Object request, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP PATCH not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, RequestConfiguration requestConfig, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, Map<String, Object> queryParams, RequestConfiguration requestConfig, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> post(String endpoint, Object request, RequestConfiguration requestConfig, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP POST not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> put(String endpoint, Object request, RequestConfiguration requestConfig, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP PUT not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> delete(String endpoint, RequestConfiguration requestConfig, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP DELETE not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> patch(String endpoint, Object request, RequestConfiguration requestConfig, Class<R> responseType) {
+        return Mono.error(new UnsupportedOperationException("HTTP PATCH not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, Map<String, Object> queryParams, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> post(String endpoint, Object request, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP POST not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> put(String endpoint, Object request, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP PUT not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> delete(String endpoint, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP DELETE not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> patch(String endpoint, Object request, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP PATCH not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, RequestConfiguration requestConfig, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, Map<String, Object> queryParams, RequestConfiguration requestConfig, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> post(String endpoint, Object request, RequestConfiguration requestConfig, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP POST not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> put(String endpoint, Object request, RequestConfiguration requestConfig, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP PUT not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> delete(String endpoint, RequestConfiguration requestConfig, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP DELETE not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> patch(String endpoint, Object request, RequestConfiguration requestConfig, ResponseConfiguration<R> responseConfig) {
+        return Mono.error(new UnsupportedOperationException("HTTP PATCH not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, TypeReference<R> typeReference) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> get(String endpoint, Map<String, Object> queryParams, TypeReference<R> typeReference) {
+        return Mono.error(new UnsupportedOperationException("HTTP GET not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> post(String endpoint, Object request, TypeReference<R> typeReference) {
+        return Mono.error(new UnsupportedOperationException("HTTP POST not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> put(String endpoint, Object request, TypeReference<R> typeReference) {
+        return Mono.error(new UnsupportedOperationException("HTTP PUT not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> delete(String endpoint, TypeReference<R> typeReference) {
+        return Mono.error(new UnsupportedOperationException("HTTP DELETE not supported for SDK clients. Use execute() or executeAsync() methods instead."));
+    }
+
+    @Override
+    public <R> Mono<R> patch(String endpoint, Object request, TypeReference<R> typeReference) {
+        return Mono.error(new UnsupportedOperationException("HTTP PATCH not supported for SDK clients. Use execute() or executeAsync() methods instead."));
     }
 
     private void shutdownSdkInstance() {
