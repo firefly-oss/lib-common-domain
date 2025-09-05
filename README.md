@@ -1,7 +1,7 @@
 # Firefly Common Domain Library
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.java.net/)
+[![Java](https://img.shields.io/badge/Java-17+-orange.svg)](https://openjdk.java.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green.svg)](https://spring.io/projects/spring-boot)
 
 A powerful Spring Boot library that enables domain-driven design (DDD) with reactive programming support, featuring multi-messaging adapter architecture and comprehensive event handling capabilities for the **Core-Domain Layer** of the Firefly OpenCore Banking Platform.
@@ -112,16 +112,16 @@ Understanding these fundamental patterns is essential for effectively using this
 **Example:**
 ```java
 // Command - Changes state
-TransferMoneyCommand command = TransferMoneyCommand.builder()
-    .fromAccount("ACC-001")
-    .toAccount("ACC-002")
-    .amount(new BigDecimal("1000.00"))
-    .build();
+TransferMoneyCommand command = new TransferMoneyCommand(
+    "ACC-001",           // fromAccount
+    "ACC-002",           // toAccount  
+    new BigDecimal("1000.00"), // amount
+    "Monthly transfer",  // description
+    "CORR-12345"        // correlationId
+);
 
-// Query - Reads data
-GetAccountBalanceQuery query = GetAccountBalanceQuery.builder()
-    .accountNumber("ACC-001")
-    .build();
+// Query - Reads data  
+GetAccountBalanceQuery query = new GetAccountBalanceQuery("ACC-001");
 ```
 
 ### Saga Pattern
@@ -237,6 +237,7 @@ The following components are automatically configured when the library is on the
 - **Domain Events** (`DomainEventsAutoConfiguration`)
 - **ServiceClient Framework** (`ServiceClientAutoConfiguration`)
 - **StepEvents Bridge** (`StepBridgeConfiguration`)
+- **JSON Logging** (`JsonLoggingAutoConfiguration`)
 - **Observability Features** (`DomainEventsActuatorAutoConfiguration`)
 
 ### 3. Basic Configuration
