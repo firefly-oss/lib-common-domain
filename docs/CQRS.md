@@ -79,7 +79,6 @@ Commands represent intentions to change state and encapsulate all data needed fo
 
 ### Command Interface
 
-<augment_code_snippet path="src/main/java/com/firefly/common/domain/cqrs/command/Command.java" mode="EXCERPT">
 ````java
 public interface Command<R> {
 
@@ -260,7 +259,6 @@ Queries represent requests for data and should be idempotent read operations.
 
 ### Query Interface
 
-<augment_code_snippet path="src/main/java/com/firefly/common/domain/cqrs/query/Query.java" mode="EXCERPT">
 ````java
 public interface Query<R> {
 
@@ -453,7 +451,6 @@ Command handlers contain the business logic for processing commands.
 
 ### CommandHandler Interface
 
-<augment_code_snippet path="src/main/java/com/firefly/common/domain/cqrs/command/CommandHandler.java" mode="EXCERPT">
 ````java
 public interface CommandHandler<C extends Command<R>, R> {
     
@@ -542,7 +539,6 @@ Query handlers process queries and return data, with optional caching support.
 
 ### QueryHandler Interface
 
-<augment_code_snippet path="src/main/java/com/firefly/common/domain/cqrs/query/QueryHandler.java" mode="EXCERPT">
 ````java
 public interface QueryHandler<Q extends Query<R>, R> {
 

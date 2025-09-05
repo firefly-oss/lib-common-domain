@@ -96,7 +96,6 @@ All domain events are wrapped in a standardized envelope for consistent handling
 
 ### DomainEventEnvelope Structure
 
-<augment_code_snippet path="src/main/java/com/firefly/common/domain/events/DomainEventEnvelope.java" mode="EXCERPT">
 ````java
 @Builder
 @Data
@@ -242,7 +241,6 @@ firefly:
 
 The simplest way to publish events using the `@EventPublisher` annotation:
 
-<augment_code_snippet path="src/main/java/com/firefly/common/domain/events/outbound/EventPublisher.java" mode="EXCERPT">
 ````java
 @Target({ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)

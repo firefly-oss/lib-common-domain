@@ -31,10 +31,16 @@ firefly:
   # CQRS Framework
   cqrs:
     enabled: true
+    command:
+      timeout: 30s
+      metrics-enabled: true
+      tracing-enabled: true
     query:
-      cache:
-        enabled: true
-        default-ttl: 300
+      timeout: 15s
+      caching-enabled: true
+      cache-ttl: 15m
+      metrics-enabled: true
+      tracing-enabled: true
 
   # Domain Events
   events:
@@ -48,6 +54,71 @@ firefly:
   # ServiceClient Framework
   service-client:
     enabled: true
+    default-timeout: 30s
+    environment: DEVELOPMENT
+    default-headers:
+      User-Agent: "firefly-common-domain/2.0.0"
+    rest:
+      max-connections: 100
+      max-idle-time: 5m
+      max-life-time: 30m
+      pending-acquire-timeout: 10s
+      response-timeout: 30s
+      max-in-memory-size: 1048576  # 1MB
+      connect-timeout: 10s
+      read-timeout: 30s
+      follow-redirects: true
+      compression-enabled: true
+      default-content-type: "application/json"
+      default-accept-type: "application/json"
+      logging-enabled: false
+      max-retries: 3
+    grpc:
+      keep-alive-time: 5m
+      keep-alive-timeout: 30s
+      keep-alive-without-calls: true
+      max-inbound-message-size: 4194304  # 4MB
+      max-inbound-metadata-size: 8192    # 8KB
+      call-timeout: 30s
+      retry-enabled: true
+      use-plaintext-by-default: true
+      compression-enabled: true
+      max-concurrent-streams: 100
+    sdk:
+      default-timeout: 45s
+      auto-shutdown-enabled: true
+      max-concurrent-operations: 50
+      logging-enabled: false
+      properties: {}
+    circuit-breaker:
+      enabled: true
+      failure-rate-threshold: 50.0
+      wait-duration-in-open-state: 60s
+      sliding-window-size: 10
+      minimum-number-of-calls: 5
+      slow-call-rate-threshold: 100.0
+      slow-call-duration-threshold: 60s
+      permitted-number-of-calls-in-half-open-state: 3
+      max-wait-duration-in-half-open-state: 0s
+    retry:
+      enabled: true
+      max-attempts: 3
+      wait-duration: 500ms
+      exponential-backoff-multiplier: 2.0
+      max-wait-duration: 10s
+      jitter-enabled: true
+    metrics:
+      enabled: true
+      detailed-metrics: false
+      export-interval: 1m
+      histogram-enabled: true
+      tags: {}
+    security:
+      enabled: true
+      default-auth-type: NONE
+      ssl-validation-enabled: true
+      trusted-certificates: null
+      request-signing-enabled: false
 
 # Domain topic configuration for step events
 domain:
@@ -136,16 +207,16 @@ public class CorrelationConfiguration {
 For production deployments, you need to configure external messaging infrastructure:
 
 ```yaml
-# Kafka Configuration
+# Spring Infrastructure Configuration
 spring:
+  # Kafka Configuration
   kafka:
     bootstrap-servers: localhost:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
-
-# RabbitMQ Configuration
-spring:
+  
+  # RabbitMQ Configuration
   rabbitmq:
     host: localhost
     port: 5672
