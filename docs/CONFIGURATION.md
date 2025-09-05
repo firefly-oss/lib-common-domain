@@ -57,7 +57,7 @@ firefly:
     default-timeout: 30s
     environment: DEVELOPMENT
     default-headers:
-      User-Agent: "firefly-common-domain/2.0.0"
+      User-Agent: "firefly-common-domain/1.0.0-SNAPSHOT"
     rest:
       max-connections: 100
       max-idle-time: 5m
