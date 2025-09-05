@@ -16,8 +16,7 @@
 
 package com.firefly.common.domain.examples;
 
-import com.firefly.common.domain.client.rest.RestServiceClient;
-import com.firefly.common.domain.client.sdk.SdkServiceClient;
+import com.firefly.common.domain.client.ServiceClient;
 import com.firefly.common.domain.cqrs.command.Command;
 import com.firefly.common.domain.cqrs.command.CommandHandler;
 import com.firefly.common.domain.validation.ValidationResult;
@@ -128,14 +127,14 @@ public class BankingCommandHandlerExample {
             implements CommandHandler<ProcessMoneyTransferCommand, TransferResult> {
 
         // ServiceClients are DEPENDENCIES injected into CQRS handlers
-        private final SdkServiceClient<CoreBankingSDK> coreBankingClient;
-        private final RestServiceClient fraudDetectionClient;
-        private final RestServiceClient notificationClient;
+        private final ServiceClient coreBankingClient;
+        private final ServiceClient fraudDetectionClient;
+        private final ServiceClient notificationClient;
 
         public ProcessMoneyTransferCommandHandler(
-                SdkServiceClient<CoreBankingSDK> coreBankingClient,
-                RestServiceClient fraudDetectionClient,
-                RestServiceClient notificationClient) {
+                ServiceClient coreBankingClient,
+                ServiceClient fraudDetectionClient,
+                ServiceClient notificationClient) {
             this.coreBankingClient = coreBankingClient;
             this.fraudDetectionClient = fraudDetectionClient;
             this.notificationClient = notificationClient;
@@ -175,12 +174,14 @@ public class BankingCommandHandlerExample {
                     .currency(command.getCurrency())
                     .build();
 
-            return fraudDetectionClient.post("/fraud/check", request, FraudCheckResult.class);
+            return fraudDetectionClient.post("/fraud/check", FraudCheckResult.class)
+                    .withBody(request)
+                    .execute();
         }
 
         private Mono<TransferResult> executeTransferViaSdk(ProcessMoneyTransferCommand command) {
-            // Command handler USES SDK ServiceClient for core banking operations
-            return coreBankingClient.execute(sdk -> 
+            // Command handler USES SDK ServiceClient for core banking operations with new improved API
+            return coreBankingClient.<CoreBankingSDK, SdkTransferResult>call(sdk ->
                 sdk.transfers().execute(TransferRequest.builder()
                     .fromAccount(command.getFromAccountNumber())
                     .toAccount(command.getToAccountNumber())
@@ -188,13 +189,14 @@ public class BankingCommandHandlerExample {
                     .currency(command.getCurrency())
                     .purpose(command.getPurpose())
                     .build())
-            ).map(sdkResult -> TransferResult.builder()
-                    .transferId(sdkResult.getTransferId())
-                    .status(sdkResult.getStatus())
-                    .amount(command.getAmount())
-                    .currency(command.getCurrency())
-                    .processedAt(Instant.now())
-                    .build());
+            ).map(result -> TransferResult.builder()
+                .transferId(result.getTransferId())
+                .status(result.getStatus())
+                .amount(command.getAmount())
+                .currency(command.getCurrency())
+                .processedAt(Instant.now())
+                .build()
+            );
         }
 
         private Mono<Void> sendNotification(ProcessMoneyTransferCommand command, TransferResult result) {
@@ -207,7 +209,9 @@ public class BankingCommandHandlerExample {
                     .status(result.getStatus())
                     .build();
 
-            return notificationClient.post("/notifications/transfer", notification, Void.class);
+            return notificationClient.post("/notifications/transfer", Void.class)
+                    .withBody(notification)
+                    .execute();
         }
 
         @Override
@@ -268,5 +272,11 @@ public class BankingCommandHandlerExample {
         private String toAccount;
         private BigDecimal amount;
         private String status;
+    }
+
+    // Mock class for the example
+    public static class CoreBankingTransferResult {
+        public String getTransferId() { return "TXN-123"; }
+        public String getStatus() { return "COMPLETED"; }
     }
 }
