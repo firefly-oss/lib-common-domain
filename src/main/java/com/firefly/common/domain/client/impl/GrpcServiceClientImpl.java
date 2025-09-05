@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-package com.firefly.common.domain.client;
+package com.firefly.common.domain.client.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.firefly.common.domain.client.ClientType;
+import com.firefly.common.domain.client.RequestBuilder;
+import com.firefly.common.domain.client.ServiceClient;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import io.grpc.ManagedChannel;
@@ -161,12 +164,55 @@ public class GrpcServiceClientImpl<T> implements ServiceClient {
 
         return operation.apply(stub)
             .timeout(timeout)
-            .doOnSubscribe(subscription -> 
+            .doOnSubscribe(subscription ->
                 log.debug("Executing async gRPC operation for service '{}'", serviceName))
-            .doOnSuccess(result -> 
+            .doOnSuccess(result ->
                 log.debug("Successfully completed async gRPC operation for service '{}'", serviceName))
-            .doOnError(error -> 
+            .doOnError(error ->
                 log.error("Failed async gRPC operation for service '{}': {}", serviceName, error.getMessage()));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <S, R> Mono<R> call(Function<S, R> operation) {
+        if (isShutdown.get()) {
+            return Mono.error(new IllegalStateException("Client has been shut down"));
+        }
+
+        return Mono.fromCallable(() -> operation.apply((S) stub))
+            .timeout(timeout)
+            .doOnSubscribe(subscription ->
+                log.debug("Executing gRPC operation for service '{}'", serviceName))
+            .doOnSuccess(result ->
+                log.debug("Successfully completed gRPC operation for service '{}'", serviceName))
+            .doOnError(error ->
+                log.error("Failed gRPC operation for service '{}': {}", serviceName, error.getMessage()));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <S, R> Mono<R> callAsync(Function<S, Mono<R>> operation) {
+        if (isShutdown.get()) {
+            return Mono.error(new IllegalStateException("Client has been shut down"));
+        }
+
+        return operation.apply((S) stub)
+            .timeout(timeout)
+            .doOnSubscribe(subscription ->
+                log.debug("Executing async gRPC operation for service '{}'", serviceName))
+            .doOnSuccess(result ->
+                log.debug("Successfully completed async gRPC operation for service '{}'", serviceName))
+            .doOnError(error ->
+                log.error("Failed async gRPC operation for service '{}': {}", serviceName, error.getMessage()));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <S> S sdk() {
+        if (isShutdown.get()) {
+            throw new IllegalStateException("Client has been shut down");
+        }
+        return (S) stub;
     }
 
     // ========================================
@@ -211,7 +257,7 @@ public class GrpcServiceClientImpl<T> implements ServiceClient {
         }
         
         // For gRPC, we check if the channel is ready
-        return Mono.fromCallable(() -> {
+        return Mono.<Void>fromCallable(() -> {
             if (channel.isShutdown() || channel.isTerminated()) {
                 throw new RuntimeException("gRPC channel is not available");
             }

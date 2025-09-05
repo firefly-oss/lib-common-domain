@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-package com.firefly.common.domain.client;
+package com.firefly.common.domain.client.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.firefly.common.domain.client.ClientType;
+import com.firefly.common.domain.client.RequestBuilder;
+import com.firefly.common.domain.client.ServiceClient;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import lombok.extern.slf4j.Slf4j;
@@ -127,41 +130,108 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
     }
 
     // ========================================
-    // SDK-specific Methods
+    // SDK-specific Methods - Simplified API
     // ========================================
 
+    /**
+     * Execute a synchronous operation with the SDK instance.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * // Simple and type-safe - no casting required!
+     * Mono<PaymentResult> result = client.call(sdk -> sdk.processPayment(request));
+     * }</pre>
+     *
+     * @param operation the operation to execute with the SDK
+     * @param <R> the return type
+     * @return a Mono containing the result
+     */
     @Override
     @SuppressWarnings("unchecked")
-    public <R> Mono<R> execute(Function<Object, R> operation) {
+    public <S1, R> Mono<R> call(Function<S1, R> operation) {
         if (isShutdown.get()) {
             return Mono.error(new IllegalStateException("Client has been shut down"));
         }
 
-        return Mono.fromCallable(() -> operation.apply(sdkInstance))
+        return Mono.fromCallable(() -> operation.apply((S1) sdkInstance))
             .timeout(timeout)
-            .doOnSubscribe(subscription -> 
+            .doOnSubscribe(subscription ->
                 log.debug("Executing SDK operation for service '{}'", serviceName))
-            .doOnSuccess(result -> 
+            .doOnSuccess(result ->
                 log.debug("Successfully completed SDK operation for service '{}'", serviceName))
-            .doOnError(error -> 
+            .doOnError(error ->
                 log.error("Failed SDK operation for service '{}': {}", serviceName, error.getMessage()));
     }
 
+    /**
+     * Execute an asynchronous operation with the SDK instance.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * // For SDKs that return Mono/Future - no casting required!
+     * Mono<PaymentResult> result = client.callAsync(sdk -> sdk.processPaymentAsync(request));
+     * }</pre>
+     *
+     * @param operation the async operation to execute with the SDK
+     * @param <R> the return type
+     * @return a Mono containing the result
+     */
     @Override
     @SuppressWarnings("unchecked")
-    public <R> Mono<R> executeAsync(Function<Object, Mono<R>> operation) {
+    public <S1, R> Mono<R> callAsync(Function<S1, Mono<R>> operation) {
         if (isShutdown.get()) {
             return Mono.error(new IllegalStateException("Client has been shut down"));
         }
 
-        return operation.apply(sdkInstance)
+        return operation.apply((S1) sdkInstance)
             .timeout(timeout)
-            .doOnSubscribe(subscription -> 
+            .doOnSubscribe(subscription ->
                 log.debug("Executing async SDK operation for service '{}'", serviceName))
-            .doOnSuccess(result -> 
+            .doOnSuccess(result ->
                 log.debug("Successfully completed async SDK operation for service '{}'", serviceName))
-            .doOnError(error -> 
+            .doOnError(error ->
                 log.error("Failed async SDK operation for service '{}': {}", serviceName, error.getMessage()));
+    }
+
+    /**
+     * Get direct access to the SDK instance for complex operations.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * // Direct access when you need full control
+     * PaymentSDK sdk = client.sdk();
+     * PaymentResult result = sdk.processPayment(request);
+     * }</pre>
+     *
+     * @return the SDK instance
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    public <S1> S1 sdk() {
+        if (isShutdown.get()) {
+            throw new IllegalStateException("Client has been shut down");
+        }
+        return (S1) sdkInstance;
+    }
+
+    // ========================================
+    // Legacy Methods (Deprecated but maintained for compatibility)
+    // ========================================
+
+    @Override
+    @Deprecated
+    @SuppressWarnings("unchecked")
+    public <R> Mono<R> execute(Function<Object, R> operation) {
+        log.warn("execute(Function<Object, R>) is deprecated. Use call(Function<S, R>) for better type safety.");
+        return call(sdk -> operation.apply(sdk));
+    }
+
+    @Override
+    @Deprecated
+    @SuppressWarnings("unchecked")
+    public <R> Mono<R> executeAsync(Function<Object, Mono<R>> operation) {
+        log.warn("executeAsync(Function<Object, Mono<R>>) is deprecated. Use callAsync(Function<S, Mono<R>>) for better type safety.");
+        return callAsync(sdk -> operation.apply(sdk));
     }
 
     // ========================================
@@ -206,14 +276,17 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
         }
         
         // For SDK clients, we just check if the instance is available
-        return Mono.fromCallable(() -> {
+        return Mono.<Void>fromCallable(() -> {
             if (sdkInstance == null) {
                 throw new RuntimeException("SDK instance is not available");
             }
             return null;
         })
         .timeout(Duration.ofSeconds(5))
-        .onErrorMap(throwable -> new RuntimeException("Health check failed for SDK service: " + serviceName, throwable));
+        .onErrorMap(throwable -> new RuntimeException(
+                "Health check failed for SDK service: " + serviceName, throwable
+                )
+        ).then();
     }
 
     @Override
@@ -240,17 +313,7 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
         }
     }
 
-    /**
-     * Gets the SDK instance for direct access.
-     *
-     * @return the SDK instance
-     */
-    public S getSdk() {
-        if (isShutdown.get()) {
-            throw new IllegalStateException("Client has been shut down");
-        }
-        return sdkInstance;
-    }
+    // getSdk() method replaced by sdk() method above for better naming
 
     // ========================================
     // Helper Classes
