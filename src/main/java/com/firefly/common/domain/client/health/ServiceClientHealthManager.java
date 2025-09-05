@@ -125,7 +125,7 @@ public class ServiceClientHealthManager {
     public Mono<ServiceClientHealthStatus> performHealthCheck(String serviceName, ServiceClient client) {
         return client.healthCheck()
             .timeout(healthCheckTimeout)
-            .map(result -> handleHealthCheckSuccess(serviceName))
+            .then(Mono.fromCallable(() -> handleHealthCheckSuccess(serviceName))) // Handle empty success
             .onErrorResume(error -> Mono.just(handleHealthCheckFailure(serviceName, error)))
             .doOnNext(status -> updateHealthStatus(serviceName, status));
     }
