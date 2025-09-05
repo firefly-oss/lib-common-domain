@@ -61,12 +61,13 @@ This library serves as the foundational architecture framework for the **Core-Do
 - **Automatic Handler Discovery**: Zero-configuration handler registration
 - **Query Caching**: Built-in caching support with configurable TTL
 
-### 🌐 ServiceClient Framework
-- **Multi-Protocol Support**: REST, gRPC, and SDK-based service communication
-- **Resilience Patterns**: Circuit breakers, retries, and timeouts
-- **Reactive Programming**: Mono-based reactive operations
-- **Authentication Integration**: Automatic auth token propagation
-- **Connection Pooling**: Optimized connection management for high throughput
+### 🌐 ServiceClient Framework (Redesigned)
+- **Unified API**: Single interface for REST, gRPC, and SDK clients
+- **Fluent Request Builder**: Intuitive method chaining for all operations
+- **Advanced Resilience**: Bulkhead isolation, rate limiting, adaptive timeouts
+- **Health Monitoring**: Automatic service health detection and recovery
+- **Interceptor Framework**: Request/response interceptors for cross-cutting concerns
+- **Production Ready**: Banking-optimized with comprehensive monitoring
 
 ### 📡 Multi-Messaging Domain Events
 - **Adapter Pattern**: Support for Kafka, RabbitMQ, AWS SQS, Kinesis, and in-process events
@@ -277,8 +278,8 @@ domain:
 @Component
 public class ProcessPaymentHandler implements CommandHandler<ProcessPaymentCommand, PaymentResult> {
     
-    private final SdkServiceClient<PaymentSDK> paymentClient;
-    private final RestServiceClient notificationClient;
+    private final ServiceClient paymentClient;
+    private final ServiceClient notificationClient;
     
     @Override
     public Mono<PaymentResult> handle(ProcessPaymentCommand command) {
@@ -300,7 +301,7 @@ public class ProcessPaymentHandler implements CommandHandler<ProcessPaymentComma
 |----------|-------------|
 | [Architecture Guide](docs/ARCHITECTURE.md) | Detailed architecture patterns and design decisions |
 | [CQRS Framework](docs/CQRS.md) | Command/Query patterns, handlers, and lib-transactional-engine integration |
-| [ServiceClient Framework](docs/SERVICE_CLIENTS.md) | REST, gRPC, and SDK client usage and configuration |
+| [ServiceClient Framework](docs/NEW_SERVICE_CLIENT_GUIDE.md) | Redesigned unified API for REST, gRPC, and SDK clients |
 | [Domain Events](docs/DOMAIN_EVENTS.md) | Multi-messaging adapter architecture and event patterns |
 | [Configuration Guide](docs/CONFIGURATION.md) | Complete configuration reference with examples |
 | [API Reference](docs/API_REFERENCE.md) | Detailed API documentation with method signatures |
@@ -315,8 +316,8 @@ public class ProcessPaymentHandler implements CommandHandler<ProcessPaymentComma
 @Component
 public class MoneyTransferHandler implements CommandHandler<TransferMoneyCommand, TransferResult> {
 
-    private final RestServiceClient accountServiceClient;
-    private final RestServiceClient fraudServiceClient;
+    private final ServiceClient accountServiceClient;
+    private final ServiceClient fraudServiceClient;
 
     @Override
     public Mono<TransferResult> handle(TransferMoneyCommand command) {
@@ -333,12 +334,13 @@ public class MoneyTransferHandler implements CommandHandler<TransferMoneyCommand
 @Component
 public class GetAccountBalanceHandler implements QueryHandler<GetAccountBalanceQuery, AccountBalance> {
 
-    private final RestServiceClient accountServiceClient;
+    private final ServiceClient accountServiceClient;
 
     @Override
     public Mono<AccountBalance> handle(GetAccountBalanceQuery query) {
-        return accountServiceClient.get("/accounts/{id}/balance", AccountBalance.class,
-            Map.of("id", query.getAccountNumber()));
+        return accountServiceClient.get("/accounts/{id}/balance", AccountBalance.class)
+            .withPathParam("id", query.getAccountNumber())
+            .execute();
     }
 
     @Override

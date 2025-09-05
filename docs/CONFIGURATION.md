@@ -394,6 +394,10 @@ firefly:
 
 ## ServiceClient Configuration
 
+> **📖 For comprehensive ServiceClient documentation, see [NEW_SERVICE_CLIENT_GUIDE.md](NEW_SERVICE_CLIENT_GUIDE.md)**
+
+The ServiceClient framework has been completely redesigned with a simplified, unified API.
+
 ### Global ServiceClient Configuration
 
 ```yaml
