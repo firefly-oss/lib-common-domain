@@ -30,49 +30,49 @@ The library serves as the foundation for the **Core-Domain Layer** in Firefly's 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    CHANNELS LAYER                           │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │   Web UI    │ │ Mobile App  │ │  API Gateway│           │
-│  │             │ │             │ │             │           │
-│  └─────────────┘ └─────────────┘ └─────────────┘           │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
+│  │   Web UI    │ │ Mobile App  │ │  API Gateway│            │
+│  │             │ │             │ │             │            │
+│  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────────────────────────────────────┘
                               │
                     HTTP/REST/GraphQL
                               │
 ┌─────────────────────────────────────────────────────────────┐
 │              APPLICATION/PROCESS LAYER                      │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │  Workflow   │ │  Process    │ │ Integration │           │
-│  │  Services   │ │ Orchestrator│ │   Services  │           │
-│  └─────────────┘ └─────────────┘ └─────────────┘           │
+│      ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │
+│      │  Workflow   │ │  Process    │ │ Integration │        │
+│      │  Services   │ │ Orchestrator│ │   Services  │        │
+│      └─────────────┘ └─────────────┘ └─────────────┘        │
 └─────────────────────────────────────────────────────────────┘
                               │
                     Commands/Queries/Events
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│ ★              CORE-DOMAIN LAYER                    ★       │
-│                  (THIS LIBRARY)                            │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │    CQRS     │ │   Domain    │ │  Service    │           │
-│  │  Framework  │ │   Events    │ │  Clients    │           │
-│  │             │ │             │ │             │           │
-│  │ ┌─────────┐ │ │ ┌─────────┐ │ │ ┌─────────┐ │           │
-│  │ │Commands │ │ │ │Publishers│ │ │ │  REST   │ │           │
-│  │ │Queries  │ │ │ │Consumers │ │ │ │  gRPC   │ │           │
-│  │ │Handlers │ │ │ │Adapters │ │ │ │   SDK   │ │           │
-│  │ │         │ │ │ │Filtering│ │ │ │Resilience│ │           │
-│  │ └─────────┘ │ │ └─────────┘ │ │ └─────────┘ │           │
-│  └─────────────┘ └─────────────┘ └─────────────┘           │
+│ ★                    CORE-DOMAIN LAYER                    ★ │
+│                        (THIS LIBRARY)                       │
+│  ┌─────────────┐   ┌───────────────┐   ┌───────────────┐    │
+│  │    CQRS     │   │     Domain    │   │    Service    │    │
+│  │  Framework  │   │     Events    │   │    Clients    │    │
+│  │             │   │               │   │               │    │
+│  │ ┌─────────┐ │   │ ┌───────────┐ │   │ ┌───────────┐ │    │
+│  │ │Commands │ │   │ │ Publishers│ │   │ │   REST    │ │    │
+│  │ │Queries  │ │   │ │ Consumers │ │   │ │   gRPC    │ │    │
+│  │ │Handlers │ │   │ │ Adapters  │ │   │ │    SDK    │ │    │
+│  │ │         │ │   │ │ Filtering │ │   │ │ Resilience│ │    │
+│  │ └─────────┘ │   │ └───────────┘ │   │ └───────────┘ │    │
+│  └─────────────┘   └───────────────┘   └───────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                               │
                     Database Operations/External APIs
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│              CORE-INFRASTRUCTURE LAYER                      │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │  Database   │ │   Cache     │ │  External   │           │
-│  │   CRUD      │ │  Services   │ │    APIs     │           │
-│  │  Services   │ │             │ │             │           │
-│  └─────────────┘ └─────────────┘ └─────────────┘           │
+│                 CORE-INFRASTRUCTURE LAYER                   │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐    │
+│  │  Database   │     │   Cache     │     │  External   │    │
+│  │   CRUD      │     │  Services   │     │    APIs     │    │
+│  │  Services   │     │             │     │             │    │
+│  └─────────────┘     └─────────────┘     └─────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -213,20 +213,20 @@ public class PaymentService {
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    CQRS Framework                           │
+│                       CQRS Framework                        │
 │                                                             │
-│  ┌─────────────┐    ┌─────────────┐                          │
-│  │ CommandBus  │    │  QueryBus   │                          │
-│  │             │    │             │                          │
-│  │ • Routing   │    │ • Routing   │                          │
-│  │ • Validation│    │ • Caching   │                          │
-│  │ • Tracing   │    │ • Tracing   │                          │
-│  └─────────────┘    └─────────────┘                          │
-│         │                   │                                │
-│  ┌─────────────┐    ┌─────────────┐                          │
-│  │   Command   │    │    Query    │                          │
-│  │  Handlers   │    │  Handlers   │                          │
-│  └─────────────┘    └─────────────┘                          │
+│             ┌─────────────┐    ┌─────────────┐              │
+│             │ CommandBus  │    │  QueryBus   │              │
+│             │             │    │             │              │
+│             │ • Routing   │    │ • Routing   │              │
+│             │ • Validation│    │ • Caching   │              │
+│             │ • Tracing   │    │ • Tracing   │              │
+│             └─────────────┘    └─────────────┘              │
+│                    │                   │                    │
+│             ┌─────────────┐    ┌─────────────┐              │
+│             │   Command   │    │    Query    │              │
+│             │  Handlers   │    │  Handlers   │              │
+│             └─────────────┘    └─────────────┘              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -236,16 +236,16 @@ public class PaymentService {
 ┌─────────────────────────────────────────────────────────────┐
 │                   Domain Events                             │
 │                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
-│  │   Event     │    │  Messaging  │    │   Event     │     │
-│  │ Publishers  │    │  Adapters   │    │ Consumers   │     │
-│  │             │    │             │    │             │     │
-│  │ • Annotation│    │ • Kafka     │    │ • Listeners │     │
-│  │ • Programm. │    │ • RabbitMQ  │    │ • Filtering │     │
-│  │ • Async     │    │ • SQS       │    │ • Routing   │     │
-│  │ • Retry     │    │ • Kinesis   │    │ • Error Hdl │     │
-│  └─────────────┘    │ • AppEvents │    └─────────────┘     │
-│                     └─────────────┘                        │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐      │
+│  │   Event     │    │  Messaging  │    │   Event     │      │
+│  │ Publishers  │    │  Adapters   │    │ Consumers   │      │
+│  │             │    │             │    │             │      │
+│  │ • Annotation│    │ • Kafka     │    │ • Listeners │      │
+│  │ • Programm. │    │ • RabbitMQ  │    │ • Filtering │      │
+│  │ • Async     │    │ • SQS       │    │ • Routing   │      │
+│  │ • Retry     │    │ • Kinesis   │    │ • Error Hdl │      │
+│  └─────────────┘    │ • AppEvents │    └─────────────┘      │
+│                     └─────────────┘                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -255,17 +255,17 @@ public class PaymentService {
 ┌─────────────────────────────────────────────────────────────┐
 │              StepEvents Bridge Pattern                      │
 │                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
-│  │lib-transact │    │StepEvent    │    │   Domain    │     │
-│  │ional-engine │───▶│Publisher    │───▶│   Events    │     │
-│  │             │    │   Bridge    │    │Infrastructure│     │
-│  │ • Saga Mgmt │    │             │    │             │     │
-│  │ • Step Exec │    │ • Transform │    │ • Kafka     │     │
-│  │ • Retry     │    │ • Enrich    │    │ • RabbitMQ  │     │
-│  │ • Rollback  │    │ • Metadata  │    │ • SQS       │     │
-│  └─────────────┘    └─────────────┘    │ • Kinesis   │     │
-│                                        │ • AppEvents │     │
-│                                        └─────────────┘     │
+│  ┌─────────────┐    ┌─────────────┐    ┌────────────────┐   │
+│  │lib-transact │    │StepEvent    │    │     Domain     │   │
+│  │ional-engine │───▶│Publisher    │───▶│     Events     │   │
+│  │             │    │   Bridge    │    │ Infrastructure │   │
+│  │ • Saga Mgmt │    │             │    │                │   │
+│  │ • Step Exec │    │ • Transform │    │    • Kafka     │   │
+│  │ • Retry     │    │ • Enrich    │    │    • RabbitMQ  │   │
+│  │ • Rollback  │    │ • Metadata  │    │    • SQS       │   │
+│  └─────────────┘    └─────────────┘    │    • Kinesis   │   │
+│                                        │    • AppEvents │   │
+│                                        └────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -275,19 +275,19 @@ public class PaymentService {
 ┌─────────────────────────────────────────────────────────────┐
 │                  ServiceClient Framework                    │
 │                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
-│  │    REST     │    │    gRPC     │    │     SDK     │     │
-│  │   Client    │    │   Client    │    │   Client    │     │
-│  │             │    │             │    │             │     │
-│  │ • WebClient │    │ • Stubs     │    │ • Factories │     │
-│  │ • Reactive  │    │ • Streaming │    │ • Lifecycle │     │
-│  │ • Auth      │    │ • Metadata  │    │ • Wrapping  │     │
-│  └─────────────┘    └─────────────┘    └─────────────┘     │
-│         │                   │                   │          │
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │              Resilience Patterns                       │ │
-│  │  • Circuit Breakers  • Retries  • Timeouts  • Bulkhead│ │
-│  └─────────────────────────────────────────────────────────┘ │
+│     ┌─────────────┐    ┌─────────────┐    ┌─────────────┐   │
+│     │    REST     │    │    gRPC     │    │     SDK     │   │
+│     │   Client    │    │   Client    │    │   Client    │   │
+│     │             │    │             │    │             │   │
+│     │ • WebClient │    │ • Stubs     │    │ • Factories │   │
+│     │ • Reactive  │    │ • Streaming │    │ • Lifecycle │   │
+│     │ • Auth      │    │ • Metadata  │    │ • Wrapping  │   │
+│     └─────────────┘    └─────────────┘    └─────────────┘   │
+│            │                   │                   │        │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                     Resilience Patterns                 ││
+│  │  • Circuit Breakers  • Retries  • Timeouts  • Bulkhead  ││
+│  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
 
