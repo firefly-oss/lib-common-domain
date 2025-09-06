@@ -566,9 +566,12 @@ Command handlers contain the business logic for processing commands:
 @Slf4j
 public class CreateCustomerProfileHandler implements CommandHandler<CreateCustomerProfileCommand, CustomerProfileResult> {
     
+    private final ServiceClient customerServiceClient;
     private final DomainEventPublisher eventPublisher;
     
-    public CreateCustomerProfileHandler(DomainEventPublisher eventPublisher) {
+    public CreateCustomerProfileHandler(ServiceClient customerServiceClient, 
+                                      DomainEventPublisher eventPublisher) {
+        this.customerServiceClient = customerServiceClient;
         this.eventPublisher = eventPublisher;
     }
     
@@ -589,16 +592,17 @@ public class CreateCustomerProfileHandler implements CommandHandler<CreateCustom
     }
     
     private Mono<CustomerProfileResult> createProfile(CreateCustomerProfileCommand command) {
-        // Simulate profile creation - in real implementation, this would save to database
-        String profileId = "PROF-" + UUID.randomUUID().toString();
-        
-        return Mono.just(CustomerProfileResult.builder()
+        // Use ServiceClient to interact with core-infra layer
+        CreateProfileRequest request = CreateProfileRequest.builder()
             .customerId(command.getCustomerId())
-            .profileId(profileId)
+            .firstName(command.getFirstName())
+            .lastName(command.getLastName())
             .email(command.getEmail())
-            .status("CREATED")
-            .build())
-            .delayElement(Duration.ofMillis(100)); // Simulate processing time
+            .build();
+        
+        return customerServiceClient.post("/profiles", CustomerProfileResult.class)
+            .withBody(request)
+            .execute();
     }
     
     private Mono<CustomerProfileResult> publishProfileCreatedEvent(CustomerProfileResult result) {
@@ -626,9 +630,12 @@ public class CreateCustomerProfileHandler implements CommandHandler<CreateCustom
 @Slf4j
 public class StartKycVerificationHandler implements CommandHandler<StartKycVerificationCommand, KycResult> {
     
+    private final ServiceClient kycServiceClient;
     private final DomainEventPublisher eventPublisher;
     
-    public StartKycVerificationHandler(DomainEventPublisher eventPublisher) {
+    public StartKycVerificationHandler(ServiceClient kycServiceClient,
+                                     DomainEventPublisher eventPublisher) {
+        this.kycServiceClient = kycServiceClient;
         this.eventPublisher = eventPublisher;
     }
     
@@ -650,20 +657,16 @@ public class StartKycVerificationHandler implements CommandHandler<StartKycVerif
     }
     
     private Mono<KycResult> performKycVerification(StartKycVerificationCommand command) {
-        // Simulate KYC verification - in real implementation, this would call external service
-        String kycId = "KYC-" + UUID.randomUUID().toString();
-        
-        // Simulate rejection for invalid documents
-        boolean isApproved = !command.getDocumentType().equals("INVALID_DOCUMENT");
-        
-        return Mono.just(KycResult.builder()
-            .kycId(kycId)
+        // Use ServiceClient to interact with KYC verification service via core-infra layer
+        KycVerificationRequest request = KycVerificationRequest.builder()
             .customerId(command.getCustomerId())
-            .isApproved(isApproved)
-            .status(isApproved ? "APPROVED" : "REJECTED")
-            .rejectionReason(isApproved ? null : "Invalid document type")
-            .build())
-            .delayElement(Duration.ofMillis(500)); // Simulate processing time
+            .documentType(command.getDocumentType())
+            .documentNumber(command.getDocumentNumber())
+            .build();
+        
+        return kycServiceClient.post("/kyc/verify", KycResult.class)
+            .withBody(request)
+            .execute();
     }
     
     private Mono<KycResult> publishKycCompletedEvent(KycResult result) {
@@ -691,9 +694,12 @@ public class StartKycVerificationHandler implements CommandHandler<StartKycVerif
 @Slf4j
 public class CreateAccountHandler implements CommandHandler<CreateAccountCommand, AccountCreationResult> {
     
+    private final ServiceClient accountServiceClient;
     private final DomainEventPublisher eventPublisher;
     
-    public CreateAccountHandler(DomainEventPublisher eventPublisher) {
+    public CreateAccountHandler(ServiceClient accountServiceClient,
+                               DomainEventPublisher eventPublisher) {
+        this.accountServiceClient = accountServiceClient;
         this.eventPublisher = eventPublisher;
     }
     
@@ -714,19 +720,17 @@ public class CreateAccountHandler implements CommandHandler<CreateAccountCommand
     }
     
     private Mono<AccountCreationResult> createAccount(CreateAccountCommand command) {
-        // Simulate account creation - in real implementation, this would save to database
-        String accountId = "ACC-" + UUID.randomUUID().toString();
-        String accountNumber = "100" + String.format("%08d", new Random().nextInt(99999999));
-        
-        return Mono.just(AccountCreationResult.builder()
-            .accountId(accountId)
-            .accountNumber(accountNumber)
+        // Use ServiceClient to interact with account service via core-infra layer
+        CreateAccountRequest request = CreateAccountRequest.builder()
             .customerId(command.getCustomerId())
-            .initialBalance(command.getInitialDeposit() != null ? command.getInitialDeposit() : BigDecimal.ZERO)
+            .accountType(command.getAccountType())
+            .initialDeposit(command.getInitialDeposit() != null ? command.getInitialDeposit() : BigDecimal.ZERO)
             .currency(command.getCurrency())
-            .status("ACTIVE")
-            .build())
-            .delayElement(Duration.ofMillis(200)); // Simulate processing time
+            .build();
+        
+        return accountServiceClient.post("/accounts", AccountCreationResult.class)
+            .withBody(request)
+            .execute();
     }
     
     private Mono<AccountCreationResult> publishAccountCreatedEvent(AccountCreationResult result) {
@@ -760,6 +764,12 @@ Query handlers process read operations with caching support:
 @Slf4j
 public class ValidateCustomerHandler implements QueryHandler<ValidateCustomerQuery, CustomerValidation> {
     
+    private final ServiceClient customerValidationServiceClient;
+    
+    public ValidateCustomerHandler(ServiceClient customerValidationServiceClient) {
+        this.customerValidationServiceClient = customerValidationServiceClient;
+    }
+    
     @Override
     @Cacheable(value = "customer-validations", key = "#query.cacheKey")
     public Mono<CustomerValidation> handle(ValidateCustomerQuery query) {
@@ -770,24 +780,15 @@ public class ValidateCustomerHandler implements QueryHandler<ValidateCustomerQue
     }
     
     private Mono<CustomerValidation> performValidation(ValidateCustomerQuery query) {
-        // Simulate validation logic - in real implementation, this would check database
-        List<String> errors = new ArrayList<>();
+        // Use ServiceClient to interact with customer validation service via core-infra layer
+        CustomerValidationRequest request = CustomerValidationRequest.builder()
+            .email(query.getEmail())
+            .phoneNumber(query.getPhoneNumber())
+            .build();
         
-        // Simulate email uniqueness check
-        if (query.getEmail().contains("existing")) {
-            errors.add("Email already exists");
-        }
-        
-        // Simulate phone format validation
-        if (!query.getPhoneNumber().matches("^\\+?[1-9]\\d{1,14}$")) {
-            errors.add("Invalid phone number format");
-        }
-        
-        // Simulate processing time
-        return Mono.delay(Duration.ofMillis(50))
-            .then(Mono.just(errors.isEmpty() ? 
-                CustomerValidation.valid() : 
-                CustomerValidation.invalid(errors)));
+        return customerValidationServiceClient.post("/validation/customer", CustomerValidation.class)
+            .withBody(request)
+            .execute();
     }
     
     @Override

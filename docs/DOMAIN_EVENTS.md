@@ -258,6 +258,8 @@ public @interface EventPublisher {
 @Service
 public class AccountService {
     
+    private final ServiceClient accountServiceClient;
+    
     // Publish event after successful method execution
     @EventPublisher(
         topic = "banking.accounts",
@@ -266,8 +268,11 @@ public class AccountService {
         payload = "#result"
     )
     public Account createAccount(CreateAccountRequest request) {
-        // Business logic to create account
-        return accountRepository.save(newAccount);
+        // Business logic delegated to core-infra layer via ServiceClient
+        return accountServiceClient.post("/accounts", Account.class)
+            .withBody(request)
+            .execute()
+            .block(); // Note: In real implementation, use reactive patterns
     }
     
     // Publish event with custom payload

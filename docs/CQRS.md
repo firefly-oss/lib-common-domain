@@ -476,8 +476,8 @@ public interface CommandHandler<C extends Command<R>, R> {
 @Slf4j
 public class CreateAccountHandler implements CommandHandler<CreateAccountCommand, AccountResult> {
     
-    private final AccountRepository accountRepository;
-    private final CustomerService customerService;
+    private final ServiceClient accountServiceClient;
+    private final ServiceClient customerServiceClient;
     private final DomainEventPublisher eventPublisher;
     
     @Override
@@ -497,20 +497,16 @@ public class CreateAccountHandler implements CommandHandler<CreateAccountCommand
     }
     
     private Mono<AccountResult> createAccount(CreateAccountCommand command) {
-        Account account = Account.builder()
+        CreateAccountRequest request = CreateAccountRequest.builder()
             .customerId(command.getCustomerId())
             .accountType(command.getAccountType())
-            .balance(command.getInitialDeposit() != null ? command.getInitialDeposit() : BigDecimal.ZERO)
-            .status(AccountStatus.ACTIVE)
-            .createdAt(Instant.now())
+            .initialDeposit(command.getInitialDeposit() != null ? command.getInitialDeposit() : BigDecimal.ZERO)
+            .currency("USD")
             .build();
             
-        return accountRepository.save(account)
-            .map(savedAccount -> AccountResult.builder()
-                .accountId(savedAccount.getId())
-                .accountNumber(savedAccount.getAccountNumber())
-                .status("CREATED")
-                .build());
+        return accountServiceClient.post("/accounts", AccountResult.class)
+            .withBody(request)
+            .execute();
     }
     
     private Mono<AccountResult> publishAccountCreatedEvent(AccountResult result) {
