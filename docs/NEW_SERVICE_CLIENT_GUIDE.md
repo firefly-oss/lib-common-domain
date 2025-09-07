@@ -70,7 +70,7 @@ Mono<PaymentResult> result = grpcClient.execute(stub -> {
 ### SDK Client (Redesigned for Better Developer Experience)
 
 ```java
-// SDK client
+// SDK client with new sdkSupplier() method
 ServiceClient sdkClient = ServiceClient.sdk("aws-service", AWSSDK.class)
     .sdkSupplier(() -> AWSSDK.builder()
         .region(Region.US_EAST_1)
@@ -79,19 +79,27 @@ ServiceClient sdkClient = ServiceClient.sdk("aws-service", AWSSDK.class)
     .timeout(Duration.ofSeconds(45))
     .build();
 
-// NEW: Type-safe SDK operations - no casting required!
-Mono<S3Object> object = sdkClient.call(sdk ->
-    sdk.s3().getObject(request)
+// Option 1: Use regular ServiceClient (requires casting)
+Mono<S3Object> object = sdkClient.call(sdk -> {
+    AWSSDK awsSDK = (AWSSDK) sdk; // Casting required
+    return awsSDK.s3().getObject(request);
+});
+
+// Option 2: Use TypedSdkClient for true type safety - NO CASTING REQUIRED!
+TypedSdkClient<AWSSDK> typedClient = sdkClient.typed();
+
+Mono<S3Object> typedObject = typedClient.call(sdk ->
+    sdk.s3().getObject(request)  // No casting needed!
 );
 
 // NEW: Async SDK operations for reactive SDKs
-Mono<S3Object> asyncObject = sdkClient.callAsync(sdk ->
+Mono<S3Object> asyncObject = typedClient.callAsync(sdk ->
     sdk.s3().getObjectAsync(request)
 );
 
 // NEW: Direct SDK access for complex operations
-AWSSDK sdk = sdkClient.sdk();
-S3Object object = sdk.s3().getObject(request);
+AWSSDK sdk = typedClient.sdk();
+S3Object directObject = sdk.s3().getObject(request);
 
 // OLD: Legacy API (deprecated but still supported)
 Mono<S3Object> legacyObject = sdkClient.execute(sdk -> {
@@ -117,9 +125,16 @@ Mono<PaymentResult> result = client.execute(sdk -> {
 
 **After (Simple and Type-Safe):**
 ```java
-// No casting, full type safety
-Mono<PaymentResult> result = client.call(sdk ->
-    sdk.processPayment(request)
+// Option 1: Regular ServiceClient (still requires casting)
+Mono<PaymentResult> result = client.call(sdk -> {
+    PaymentSDK paymentSDK = (PaymentSDK) sdk; // Casting still required
+    return paymentSDK.processPayment(request);
+});
+
+// Option 2: TypedSdkClient (no casting, full type safety)
+TypedSdkClient<PaymentSDK> typedClient = client.typed();
+Mono<PaymentResult> result = typedClient.call(sdk ->
+    sdk.processPayment(request)  // No casting needed!
 );
 ```
 
@@ -139,18 +154,21 @@ ServiceClient fraudClient = ServiceClient.sdk("fraud-service", FraudDetectionSDK
     .timeout(Duration.ofSeconds(30))
     .build();
 
-// Simple fraud check
-Mono<FraudResult> fraudCheck = fraudClient.call(sdk ->
+// Get type-safe client for better developer experience
+TypedSdkClient<FraudDetectionSDK> typedFraudClient = fraudClient.typed();
+
+// Simple fraud check - no casting required!
+Mono<FraudResult> fraudCheck = typedFraudClient.call(sdk ->
     sdk.checkTransaction(transactionId, amount, currency)
 );
 
 // Async fraud check for reactive SDKs
-Mono<FraudResult> asyncFraudCheck = fraudClient.callAsync(sdk ->
+Mono<FraudResult> asyncFraudCheck = typedFraudClient.callAsync(sdk ->
     sdk.checkTransactionAsync(transactionId, amount, currency)
 );
 
 // Complex operations with direct SDK access
-FraudDetectionSDK sdk = fraudClient.sdk();
+FraudDetectionSDK sdk = typedFraudClient.sdk();
 FraudResult result = sdk.checkTransaction(transactionId, amount, currency);
 FraudProfile profile = sdk.getCustomerProfile(customerId);
 RiskScore score = sdk.calculateRiskScore(profile, result);
@@ -158,7 +176,7 @@ RiskScore score = sdk.calculateRiskScore(profile, result);
 
 ### Migration Guide
 
-**Step 1**: Replace `execute()` with `call()`
+**Step 1**: Replace `execute()` with `call()` (still requires casting)
 ```java
 // Old
 client.execute(sdk -> {
@@ -166,8 +184,15 @@ client.execute(sdk -> {
     return mySDK.doSomething();
 });
 
-// New
-client.call(sdk -> sdk.doSomething());
+// New (basic)
+client.call(sdk -> {
+    MySDK mySDK = (MySDK) sdk; // Still requires casting
+    return mySDK.doSomething();
+});
+
+// New (type-safe)
+TypedSdkClient<MySDK> typedClient = client.typed();
+typedClient.call(sdk -> sdk.doSomething()); // No casting!
 ```
 
 **Step 2**: Replace `executeAsync()` with `callAsync()`
@@ -178,8 +203,9 @@ client.executeAsync(sdk -> {
     return mySDK.doSomethingAsync();
 });
 
-// New
-client.callAsync(sdk -> sdk.doSomethingAsync());
+// New (type-safe)
+TypedSdkClient<MySDK> typedClient = client.typed();
+typedClient.callAsync(sdk -> sdk.doSomethingAsync()); // No casting!
 ```
 
 **Step 3**: Use `sdk()` for direct access
@@ -187,8 +213,9 @@ client.callAsync(sdk -> sdk.doSomethingAsync());
 // Old
 MySDK sdk = (MySDK) client.getSdk();
 
-// New
-MySDK sdk = client.sdk();
+// New (type-safe)
+TypedSdkClient<MySDK> typedClient = client.typed();
+MySDK sdk = typedClient.sdk(); // No casting!
 ```
 
 ## Banking Examples
