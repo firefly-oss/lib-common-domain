@@ -312,6 +312,29 @@ public interface ServiceClient {
         throw new UnsupportedOperationException("sdk() method is only supported by SDK clients");
     }
 
+    /**
+     * Get a type-safe wrapper for SDK operations (for SDK clients only).
+     *
+     * <p>This method returns a TypedSdkClient that provides type-safe access to SDK operations
+     * without casting.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * // Create a typed SDK client
+     * TypedSdkClient<PaymentSDK> typedClient = client.typed();
+     *
+     * // Type-safe operations - no casting required!
+     * Mono<PaymentResult> result = typedClient.call(sdk -> sdk.processPayment(request));
+     * }</pre>
+     *
+     * @param <S> the SDK type
+     * @return a type-safe SDK client wrapper
+     * @throws UnsupportedOperationException if called on non-SDK clients
+     */
+    default <S> TypedSdkClient<S> typed() {
+        throw new UnsupportedOperationException("typed() method is only supported by SDK clients");
+    }
+
     // ========================================
     // Streaming Methods
     // ========================================
@@ -496,6 +519,7 @@ public interface ServiceClient {
 
     interface SdkClientBuilder<S> {
         SdkClientBuilder<S> sdkFactory(Function<Void, S> sdkFactory);
+        SdkClientBuilder<S> sdkSupplier(java.util.function.Supplier<S> sdkSupplier);
         SdkClientBuilder<S> timeout(Duration timeout);
         SdkClientBuilder<S> autoShutdown(boolean autoShutdown);
         ServiceClient build();

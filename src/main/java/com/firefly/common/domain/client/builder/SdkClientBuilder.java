@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Simplified builder for SDK service clients.
@@ -95,6 +96,16 @@ public class SdkClientBuilder<S> implements ServiceClient.SdkClientBuilder<S> {
     }
 
     @Override
+    public SdkClientBuilder<S> sdkSupplier(Supplier<S> sdkSupplier) {
+        if (sdkSupplier == null) {
+            throw new IllegalArgumentException("SDK supplier cannot be null");
+        }
+        // Convert Supplier<S> to Function<Void, S>
+        this.sdkFactory = unused -> sdkSupplier.get();
+        return this;
+    }
+
+    @Override
     public SdkClientBuilder<S> timeout(Duration timeout) {
         if (timeout == null || timeout.isNegative()) {
             throw new IllegalArgumentException("Timeout must be positive");
@@ -131,22 +142,7 @@ public class SdkClientBuilder<S> implements ServiceClient.SdkClientBuilder<S> {
         return this;
     }
 
-    /**
-     * Convenience method for creating SDK factory from supplier.
-     * 
-     * <p>This method allows using a simple supplier instead of a function,
-     * making the API more intuitive for most use cases.
-     *
-     * @param sdkSupplier the SDK supplier
-     * @return this builder
-     */
-    public SdkClientBuilder<S> sdkSupplier(java.util.function.Supplier<S> sdkSupplier) {
-        if (sdkSupplier == null) {
-            throw new IllegalArgumentException("SDK supplier cannot be null");
-        }
-        this.sdkFactory = ignored -> sdkSupplier.get();
-        return this;
-    }
+
 
     /**
      * Convenience method for creating SDK factory from instance.
@@ -168,12 +164,12 @@ public class SdkClientBuilder<S> implements ServiceClient.SdkClientBuilder<S> {
     @Override
     public ServiceClient build() {
         validateConfiguration();
-        
-        log.info("Building SDK service client for service '{}' with SDK type '{}'", 
+
+        log.info("Building SDK service client for service '{}' with SDK type '{}'",
                 serviceName, sdkType.getSimpleName());
-        
+
         S sdkInstance = createSdkInstance();
-        
+
         return new SdkServiceClientImpl<>(
             serviceName,
             sdkType,
@@ -184,6 +180,8 @@ public class SdkClientBuilder<S> implements ServiceClient.SdkClientBuilder<S> {
             retry
         );
     }
+
+
 
     private void validateConfiguration() {
         if (sdkFactory == null) {

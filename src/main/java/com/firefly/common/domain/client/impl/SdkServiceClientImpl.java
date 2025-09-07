@@ -20,6 +20,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.firefly.common.domain.client.ClientType;
 import com.firefly.common.domain.client.RequestBuilder;
 import com.firefly.common.domain.client.ServiceClient;
+import com.firefly.common.domain.client.TypedSdkClient;
+import com.firefly.common.domain.client.TypedSdkClient;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import lombok.extern.slf4j.Slf4j;
@@ -163,6 +165,8 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
                 log.error("Failed SDK operation for service '{}': {}", serviceName, error.getMessage()));
     }
 
+
+
     /**
      * Execute an asynchronous operation with the SDK instance.
      *
@@ -193,6 +197,8 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
                 log.error("Failed async SDK operation for service '{}': {}", serviceName, error.getMessage()));
     }
 
+
+
     /**
      * Get direct access to the SDK instance for complex operations.
      *
@@ -213,6 +219,16 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
         }
         return (S1) sdkInstance;
     }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <S1> TypedSdkClient<S1> typed() {
+        return new TypedSdkClient<>(this);
+    }
+
+
+
+
 
     // ========================================
     // Legacy Methods (Deprecated but maintained for compatibility)
