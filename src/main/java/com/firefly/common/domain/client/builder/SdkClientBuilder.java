@@ -18,11 +18,18 @@ package com.firefly.common.domain.client.builder;
 
 import com.firefly.common.domain.client.ServiceClient;
 import com.firefly.common.domain.client.impl.SdkServiceClientImpl;
+import com.firefly.common.domain.client.interceptor.ServiceClientInterceptor;
+import com.firefly.common.domain.client.interceptor.LoggingInterceptor;
+import com.firefly.common.domain.client.interceptor.MetricsInterceptor;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -64,6 +71,7 @@ public class SdkClientBuilder<S> implements ServiceClient.SdkClientBuilder<S> {
     private boolean autoShutdown = true;
     private CircuitBreaker circuitBreaker;
     private Retry retry;
+    private final List<ServiceClientInterceptor> interceptors = new ArrayList<>();
 
     /**
      * Creates a new SDK client builder.
@@ -105,6 +113,23 @@ public class SdkClientBuilder<S> implements ServiceClient.SdkClientBuilder<S> {
         return this;
     }
 
+    /**
+     * Convenience method for using an existing SDK instance.
+     *
+     * <p>This method is useful when you already have a configured SDK instance
+     * and want to wrap it with ServiceClient capabilities.
+     *
+     * @param sdkInstance the pre-configured SDK instance
+     * @return this builder
+     */
+    public SdkClientBuilder<S> sdkInstance(S sdkInstance) {
+        if (sdkInstance == null) {
+            throw new IllegalArgumentException("SDK instance cannot be null");
+        }
+        this.sdkFactory = unused -> sdkInstance;
+        return this;
+    }
+
     @Override
     public SdkClientBuilder<S> timeout(Duration timeout) {
         if (timeout == null || timeout.isNegative()) {
@@ -142,24 +167,158 @@ public class SdkClientBuilder<S> implements ServiceClient.SdkClientBuilder<S> {
         return this;
     }
 
-
-
     /**
-     * Convenience method for creating SDK factory from instance.
-     * 
-     * <p>This method allows using a pre-created SDK instance. Note that
-     * the same instance will be reused for all operations.
+     * Adds an interceptor to the SDK client.
      *
-     * @param sdkInstance the SDK instance
+     * <p>Interceptors can be used for logging, metrics collection, authentication,
+     * and other cross-cutting concerns.
+     *
+     * @param interceptor the interceptor to add
      * @return this builder
      */
-    public SdkClientBuilder<S> sdkInstance(S sdkInstance) {
-        if (sdkInstance == null) {
-            throw new IllegalArgumentException("SDK instance cannot be null");
+    public SdkClientBuilder<S> addInterceptor(ServiceClientInterceptor interceptor) {
+        if (interceptor != null) {
+            this.interceptors.add(interceptor);
         }
-        this.sdkFactory = ignored -> sdkInstance;
         return this;
     }
+
+    /**
+     * Convenience method to add multiple interceptors at once.
+     *
+     * @param interceptors the interceptors to add
+     * @return this builder
+     */
+    public SdkClientBuilder<S> addInterceptors(List<ServiceClientInterceptor> interceptors) {
+        if (interceptors != null) {
+            this.interceptors.addAll(interceptors);
+        }
+        return this;
+    }
+
+    /**
+     * Convenience method to enable logging with default settings.
+     *
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withLogging() {
+        return addInterceptor(LoggingInterceptor.builder().build());
+    }
+
+    /**
+     * Convenience method to enable logging with custom settings.
+     *
+     * @param loggingInterceptor the configured logging interceptor
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withLogging(LoggingInterceptor loggingInterceptor) {
+        return addInterceptor(loggingInterceptor);
+    }
+
+    /**
+     * Convenience method to enable metrics collection with default settings.
+     *
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withMetrics() {
+        MetricsInterceptor.InMemoryMetricsCollector collector = new MetricsInterceptor.InMemoryMetricsCollector();
+        return addInterceptor(new MetricsInterceptor(collector, false, false));
+    }
+
+    /**
+     * Convenience method to enable metrics collection with custom settings.
+     *
+     * @param metricsInterceptor the configured metrics interceptor
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withMetrics(MetricsInterceptor metricsInterceptor) {
+        return addInterceptor(metricsInterceptor);
+    }
+
+    /**
+     * Convenience method to enable both logging and metrics with default settings.
+     *
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withObservability() {
+        return withLogging().withMetrics();
+    }
+
+    /**
+     * Convenience method to enable circuit breaker with default settings.
+     *
+     * <p>Default settings:
+     * <ul>
+     *   <li>Failure rate threshold: 50%</li>
+     *   <li>Wait duration in open state: 60 seconds</li>
+     *   <li>Sliding window size: 10 calls</li>
+     *   <li>Minimum number of calls: 5</li>
+     * </ul>
+     *
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withCircuitBreaker() {
+        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+            .failureRateThreshold(50)
+            .waitDurationInOpenState(Duration.ofSeconds(60))
+            .slidingWindowSize(10)
+            .minimumNumberOfCalls(5)
+            .build();
+
+        this.circuitBreaker = CircuitBreaker.of(serviceName + "-circuit-breaker", config);
+        return this;
+    }
+
+    /**
+     * Convenience method to enable retry with default settings.
+     *
+     * <p>Default settings:
+     * <ul>
+     *   <li>Max attempts: 3</li>
+     *   <li>Wait duration: 1 second</li>
+     * </ul>
+     *
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withRetry() {
+        RetryConfig config = RetryConfig.custom()
+            .maxAttempts(3)
+            .waitDuration(Duration.ofSeconds(1))
+            .build();
+
+        this.retry = Retry.of(serviceName + "-retry", config);
+        return this;
+    }
+
+    /**
+     * Convenience method to enable both circuit breaker and retry with default settings.
+     *
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withResilience() {
+        return withCircuitBreaker().withRetry();
+    }
+
+    /**
+     * Convenience method to enable comprehensive resilience and observability.
+     *
+     * <p>This enables:
+     * <ul>
+     *   <li>Circuit breaker with default settings</li>
+     *   <li>Retry with default settings</li>
+     *   <li>Logging with default settings</li>
+     *   <li>Metrics with default settings</li>
+     * </ul>
+     *
+     * @return this builder
+     */
+    public SdkClientBuilder<S> withDefaults() {
+        return withResilience().withObservability();
+    }
+
+
+
+
 
     @Override
     public ServiceClient build() {
@@ -177,7 +336,8 @@ public class SdkClientBuilder<S> implements ServiceClient.SdkClientBuilder<S> {
             timeout,
             autoShutdown,
             circuitBreaker,
-            retry
+            retry,
+            interceptors
         );
     }
 
