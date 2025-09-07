@@ -21,7 +21,7 @@ import com.firefly.common.domain.client.ClientType;
 import com.firefly.common.domain.client.RequestBuilder;
 import com.firefly.common.domain.client.ServiceClient;
 import com.firefly.common.domain.client.TypedSdkClient;
-import com.firefly.common.domain.client.TypedSdkClient;
+import com.firefly.common.domain.client.interceptor.ServiceClientInterceptor;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +29,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -53,6 +54,7 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
     private final boolean autoShutdown;
     private final CircuitBreaker circuitBreaker;
     private final Retry retry;
+    private final List<ServiceClientInterceptor> interceptors;
     private final AtomicBoolean isShutdown = new AtomicBoolean(false);
 
     /**
@@ -64,7 +66,8 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
                                Duration timeout,
                                boolean autoShutdown,
                                CircuitBreaker circuitBreaker,
-                               Retry retry) {
+                               Retry retry,
+                               List<ServiceClientInterceptor> interceptors) {
         this.serviceName = serviceName;
         this.sdkType = sdkType;
         this.sdkInstance = sdkInstance;
@@ -72,9 +75,10 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
         this.autoShutdown = autoShutdown;
         this.circuitBreaker = circuitBreaker;
         this.retry = retry;
-        
-        log.info("Initialized SDK service client for service '{}' with SDK type '{}'", 
-                serviceName, sdkType.getSimpleName());
+        this.interceptors = interceptors != null ? List.copyOf(interceptors) : List.of();
+
+        log.info("Initialized SDK service client for service '{}' with SDK type '{}' and {} interceptors",
+                serviceName, sdkType.getSimpleName(), this.interceptors.size());
     }
 
     // ========================================
@@ -152,17 +156,38 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
     @SuppressWarnings("unchecked")
     public <S1, R> Mono<R> call(Function<S1, R> operation) {
         if (isShutdown.get()) {
-            return Mono.error(new IllegalStateException("Client has been shut down"));
+            return Mono.error(new IllegalStateException(
+                String.format("SDK client for service '%s' has been shut down", serviceName)));
         }
 
-        return Mono.fromCallable(() -> operation.apply((S1) sdkInstance))
+        if (operation == null) {
+            return Mono.error(new IllegalArgumentException("Operation cannot be null"));
+        }
+
+        return Mono.fromCallable(() -> {
+                try {
+                    return operation.apply((S1) sdkInstance);
+                } catch (ClassCastException e) {
+                    throw new IllegalArgumentException(
+                        String.format("Operation expects SDK type that doesn't match actual SDK type '%s'. " +
+                                     "Consider using TypedSdkClient for type safety.", sdkType.getSimpleName()), e);
+                } catch (Exception e) {
+                    throw new RuntimeException(
+                        String.format("SDK operation failed for service '%s': %s", serviceName, e.getMessage()), e);
+                }
+            })
             .timeout(timeout)
             .doOnSubscribe(subscription ->
-                log.debug("Executing SDK operation for service '{}'", serviceName))
+                log.debug("Executing SDK operation for service '{}' with SDK type '{}'", serviceName, sdkType.getSimpleName()))
             .doOnSuccess(result ->
                 log.debug("Successfully completed SDK operation for service '{}'", serviceName))
-            .doOnError(error ->
-                log.error("Failed SDK operation for service '{}': {}", serviceName, error.getMessage()));
+            .doOnError(error -> {
+                if (error instanceof java.util.concurrent.TimeoutException) {
+                    log.error("SDK operation for service '{}' timed out after {}ms", serviceName, timeout.toMillis());
+                } else {
+                    log.error("Failed SDK operation for service '{}': {}", serviceName, error.getMessage(), error);
+                }
+            });
     }
 
 
@@ -184,17 +209,42 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
     @SuppressWarnings("unchecked")
     public <S1, R> Mono<R> callAsync(Function<S1, Mono<R>> operation) {
         if (isShutdown.get()) {
-            return Mono.error(new IllegalStateException("Client has been shut down"));
+            return Mono.error(new IllegalStateException(
+                String.format("SDK client for service '%s' has been shut down", serviceName)));
         }
 
-        return operation.apply((S1) sdkInstance)
-            .timeout(timeout)
-            .doOnSubscribe(subscription ->
-                log.debug("Executing async SDK operation for service '{}'", serviceName))
-            .doOnSuccess(result ->
-                log.debug("Successfully completed async SDK operation for service '{}'", serviceName))
-            .doOnError(error ->
-                log.error("Failed async SDK operation for service '{}': {}", serviceName, error.getMessage()));
+        if (operation == null) {
+            return Mono.error(new IllegalArgumentException("Async operation cannot be null"));
+        }
+
+        try {
+            Mono<R> result = operation.apply((S1) sdkInstance);
+            if (result == null) {
+                return Mono.error(new IllegalStateException(
+                    String.format("Async operation for service '%s' returned null Mono", serviceName)));
+            }
+
+            return result
+                .timeout(timeout)
+                .doOnSubscribe(subscription ->
+                    log.debug("Executing async SDK operation for service '{}' with SDK type '{}'", serviceName, sdkType.getSimpleName()))
+                .doOnSuccess(value ->
+                    log.debug("Successfully completed async SDK operation for service '{}'", serviceName))
+                .doOnError(error -> {
+                    if (error instanceof java.util.concurrent.TimeoutException) {
+                        log.error("Async SDK operation for service '{}' timed out after {}ms", serviceName, timeout.toMillis());
+                    } else {
+                        log.error("Failed async SDK operation for service '{}': {}", serviceName, error.getMessage(), error);
+                    }
+                });
+        } catch (ClassCastException e) {
+            return Mono.error(new IllegalArgumentException(
+                String.format("Async operation expects SDK type that doesn't match actual SDK type '%s'. " +
+                             "Consider using TypedSdkClient for type safety.", sdkType.getSimpleName()), e));
+        } catch (Exception e) {
+            return Mono.error(new RuntimeException(
+                String.format("Async SDK operation failed for service '%s': %s", serviceName, e.getMessage()), e));
+        }
     }
 
 
@@ -215,15 +265,50 @@ public class SdkServiceClientImpl<S> implements ServiceClient {
     @SuppressWarnings("unchecked")
     public <S1> S1 sdk() {
         if (isShutdown.get()) {
-            throw new IllegalStateException("Client has been shut down");
+            throw new IllegalStateException(
+                String.format("SDK client for service '%s' has been shut down", serviceName));
         }
-        return (S1) sdkInstance;
+
+        try {
+            return (S1) sdkInstance;
+        } catch (ClassCastException e) {
+            throw new IllegalArgumentException(
+                String.format("Requested SDK type doesn't match actual SDK type '%s'. " +
+                             "Consider using TypedSdkClient for type safety.", sdkType.getSimpleName()), e);
+        }
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public <S1> TypedSdkClient<S1> typed() {
         return new TypedSdkClient<>(this);
+    }
+
+    /**
+     * Gets diagnostic information about this SDK client.
+     *
+     * @return diagnostic information
+     */
+    public Map<String, Object> getDiagnostics() {
+        Map<String, Object> diagnostics = Map.of(
+            "serviceName", serviceName,
+            "sdkType", sdkType.getName(),
+            "timeout", timeout.toString(),
+            "autoShutdown", autoShutdown,
+            "isShutdown", isShutdown.get(),
+            "hasCircuitBreaker", circuitBreaker != null,
+            "hasRetry", retry != null,
+            "interceptorCount", interceptors.size(),
+            "interceptors", interceptors.stream()
+                .map(interceptor -> Map.of(
+                    "name", interceptor.getClass().getSimpleName(),
+                    "order", interceptor.getOrder()
+                ))
+                .toList()
+        );
+
+        log.debug("SDK client diagnostics for service '{}': {}", serviceName, diagnostics);
+        return diagnostics;
     }
 
 
