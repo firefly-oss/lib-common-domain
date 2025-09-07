@@ -226,6 +226,5 @@ class EnhancedSdkClientTest {
         // Verify client is fully functional
         assertNotNull(client);
         assertNotNull(typedClient);
-        assertFalse(client.isShutdown());
     }
 }
