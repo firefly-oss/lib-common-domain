@@ -21,7 +21,10 @@ import com.firefly.common.domain.cqrs.command.DefaultCommandBus;
 import com.firefly.common.domain.cqrs.query.DefaultQueryBus;
 import com.firefly.common.domain.cqrs.query.QueryBus;
 import com.firefly.common.domain.tracing.CorrelationContext;
+import com.firefly.common.domain.validation.AutoValidationProcessor;
+import jakarta.validation.Validator;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -45,19 +48,42 @@ public class CqrsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public AutoValidationProcessor autoValidationProcessor(@Autowired(required = false) Validator validator) {
+        if (validator != null) {
+            log.info("Configuring Jakarta validation processor for CQRS framework");
+            return new AutoValidationProcessor(validator);
+        } else {
+            log.warn("Jakarta Validator not available - creating no-op validation processor");
+            return new AutoValidationProcessor(null);
+        }
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public io.micrometer.core.instrument.MeterRegistry meterRegistry() {
+        log.info("Auto-configuring default SimpleMeterRegistry for CQRS metrics");
+        return new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public CommandBus commandBus(ApplicationContext applicationContext,
-                               CorrelationContext correlationContext) {
-        log.info("Configuring CQRS Command Bus");
-        return new DefaultCommandBus(applicationContext, correlationContext);
+                               CorrelationContext correlationContext,
+                               AutoValidationProcessor autoValidationProcessor,
+                               io.micrometer.core.instrument.MeterRegistry meterRegistry) {
+        log.info("Configuring CQRS Command Bus with Jakarta validation and metrics (auto-configured)");
+        return new DefaultCommandBus(applicationContext, correlationContext, autoValidationProcessor, meterRegistry);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public QueryBus queryBus(ApplicationContext applicationContext,
                            CorrelationContext correlationContext,
-                           CacheManager cacheManager) {
-        log.info("Configuring CQRS Query Bus with caching support");
-        return new DefaultQueryBus(applicationContext, correlationContext, cacheManager);
+                           AutoValidationProcessor autoValidationProcessor,
+                           CacheManager cacheManager,
+                           io.micrometer.core.instrument.MeterRegistry meterRegistry) {
+        log.info("Configuring CQRS Query Bus with caching support, Jakarta validation and metrics (auto-configured)");
+        return new DefaultQueryBus(applicationContext, correlationContext, autoValidationProcessor, cacheManager, meterRegistry);
     }
 
     @Bean

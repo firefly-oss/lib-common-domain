@@ -16,7 +16,6 @@
 
 package com.firefly.common.domain.config;
 
-import com.firefly.common.domain.tracing.CorrelationContext;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -61,10 +60,9 @@ public class ServiceClientAutoConfiguration {
 
         log.info("Initializing ServiceClient framework with environment: {}",
                 properties.getEnvironment());
-        log.debug("ServiceClient configuration: REST max connections={}, gRPC plaintext={}, SDK auto-shutdown={}",
+        log.debug("ServiceClient configuration: REST max connections={}, gRPC plaintext={}",
                 properties.getRest().getMaxConnections(),
-                properties.getGrpc().isUsePlaintextByDefault(),
-                properties.getSdk().isAutoShutdownEnabled());
+                properties.getGrpc().isUsePlaintextByDefault());
     }
 
     @Bean
