@@ -1,417 +1,334 @@
 # Architecture Guide
 
-This document provides a comprehensive overview of the Firefly Common Domain Library architecture, design patterns, and how it enables domain-driven design in the core-domain layer of banking microservices.
-
-## Table of Contents
-
-- [Overview](#overview)
-- [4-Tier Architecture](#4-tier-architecture)
-- [Core Design Patterns](#core-design-patterns)
-- [Component Architecture](#component-architecture)
-- [Integration Patterns](#integration-patterns)
-- [Banking Domain Modeling](#banking-domain-modeling)
+Comprehensive overview of the Firefly Common Domain Library architecture and design patterns.
 
 ## Overview
 
-The Firefly Common Domain Library implements a sophisticated architecture that combines **Domain-Driven Design (DDD)**, **Command Query Responsibility Segregation (CQRS)**, **Event-Driven Architecture**, and **Reactive Programming** to create a robust foundation for banking microservices.
+The Firefly Common Domain Library provides a **consolidated zero-boilerplate CQRS framework** for building banking microservices with:
 
-### Key Architectural Principles
-
-1. **Reactive-First**: Built on Project Reactor for non-blocking, asynchronous operations
-2. **Domain-Centric**: Business logic and domain models are the primary focus
-3. **Event-Driven**: Loose coupling through domain events and messaging
-4. **Resilient**: Circuit breakers, retries, and graceful degradation
-5. **Observable**: Comprehensive metrics, tracing, and health monitoring
+- **🎯 Consolidated CQRS Framework**: Single approach with zero boilerplate - extend base classes with annotations
+- **🚀 Automatic Everything**: Type detection, validation, caching, logging, metrics, error handling
+- **⚡ Focus on Business Logic**: Write only the `doHandle()` method - everything else is automatic
+- **📊 Built-in Observability**: Automatic logging, metrics, and distributed tracing
+- **🔧 Annotation-Driven**: All configuration through `@CommandHandlerComponent` and `@QueryHandlerComponent`
+- **✅ Production Ready**: Built-in resilience, monitoring, and best practices
 
 ## 4-Tier Architecture
 
-The library serves as the foundation for the **Core-Domain Layer** in Firefly's 4-tier microservices architecture:
-
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    CHANNELS LAYER                           │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │   Web UI    │ │ Mobile App  │ │  API Gateway│            │
-│  │             │ │             │ │             │            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
+│                    Presentation Layer                       │
+│  REST Controllers, GraphQL Resolvers, Message Handlers      │
 └─────────────────────────────────────────────────────────────┘
                               │
-                    HTTP/REST/GraphQL
-                              │
 ┌─────────────────────────────────────────────────────────────┐
-│              APPLICATION/PROCESS LAYER                      │
-│      ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │
-│      │  Workflow   │ │  Process    │ │ Integration │        │
-│      │  Services   │ │ Orchestrator│ │   Services  │        │
-│      └─────────────┘ └─────────────┘ └─────────────┘        │
+│                    Application Layer                        │
+│     Command/Query Handlers, Workflow Orchestrators          │
+│              (Uses Firefly Common Domain)                   │
 └─────────────────────────────────────────────────────────────┘
                               │
-                    Commands/Queries/Events
-                              │
 ┌─────────────────────────────────────────────────────────────┐
-│ ★                    CORE-DOMAIN LAYER                    ★ │
-│                        (THIS LIBRARY)                       │
-│  ┌─────────────┐   ┌───────────────┐   ┌───────────────┐    │
-│  │    CQRS     │   │     Domain    │   │    Service    │    │
-│  │  Framework  │   │     Events    │   │    Clients    │    │
-│  │             │   │               │   │               │    │
-│  │ ┌─────────┐ │   │ ┌───────────┐ │   │ ┌───────────┐ │    │
-│  │ │Commands │ │   │ │ Publishers│ │   │ │   REST    │ │    │
-│  │ │Queries  │ │   │ │ Consumers │ │   │ │   gRPC    │ │    │
-│  │ │Handlers │ │   │ │ Adapters  │ │   │ │    SDK    │ │    │
-│  │ │         │ │   │ │ Filtering │ │   │ │ Resilience│ │    │
-│  │ └─────────┘ │   │ └───────────┘ │   │ └───────────┘ │    │
-│  └─────────────┘   └───────────────┘   └───────────────┘    │
+│                     Domain Layer                            │
+│    Domain Models, Business Rules, Domain Services           │
+│              (Pure business logic)                          │
 └─────────────────────────────────────────────────────────────┘
                               │
-                    Database Operations/External APIs
-                              │
 ┌─────────────────────────────────────────────────────────────┐
-│                 CORE-INFRASTRUCTURE LAYER                   │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐    │
-│  │  Database   │     │   Cache     │     │  External   │    │
-│  │   CRUD      │     │  Services   │     │    APIs     │    │
-│  │  Services   │     │             │     │             │    │
-│  └─────────────┘     └─────────────┘     └─────────────┘    │
+│                 Infrastructure Layer                        │
+│   ServiceClients, Event Publishers, External APIs           │
+│              (Uses Firefly Common Domain)                   │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-### Layer Responsibilities
-
-#### Channels Layer
-- User interfaces (Web, Mobile, APIs)
-- Authentication and authorization
-- Request/response transformation
-- Rate limiting and throttling
-
-#### Application/Process Layer
-- Business process orchestration
-- Workflow management
-- Cross-cutting concerns
-- Integration with external systems
-
-#### Core-Domain Layer (This Library)
-- **Business logic and domain models**
-- **CQRS command and query handling**
-- **Domain event publishing and consumption**
-- **StepEvents integration with lib-transactional-engine**
-- **Saga orchestration and step event processing**
-- **Service-to-service communication**
-- **Resilience and observability patterns**
-
-#### Core-Infrastructure Layer
-- Data persistence (CRUD operations)
-- Caching strategies
-- External API integrations
-- Infrastructure services
 
 ## Core Design Patterns
 
-### 1. Command Query Responsibility Segregation (CQRS)
+### Consolidated CQRS Pattern
 
-CQRS separates read and write operations, allowing for optimized data models and scalability.
+**Single Approach Philosophy**
+- **Only one way** to create handlers: extend base classes with annotations
+- **Zero boilerplate**: No type methods, caching methods, or validation setup
+- **Focus on business logic**: Write only the `doHandle()` method
 
-```java
-// Command Side - Write Operations
-@Component
-public class CreateAccountHandler implements CommandHandler<CreateAccountCommand, AccountResult> {
-    
-    @Override
-    public Mono<AccountResult> handle(CreateAccountCommand command) {
-        return command.validate()
-            .flatMap(this::createAccount)
-            .flatMap(this::publishAccountCreatedEvent);
-    }
-}
+**Command Side (Write Operations)**
+- Commands are simple POJOs implementing `Command<R>` interface
+- CommandHandlers extend `CommandHandler<C, R>` with `@CommandHandlerComponent` annotation
+- Automatic type detection from generics - no `getCommandType()` needed
+- Built-in validation, logging, metrics, error handling, and retry logic
+- CommandBus automatically routes and processes commands
+- Spring auto-discovery of handlers with `@CommandHandlerComponent`
+- Built-in metrics, logging, correlation, and error handling
 
-// Query Side - Read Operations  
-@Component
-public class GetAccountHandler implements QueryHandler<GetAccountQuery, Account> {
-    
-    @Cacheable("accounts")
-    @Override
-    public Mono<Account> handle(GetAccountQuery query) {
-        return accountRepository.findById(query.getAccountId());
-    }
-}
-```
-
-### 2. Event-Driven Architecture
-
-Domain events enable loose coupling and eventual consistency across microservices.
-
-```java
-// Event Publishing
-@EventPublisher(topic = "banking.accounts", type = "account.created")
-public Mono<Account> createAccount(CreateAccountCommand command) {
-    // Business logic
-    return accountService.create(command);
-}
-
-// Event Consumption
-@EventListener
-public void handleAccountCreated(DomainSpringEvent event) {
-    if ("account.created".equals(event.getEnvelope().getType())) {
-        // Trigger downstream processes
-        commandBus.send(new SetupAccountServicesCommand(accountId));
-    }
-}
-```
-
-### 3. Event-Driven Workflows
-
-The library supports event-driven workflows for complex business processes. Commands can publish domain events that trigger subsequent processing steps.
-
-```java
-@Component
-public class MoneyTransferCommandHandler implements CommandHandler<TransferMoneyCommand, TransferResult> {
-
-    private final DomainEventPublisher eventPublisher;
-
-    @Override
-    public Mono<TransferResult> handle(TransferMoneyCommand command) {
-        // Process the transfer and publish events
-        return processTransfer(command)
-            .flatMap(result -> publishTransferEvents(result))
-            .map(result -> new TransferResult(result.isSuccess()));
-    }
-}
-```
-
-### 4. Service Client Pattern
-
-Unified abstraction for service-to-service communication with resilience patterns.
-
-```java
-// REST Client
-@Component
-public class NotificationService {
-    
-    private final RestServiceClient notificationClient;
-    
-    public Mono<Void> sendTransferNotification(TransferEvent event) {
-        return notificationClient.post("/notifications/transfer", event, Void.class);
-    }
-}
-
-// SDK Client
-@Component
-public class PaymentService {
-    
-    private final SdkServiceClient<StripeSDK> stripeClient;
-    
-    public Mono<PaymentResult> processPayment(PaymentRequest request) {
-        return stripeClient.execute(sdk -> 
-            sdk.charges().create(request.toChargeParams()));
-    }
-}
-```
+**Query Side (Read Operations)**
+- Queries are simple POJOs implementing `Query<R>` interface
+- QueryHandlers extend `QueryHandler<Q, R>` with `@QueryHandlerComponent` annotation
+- Automatic type detection from generics - no `getQueryType()` needed
+- Automatic caching based on annotation configuration - no `supportsCaching()` methods
+- Built-in validation, logging, metrics, and performance monitoring
 
 ## Component Architecture
 
-### CQRS Framework Components
+### Consolidated CQRS Framework Components
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                       CQRS Framework                        │
-│                                                             │
-│             ┌─────────────┐    ┌─────────────┐              │
-│             │ CommandBus  │    │  QueryBus   │              │
-│             │             │    │             │              │
-│             │ • Routing   │    │ • Routing   │              │
-│             │ • Validation│    │ • Caching   │              │
-│             │ • Tracing   │    │ • Tracing   │              │
-│             └─────────────┘    └─────────────┘              │
-│                    │                   │                    │
-│             ┌─────────────┐    ┌─────────────┐              │
-│             │   Command   │    │    Query    │              │
-│             │  Handlers   │    │  Handlers   │              │
-│             └─────────────┘    └─────────────┘              │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────┐    ┌──────────────────────────────────┐    ┌─────────────────┐
+│   CommandBus    │───►│  @CommandHandlerComponent        │───►│ Business Logic  │
+│                 │    │  extends CommandHandler<C,R>     │    │                 │
+│ • Auto-routing  │    │                                  │    │ • Only doHandle │
+│ • Validation    │    │ • Automatic type detection       │    │ • Pure business │
+│ • Metrics       │    │ • Built-in validation            │    │ • No boilerplate│
+│ • Logging       │    │ • Timeout/retry from annotation  │    │                 │
+└─────────────────┘    └──────────────────────────────────┘    └─────────────────┘
+
+┌─────────────────┐    ┌──────────────────────────────────┐    ┌─────────────────┐
+│    QueryBus     │───►│  @QueryHandlerComponent          │───►│ Business Logic  │
+│                 │    │  extends QueryHandler<Q,R>       │    │                 │
+│ • Auto-routing  │    │                                  │    │ • Only doHandle │
+│ • Caching       │    │ • Automatic type detection       │    │ • Pure business │
+│ • Metrics       │    │ • Caching from annotation        │    │ • No boilerplate│
+│ • Logging       │    │ • TTL from annotation            │    │                 │
+└─────────────────┘    └──────────────────────────────────┘    └─────────────────┘
+
+                       ┌──────────────────────────────────┐
+                       │        Automatic Features        │
+                       │                                  │
+                       │ • Jakarta Bean Validation        │
+                       │ • Micrometer Metrics (Auto-Cfg)  │
+                       │ • Structured Logging             │
+                       │ • Correlation Context            │
+                       │ • Error Handling & Retries       │
+                       │ • Cache Management               │
+                       └──────────────────────────────────┘
 ```
 
-### Domain Events Architecture
+**Key Components:**
+- **CommandBus/QueryBus**: Central routing with automatic handler discovery via Spring
+- **@CommandHandlerComponent/@QueryHandlerComponent**: Annotation-driven configuration
+- **CommandHandler/QueryHandler**: Zero-boilerplate base classes with automatic type detection
+- **AutoValidationProcessor**: Jakarta Bean Validation integration
+- **GenericTypeResolver**: Automatic type detection from generics
+- **Automatic Caching**: Annotation-based cache management for queries
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   Domain Events                             │
-│                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐      │
-│  │   Event     │    │  Messaging  │    │   Event     │      │
-│  │ Publishers  │    │  Adapters   │    │ Consumers   │      │
-│  │             │    │             │    │             │      │
-│  │ • Annotation│    │ • Kafka     │    │ • Listeners │      │
-│  │ • Programm. │    │ • RabbitMQ  │    │ • Filtering │      │
-│  │ • Async     │    │ • SQS       │    │ • Routing   │      │
-│  │ • Retry     │    │ • Kinesis   │    │ • Error Hdl │      │
-│  └─────────────┘    │ • AppEvents │    └─────────────┘      │
-│                     └─────────────┘                         │
-└─────────────────────────────────────────────────────────────┘
-```
+## Design Principles
 
-### StepEvents Integration Architecture
+### 1. Single Approach - Eliminate Confusion
+```java
+// ✅ THE ONLY WAY - Extend base classes with annotations
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
+public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, AccountCreatedResult> {
+    @Override
+    protected Mono<AccountCreatedResult> doHandle(CreateAccountCommand command) {
+        // Only business logic
+    }
+}
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│              StepEvents Bridge Pattern                      │
-│                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌────────────────┐   │
-│  │lib-transact │    │StepEvent    │    │     Domain     │   │
-│  │ional-engine │───▶│Publisher    │───▶│     Events     │   │
-│  │             │    │   Bridge    │    │ Infrastructure │   │
-│  │ • Saga Mgmt │    │             │    │                │   │
-│  │ • Step Exec │    │ • Transform │    │    • Kafka     │   │
-│  │ • Retry     │    │ • Enrich    │    │    • RabbitMQ  │   │
-│  │ • Rollback  │    │ • Metadata  │    │    • SQS       │   │
-│  └─────────────┘    └─────────────┘    │    • Kinesis   │   │
-│                                        │    • AppEvents │   │
-│                                        └────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+// ❌ DON'T DO THIS - Multiple approaches create confusion
+public class OldHandler implements CommandHandler<MyCommand, MyResult> {
+    // Old interface-based approach - don't use
+}
 ```
 
-### ServiceClient Architecture
+### 2. Zero Boilerplate - Focus on Business Logic
+```java
+// ✅ NO BOILERPLATE NEEDED
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
+public class GetBalanceHandler extends QueryHandler<GetBalanceQuery, Balance> {
+    @Override
+    protected Mono<Balance> doHandle(GetBalanceQuery query) {
+        // Only business logic - everything else automatic!
+    }
 
+    // ✅ NO METHODS TO OVERRIDE:
+    // - No getQueryType() - automatic from generics
+    // - No supportsCaching() - from annotation
+    // - No getCacheTtlSeconds() - from annotation
+}
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  ServiceClient Framework                    │
-│                                                             │
-│     ┌─────────────┐    ┌─────────────┐    ┌─────────────┐   │
-│     │    REST     │    │    gRPC     │    │     SDK     │   │
-│     │   Client    │    │   Client    │    │   Client    │   │
-│     │             │    │             │    │             │   │
-│     │ • WebClient │    │ • Stubs     │    │ • Factories │   │
-│     │ • Reactive  │    │ • Streaming │    │ • Lifecycle │   │
-│     │ • Auth      │    │ • Metadata  │    │ • Wrapping  │   │
-│     └─────────────┘    └─────────────┘    └─────────────┘   │
-│            │                   │                   │        │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │                     Resilience Patterns                 ││
-│  │  • Circuit Breakers  • Retries  • Timeouts  • Bulkhead  ││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
+
+### 3. Annotation-Driven Configuration
+```java
+// ✅ ALL CONFIGURATION IN ANNOTATIONS
+@CommandHandlerComponent(
+    timeout = 30000,    // Command timeout in milliseconds
+    retries = 3,        // Number of retry attempts
+    metrics = true      // Enable metrics collection
+)
+
+@QueryHandlerComponent(
+    cacheable = true,   // Enable caching
+    cacheTtl = 300,     // Cache TTL in seconds
+    metrics = true      // Enable metrics collection
+)
 ```
 
 ## Integration Patterns
 
-### 1. Command-Driven Integration
+### Auto-Configured Metrics
 
-Commands trigger operations across service boundaries:
+The framework automatically provides metrics collection **by default** with zero configuration:
 
 ```java
-@Component
-public class LoanApplicationHandler implements CommandHandler<SubmitLoanApplicationCommand, LoanResult> {
-    
-    private final SdkServiceClient<CreditBureauSDK> creditBureauClient;
-    private final RestServiceClient riskAssessmentClient;
-    
+// ✅ NO METRICS CONFIGURATION NEEDED
+@SpringBootApplication
+public class BankingApplication {
+    // MeterRegistry is auto-configured (SimpleMeterRegistry by default)
+    // Command and Query metrics are automatically collected
+}
+```
+
+**Automatic Metrics Collection:**
+- **Command Metrics**: `firefly.cqrs.command.processed`, `firefly.cqrs.command.processing.time`
+- **Query Metrics**: `firefly.cqrs.query.processed`, `firefly.cqrs.query.processing.time`
+- **Auto-Configured MeterRegistry**: SimpleMeterRegistry provided if none exists
+- **Zero Configuration**: No manual MeterRegistry bean required
+
+**Custom MeterRegistry (Optional):**
+```java
+@Configuration
+public class MetricsConfig {
+
+    @Bean
+    public MeterRegistry meterRegistry() {
+        // Your custom MeterRegistry (Prometheus, CloudWatch, etc.)
+        // Framework will use this instead of auto-configured SimpleMeterRegistry
+        return new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+    }
+}
+```
+
+### Handler Implementation Pattern
+```java
+// ✅ CURRENT PATTERN - Consolidated approach
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
+public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
+
+    @Autowired
+    private TransferService transferService;
+
     @Override
-    public Mono<LoanResult> handle(SubmitLoanApplicationCommand command) {
-        return performCreditCheck(command)
-            .flatMap(this::assessRisk)
-            .flatMap(this::makeDecision)
-            .flatMap(this::publishDecisionEvent);
+    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+        // Only business logic - everything else automatic!
+        return transferService.executeTransfer(command)
+            .map(transfer -> new TransferResult(
+                transfer.getTransactionId(),
+                command.getFromAccount(),
+                command.getToAccount(),
+                command.getAmount(),
+                "COMPLETED",
+                LocalDateTime.now()
+            ));
     }
 }
 ```
 
-### 2. Event-Driven Integration
-
-Events enable reactive, asynchronous integration:
-
+### Spring Integration Pattern
 ```java
-@EventListener
-public void handleCustomerOnboarded(DomainSpringEvent event) {
-    if ("customer.onboarded".equals(event.getEnvelope().getType())) {
-        // Trigger account setup
-        commandBus.send(new CreateDefaultAccountsCommand(customerId));
-        
-        // Start KYC process
-        commandBus.send(new InitiateKycCommand(customerId));
-        
-        // Send welcome notification
-        commandBus.send(new SendWelcomeNotificationCommand(customerId));
+// ✅ AUTOMATIC DISCOVERY - No manual registration needed
+@SpringBootApplication
+public class BankingApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(BankingApplication.class, args);
+        // CommandBus and QueryBus beans automatically available
+        // Handlers automatically discovered and registered
+    }
+}
+
+// ✅ DEPENDENCY INJECTION - Standard Spring patterns
+@Service
+public class AccountService {
+
+    @Autowired
+    private CommandBus commandBus;
+
+    @Autowired
+    private QueryBus queryBus;
+
+    public Mono<AccountCreatedResult> createAccount(CreateAccountRequest request) {
+        CreateAccountCommand command = new CreateAccountCommand(
+            request.getCustomerId(),
+            request.getAccountType(),
+            request.getInitialBalance()
+        );
+        return commandBus.send(command);
     }
 }
 ```
 
-### 3. Query-Based Integration
+## Framework Benefits
 
-Queries retrieve data from multiple sources:
+### 1. Developer Experience
+- **🎯 Single Approach**: Only one way to do things - no confusion
+- **🚀 Zero Boilerplate**: Focus only on business logic
+- **⚡ Fast Development**: Automatic everything - validation, caching, metrics
+- **📚 Easy Learning**: Simple patterns, clear documentation
 
+### 2. Production Readiness
+- **📊 Built-in Observability**: Automatic logging, metrics, tracing
+- **🔧 Resilience**: Automatic retries, timeouts, error handling
+- **⚡ Performance**: Automatic caching, optimized routing
+- **🛡️ Reliability**: Validation, correlation, structured logging
+
+### 3. Maintainability
+- **🎯 Consistency**: Single approach across all handlers
+- **🔍 Testability**: Easy to unit test business logic
+- **📖 Readability**: Clean, focused code without boilerplate
+- **🔧 Extensibility**: Hook points for customization
+
+## Best Practices
+
+### Handler Design
 ```java
-@Component
-public class CustomerProfileHandler implements QueryHandler<GetCustomerProfileQuery, CustomerProfile> {
-    
-    private final RestServiceClient customerServiceClient;
-    private final SdkServiceClient<AccountSDK> accountClient;
-    private final RestServiceClient transactionServiceClient;
-    
+// ✅ GOOD - Single responsibility, focused business logic
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
+public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, AccountCreatedResult> {
+
     @Override
-    public Mono<CustomerProfile> handle(GetCustomerProfileQuery query) {
-        return Mono.zip(
-            getCustomerDetails(query.getCustomerId()),
-            getAccountSummary(query.getCustomerId()),
-            getRecentTransactions(query.getCustomerId())
-        ).map(this::buildCustomerProfile);
+    protected Mono<AccountCreatedResult> doHandle(CreateAccountCommand command) {
+        // Only business logic - everything else automatic
+        return accountService.createAccount(command)
+            .map(account -> mapToResult(account, command));
     }
+}
+
+// ❌ AVOID - Complex handlers with multiple responsibilities
+public class ComplexHandler extends CommandHandler<ComplexCommand, ComplexResult> {
+    // Don't put multiple business operations in one handler
 }
 ```
 
-## Banking Domain Modeling
-
-### Domain Entities and Value Objects
-
+### Validation Strategy
 ```java
-// Aggregate Root
-@Entity
-public class Account {
-    private AccountId id;
-    private CustomerId customerId;
-    private AccountNumber accountNumber;
-    private Money balance;
-    private AccountStatus status;
-    private List<Transaction> transactions;
-    
-    // Domain methods
-    public void debit(Money amount) {
-        if (balance.isLessThan(amount)) {
-            throw new InsufficientFundsException();
-        }
-        this.balance = balance.subtract(amount);
-        addTransaction(Transaction.debit(amount));
-    }
+// ✅ GOOD - Use Jakarta Bean Validation for simple validation
+public class CreateAccountCommand implements Command<AccountCreatedResult> {
+    @NotBlank(message = "Customer ID is required")
+    private final String customerId;
+
+    @NotNull @Positive(message = "Amount must be positive")
+    private final BigDecimal initialBalance;
 }
 
-// Value Object
-@Value
-public class Money {
-    BigDecimal amount;
-    Currency currency;
-    
-    public Money add(Money other) {
-        validateSameCurrency(other);
-        return new Money(amount.add(other.amount), currency);
+// ✅ GOOD - Complex business validation in service layer
+@Service
+public class AccountValidationService {
+    public Mono<ValidationResult> validateAccountCreation(CreateAccountCommand command) {
+        // Complex business rules here
     }
 }
 ```
 
-### Banking-Specific Patterns
+### Testing Approach
+```java
+// ✅ GOOD - Test business logic, not framework features
+@ExtendWith(MockitoExtension.class)
+class CreateAccountHandlerTest {
 
-#### 1. Account Aggregates
-- Account as aggregate root
-- Transactions as entities within aggregate
-- Balance as calculated value
+    @Mock private AccountService accountService;
+    @InjectMocks private CreateAccountHandler handler;
 
-#### 2. Money Transfer Process
-- Multi-step event-driven process
-- Eventual consistency across accounts
-- Audit trail for regulatory compliance
-
-#### 3. Regulatory Event Sourcing
-- Immutable event log for compliance
-- Replay capability for audits
-- Point-in-time account reconstruction
-
----
-
-This architecture enables building robust, scalable, and maintainable banking microservices that can handle the complexity and regulatory requirements of financial services while maintaining high performance and reliability.
+    @Test
+    void shouldCreateAccount() {
+        // Test only the business logic in doHandle()
+        StepVerifier.create(handler.doHandle(command))
+            .expectNextMatches(result -> result.getStatus().equals("ACTIVE"))
+            .verifyComplete();
+    }
+}

@@ -1,10 +1,10 @@
 # Firefly Common Domain Library
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Java](https://img.shields.io/badge/Java-17+-orange.svg)](https://openjdk.java.net/)
+[![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.java.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green.svg)](https://spring.io/projects/spring-boot)
 
-A powerful Spring Boot library that enables domain-driven design (DDD) with reactive programming support, featuring multi-messaging adapter architecture and comprehensive event handling capabilities for the **Core-Domain Layer** of the Firefly OpenCore Banking Platform.
+A powerful Spring Boot library that enables domain-driven design (DDD) with reactive programming support, featuring an **enhanced CQRS framework with zero boilerplate**, smart caching, automatic validation, and comprehensive event handling capabilities for the **Core-Domain Layer** of the Firefly OpenCore Banking Platform.
 
 ## 📋 Table of Contents
 
@@ -54,15 +54,18 @@ This library serves as the foundational architecture framework for the **Core-Do
 
 ## 🚀 Key Features
 
-### 🎯 CQRS Framework
-- **Command/Query Separation**: Clean separation of read and write operations
-- **Reactive Processing**: Built on Project Reactor for non-blocking operations
-- **Event-Driven Workflows**: Support for complex business workflows through domain events
-- **Automatic Handler Discovery**: Zero-configuration handler registration
-- **Query Caching**: Built-in caching support with configurable TTL
+### 🎯 Enhanced CQRS Framework (Zero Boilerplate)
+- **Single Best Way**: Only ONE way to create handlers - extend `CommandHandler<C,R>` or `QueryHandler<Q,R>` - no confusion!
+- **Zero Boilerplate**: Automatic type detection from generics - no `getCommandType()` or `getResultType()` methods needed
+- **Jakarta Validation Integration**: Automatic validation using @NotBlank, @NotNull, @Min, @Max annotations - no manual validation code
+- **Built-in Features**: Automatic logging, **metrics by default**, error handling, correlation context, and performance monitoring
+- **Smart Caching**: Intelligent query result caching with configurable TTL and automatic cache key generation
+- **Builder Pattern Support**: Clean command/query creation using @Builder annotation with Lombok
+- **Reactive Processing**: Built on Project Reactor for non-blocking, asynchronous operations
+- **Focus on Business Logic**: Just implement `doHandle()` - everything else is handled automatically
 
 ### 🌐 ServiceClient Framework (Redesigned)
-- **Unified API**: Single interface for REST, gRPC, and SDK clients
+- **Unified API**: Single interface for REST and gRPC clients
 - **Fluent Request Builder**: Intuitive method chaining for all operations
 - **Advanced Resilience**: Bulkhead isolation, rate limiting, adaptive timeouts
 - **Health Monitoring**: Automatic service health detection and recovery
@@ -84,6 +87,7 @@ This library serves as the foundational architecture framework for the **Core-Do
 - **Developer Control**: No native integration - developers maintain full control over saga orchestration patterns
 
 ### 🔍 Enhanced Observability
+- **Metrics by Default**: Auto-configured MeterRegistry with CQRS command/query metrics (no manual setup required)
 - **Comprehensive Metrics**: JVM, HTTP client, thread pool, and application startup metrics
 - **Health Indicators**: Thread pool, cache, and external service health monitoring
 - **Distributed Tracing**: Correlation context propagation across all operations
@@ -109,19 +113,83 @@ Understanding these fundamental patterns is essential for effectively using this
 - **Auditability**: All state changes are explicit commands with full traceability
 - **Scalability**: Read replicas can be optimized for specific query patterns
 
-**Example:**
+**Enhanced Example with Zero Boilerplate:**
 ```java
-// Command - Changes state
-TransferMoneyCommand command = new TransferMoneyCommand(
-    "ACC-001",           // fromAccount
-    "ACC-002",           // toAccount  
-    new BigDecimal("1000.00"), // amount
-    "Monthly transfer",  // description
-    "CORR-12345"        // correlationId
-);
+import jakarta.validation.constraints.*;
+import lombok.Builder;
+import lombok.Data;
+import com.firefly.common.domain.cqrs.annotations.CommandHandler;
 
-// Query - Reads data  
-GetAccountBalanceQuery query = new GetAccountBalanceQuery("ACC-001");
+// Command with Jakarta validation - no boilerplate!
+@Data
+@Builder
+public class TransferMoneyCommand implements Command<TransferResult> {
+    @NotBlank(message = "Source account is required")
+    private final String fromAccount;
+
+    @NotBlank(message = "Destination account is required")
+    private final String toAccount;
+
+    @NotNull
+    @Min(value = 1, message = "Amount must be greater than zero")
+    @Max(value = 1000000, message = "Amount cannot exceed $1,000,000")
+    private final BigDecimal amount;
+
+    @NotBlank(message = "Description is required")
+    private final String description;
+
+    private final String correlationId;
+
+    // No validate() method needed - Jakarta validation handles annotations automatically!
+    // Framework automatically validates @NotBlank, @NotNull, @Min, @Max annotations
+}
+
+// Zero-boilerplate command handler - THE ONLY WAY to create handlers!
+@CommandHandler(timeout = 30000, retries = 3, metrics = true)
+public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
+
+    private final ServiceClient accountServiceClient;
+    private final DomainEventPublisher eventPublisher;
+
+    @Override
+    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+        // Only business logic - validation, logging, metrics handled automatically!
+        return executeTransfer(command)
+            .flatMap(this::publishTransferEvent);
+    }
+
+    // No getCommandType() needed - automatically detected from generics!
+    // Built-in logging, metrics, error handling, correlation context - all automatic!
+
+    private Mono<TransferResult> executeTransfer(TransferMoneyCommand command) {
+        return accountServiceClient.post("/transfers", TransferResult.class)
+            .withBody(command)
+            .execute();
+    }
+
+    private Mono<TransferResult> publishTransferEvent(TransferResult result) {
+        DomainEventEnvelope event = DomainEventEnvelope.builder()
+            .topic("banking.transfers")
+            .type("transfer.completed")
+            .key(result.getTransferId())
+            .payload(result)
+            .timestamp(Instant.now())
+            .build();
+
+        return eventPublisher.publish(event).thenReturn(result);
+    }
+}
+
+// Simple command execution using builder pattern
+TransferMoneyCommand command = TransferMoneyCommand.builder()
+    .fromAccount("ACC-001")
+    .toAccount("ACC-002")
+    .amount(new BigDecimal("1000.00"))
+    .description("Monthly transfer")
+    .correlationId("CORR-12345")
+    .build();
+
+commandBus.send(command).subscribe();
 ```
 
 ### Saga Pattern
@@ -207,6 +275,16 @@ public Mono<TransferResult> transferMoney(TransferRequest request) {
 }
 ```
 
+## 🎯 **The Single Best Way**
+
+This framework provides **ONE clear way** to create CQRS handlers - no confusion, no multiple approaches:
+
+- **Commands**: Use `@CommandHandler` + extend `CommandHandler<Command, Result>` + implement `doHandle()`
+- **Queries**: Use `@QueryHandler` + extend `QueryHandler<Query, Result>` + implement `doHandle()`
+- **Zero Boilerplate**: Automatic type detection, logging, metrics, validation, caching
+- **Annotations**: Configure timeout, retries, caching, metrics via annotations
+- **Focus**: Only write business logic - everything else is handled automatically
+
 ## 📦 Quick Start
 
 ### 1. Add Dependency
@@ -233,7 +311,7 @@ public class BankingServiceApplication {
 ```
 
 The following components are automatically configured when the library is on the classpath:
-- **CQRS Framework** (`CqrsAutoConfiguration`)
+- **CQRS Framework** (`CqrsAutoConfiguration`) - **includes auto-configured MeterRegistry for metrics**
 - **Domain Events** (`DomainEventsAutoConfiguration`)
 - **ServiceClient Framework** (`ServiceClientAutoConfiguration`)
 - **StepEvents Bridge** (`StepBridgeConfiguration`)
@@ -273,58 +351,356 @@ domain:
   topic: banking-domain-events
 ```
 
-### 4. Create Your First Command Handler
+### 4. Create Your First Command and Handler
 
 ```java
-@Component
-public class ProcessPaymentHandler implements CommandHandler<ProcessPaymentCommand, PaymentResult> {
-    
+import jakarta.validation.constraints.*;
+import lombok.Builder;
+import lombok.Data;
+
+// Command with automatic Jakarta validation
+@Data
+@Builder
+public class ProcessPaymentCommand implements Command<PaymentResult> {
+    @NotBlank(message = "Customer ID is required")
+    private final String customerId;
+
+    @NotNull(message = "Payment amount is required")
+    @Min(value = 1, message = "Payment amount must be greater than zero")
+    @Max(value = 50000, message = "Payment amount cannot exceed $50,000")
+    private final BigDecimal amount;
+
+    @NotBlank(message = "Payment method is required")
+    private final String paymentMethod;
+
+    @NotBlank(message = "Description is required")
+    private final String description;
+
+    private final String correlationId;
+
+    // No validate() method needed - Jakarta validation handles all annotations!
+}
+
+// THE ONLY WAY to create command handlers - extend CommandHandler!
+@CommandHandler(timeout = 15000, metrics = true)
+public class ProcessPaymentHandler extends CommandHandler<ProcessPaymentCommand, PaymentResult> {
+
     private final ServiceClient paymentClient;
     private final ServiceClient notificationClient;
-    
+
     @Override
-    public Mono<PaymentResult> handle(ProcessPaymentCommand command) {
-        return command.validate()
-            .flatMap(this::processPayment)
-            .flatMap(this::sendNotification);
+    protected Mono<PaymentResult> doHandle(ProcessPaymentCommand command) {
+        // Only business logic - validation, logging, metrics handled automatically!
+        return processPayment(command)
+            .flatMap(paymentResult -> sendNotification(command, paymentResult));
     }
-    
-    @Override
-    public Class<ProcessPaymentCommand> getCommandType() {
-        return ProcessPaymentCommand.class;
+
+    // No getCommandType() needed - automatically detected from generics!
+    // Built-in features: logging, metrics, error handling, correlation context
+
+    private Mono<PaymentResult> processPayment(ProcessPaymentCommand command) {
+        return paymentClient.post("/payments", PaymentResult.class)
+            .withBody(command)
+            .execute();
+    }
+
+    private Mono<PaymentResult> sendNotification(ProcessPaymentCommand command, PaymentResult result) {
+        return notificationClient.post("/notifications", Void.class)
+            .withBody(createNotificationRequest(command, result))
+            .execute()
+            .thenReturn(result); // Return the original payment result
+    }
+
+    private Object createNotificationRequest(ProcessPaymentCommand command, PaymentResult result) {
+        // Create notification request object from command and result
+        return new NotificationRequest(command.getCustomerId(), result.getTransactionId());
     }
 }
+
+// Usage example
+ProcessPaymentCommand command = ProcessPaymentCommand.builder()
+    .customerId("CUST-12345")
+    .amount(new BigDecimal("250.00"))
+    .paymentMethod("CREDIT_CARD")
+    .description("Monthly subscription payment")
+    .correlationId("CORR-PAY-001")
+    .build();
+
+commandBus.send(command)
+    .doOnSuccess(result -> log.info("Payment processed: {}", result.getTransactionId()))
+    .doOnError(error -> log.error("Payment failed: {}", error.getMessage()))
+    .subscribe();
+```
+
+## 🎯 Enhanced CQRS Framework Usage
+
+The enhanced CQRS framework eliminates boilerplate code through automatic Jakarta validation, smart caching, builder patterns, and clean handler interfaces.
+
+### 1. Commands with Automatic Validation
+
+Commands now use Jakarta validation annotations, eliminating manual validation code:
+
+```java
+import jakarta.validation.constraints.*;
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class TransferMoneyCommand implements Command<TransferResult> {
+    @NotBlank(message = "Source account is required")
+    private final String fromAccount;
+
+    @NotBlank(message = "Destination account is required")
+    private final String toAccount;
+
+    @NotNull(message = "Transfer amount is required")
+    @Min(value = 1, message = "Transfer amount must be greater than zero")
+    @Max(value = 1000000, message = "Transfer amount cannot exceed $1,000,000")
+    private final BigDecimal amount;
+
+    @NotBlank(message = "Description is required")
+    private final String description;
+
+    private final String correlationId;
+
+    // No validate() method needed - Jakarta validation handles annotations automatically!
+    // The CommandBus will automatically validate @NotBlank, @NotNull, @Min, @Max before processing
+
+    @Override
+    public Mono<ValidationResult> validate() {
+        // Only custom business validation here (Jakarta validation happens first)
+        if (fromAccount != null && fromAccount.equals(toAccount)) {
+            return Mono.just(ValidationResult.failure("accounts", "Cannot transfer to the same account"));
+        }
+        return Mono.just(ValidationResult.success());
+    }
+}
+```
+
+### 2. Zero-Boilerplate Command Handlers
+
+THE ONLY WAY to create command handlers - extend CommandHandler for automatic features:
+
+```java
+@CommandHandler(timeout = 30000, retries = 3, metrics = true)
+public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
+
+    private final ServiceClient accountServiceClient;
+    private final ServiceClient fraudServiceClient;
+    private final DomainEventPublisher eventPublisher;
+
+    @Override
+    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+        // Only business logic - validation, logging, metrics handled automatically!
+        return performFraudCheck(command)
+            .flatMap(fraudResult -> {
+                if (!fraudResult.isApproved()) {
+                    return Mono.error(new TransferBlockedException("Transfer blocked by fraud detection"));
+                }
+                return executeTransfer(command);
+            })
+            .flatMap(this::publishTransferEvent);
+    }
+
+    // No getCommandType() needed - automatically detected from generics!
+    // Built-in features: logging, metrics, error handling, correlation context
+
+    private Mono<FraudCheckResult> performFraudCheck(TransferMoneyCommand command) {
+        return fraudServiceClient.post("/fraud-check", FraudCheckResult.class)
+            .withBody(command)
+            .execute();
+    }
+
+    private Mono<TransferResult> executeTransfer(TransferMoneyCommand command) {
+        return accountServiceClient.post("/transfers", TransferResult.class)
+            .withBody(command)
+            .execute();
+    }
+
+    private Mono<TransferResult> publishTransferEvent(TransferResult result) {
+        DomainEventEnvelope event = DomainEventEnvelope.builder()
+            .topic("banking.transfers")
+            .type("transfer.completed")
+            .key(result.getTransferId())
+            .payload(result)
+            .timestamp(Instant.now())
+            .build();
+
+        return eventPublisher.publish(event).thenReturn(result);
+    }
+}
+```
+
+### 3. Clean Command Creation and Execution
+
+Create and execute commands using the builder pattern:
+
+```java
+@Service
+@RequiredArgsConstructor
+public class TransferService {
+
+    private final CommandBus commandBus;
+
+    public Mono<TransferResult> transferMoney(TransferRequest request) {
+        // Clean command creation using builder pattern
+        TransferMoneyCommand command = TransferMoneyCommand.builder()
+            .fromAccount(request.getFromAccount())
+            .toAccount(request.getToAccount())
+            .amount(request.getAmount())
+            .description(request.getDescription())
+            .correlationId(generateCorrelationId())
+            .build();
+
+        // Execute command - validation happens automatically
+        return commandBus.send(command);
+    }
+
+    public Mono<TransferResult> transferMoneyWithContext(TransferRequest request) {
+        // Alternative with correlation context
+        String correlationId = CorrelationContext.current().getCorrelationId();
+
+        TransferMoneyCommand command = TransferMoneyCommand.builder()
+            .fromAccount(request.getFromAccount())
+            .toAccount(request.getToAccount())
+            .amount(request.getAmount())
+            .description(request.getDescription())
+            .correlationId(correlationId)
+            .build();
+
+        return commandBus.send(command)
+            .doOnSuccess(result -> log.info("Transfer completed: {}", result.getTransferId()))
+            .doOnError(error -> log.error("Transfer failed: {}", error.getMessage()));
+    }
+
+    private String generateCorrelationId() {
+        return "TRANSFER-" + UUID.randomUUID().toString();
+    }
+}
+```
+
+### 4. Smart Queries with Automatic Caching
+
+THE ONLY WAY to create query handlers - extend QueryHandler for automatic features:
+
+```java
+import jakarta.validation.constraints.*;
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class GetAccountBalanceQuery implements Query<AccountBalance> {
+    @NotBlank(message = "Account number is required")
+    private final String accountNumber;
+
+    @NotBlank(message = "Currency is required")
+    private final String currency;
+
+    private final String correlationId;
+
+    // No need to override getCacheKey() - automatic generation based on fields!
+}
+
+@QueryHandler(cacheable = true, cacheTtl = 300, metrics = true)
+public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
+
+    private final ServiceClient accountServiceClient;
+
+    @Override
+    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
+        // Only business logic - validation, caching, metrics handled automatically!
+        return accountServiceClient.get("/accounts/{accountNumber}/balance", AccountBalance.class)
+            .withPathVariable("accountNumber", query.getAccountNumber())
+            .withQueryParam("currency", query.getCurrency())
+            .execute();
+    }
+
+    // No getQueryType() needed - automatically detected from generics!
+    // Built-in features: caching, logging, metrics, error handling
+
+    @Override
+    public boolean supportsCaching() {
+        return true; // Enable caching for this query
+    }
+
+    @Override
+    public Long getCacheTtlSeconds() {
+        return 300L; // Cache for 5 minutes
+    }
+}
+
+// Simple query execution using builder pattern
+GetAccountBalanceQuery query = GetAccountBalanceQuery.builder()
+    .accountNumber("ACC-123")
+    .currency("USD")
+    .correlationId("QUERY-001")
+    .build();
+
+queryBus.query(query)
+    .doOnSuccess(balance -> log.info("Account balance: {}", balance.getAmount()))
+    .subscribe();
 ```
 
 ## 📚 Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Architecture Guide](docs/ARCHITECTURE.md) | Detailed architecture patterns and design decisions |
-| [CQRS Framework](docs/CQRS.md) | Command/Query patterns, handlers, and lib-transactional-engine integration |
-| [ServiceClient Framework](docs/NEW_SERVICE_CLIENT_GUIDE.md) | Redesigned unified API for REST, gRPC, and SDK clients |
-| [Domain Events](docs/DOMAIN_EVENTS.md) | Multi-messaging adapter architecture and event patterns |
-| [Configuration Guide](docs/CONFIGURATION.md) | Complete configuration reference with examples |
-| [API Reference](docs/API_REFERENCE.md) | Detailed API documentation with method signatures |
-| [Developer Guide](docs/DEVELOPER_GUIDE.md) | Tutorials, best practices, and banking domain examples |
-| [Observability Features](OBSERVABILITY.md) | Enhanced metrics and health monitoring |
+| [API Reference](docs/API_REFERENCE.md) | Complete API reference with method signatures |
+| [Architecture Guide](docs/ARCHITECTURE.md) | Architecture patterns and design principles |
+| [Package Structure](docs/PACKAGE_STRUCTURE.md) | Package organization for library and microservices |
+| [Examples](docs/EXAMPLES.md) | Real working examples and best practices |
 
 ## 🏦 Banking Domain Examples
 
 ### Money Transfer with ServiceClient Integration
 
 ```java
-@Component
-public class MoneyTransferHandler implements CommandHandler<TransferMoneyCommand, TransferResult> {
+@CommandHandler(timeout = 30000, retries = 3, metrics = true)
+public class MoneyTransferHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
 
     private final ServiceClient accountServiceClient;
     private final ServiceClient fraudServiceClient;
+    private final DomainEventPublisher eventPublisher;
 
     @Override
-    public Mono<TransferResult> handle(TransferMoneyCommand command) {
+    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+        // Only business logic - validation, logging, metrics handled automatically!
         return performFraudCheck(command)
-            .flatMap(this::executeTransfer)
-            .flatMap(this::sendNotification);
+            .flatMap(fraudResult -> {
+                if (!fraudResult.isApproved()) {
+                    return Mono.error(new FraudDetectedException("Transfer blocked"));
+                }
+                return executeTransfer(command);
+            })
+            .flatMap(this::publishTransferEvent);
+    }
+
+    // No getCommandType() needed - automatically detected from generics!
+    // Built-in features: logging, metrics, error handling, correlation context
+
+    private Mono<FraudCheckResult> performFraudCheck(TransferMoneyCommand command) {
+        return fraudServiceClient.post("/fraud-check", FraudCheckResult.class)
+            .withBody(command)
+            .execute();
+    }
+
+    private Mono<TransferResult> executeTransfer(TransferMoneyCommand command) {
+        return accountServiceClient.post("/transfers", TransferResult.class)
+            .withBody(command)
+            .execute();
+    }
+
+    private Mono<TransferResult> publishTransferEvent(TransferResult result) {
+        DomainEventEnvelope event = DomainEventEnvelope.builder()
+            .topic("banking.transfers")
+            .type("transfer.completed")
+            .key(result.getTransferId())
+            .payload(result)
+            .build();
+
+        return eventPublisher.publish(event).thenReturn(result);
     }
 }
 ```
