@@ -16,10 +16,10 @@
 
 package com.firefly.common.domain.events.inbound;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.firefly.common.domain.events.DomainEventEnvelope;
 import com.firefly.common.domain.events.DomainSpringEvent;
 import com.firefly.common.domain.events.properties.DomainEventsProperties;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;

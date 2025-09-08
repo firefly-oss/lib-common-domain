@@ -18,13 +18,11 @@ package com.firefly.common.domain.events;
 
 import lombok.Builder;
 import lombok.Data;
-import lombok.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Generic domain event envelope for publishing and consuming events outside StepEvents.

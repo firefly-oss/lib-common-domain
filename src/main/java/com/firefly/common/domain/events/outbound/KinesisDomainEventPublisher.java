@@ -16,18 +16,18 @@
 
 package com.firefly.common.domain.events.outbound;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.firefly.common.domain.events.DomainEventEnvelope;
 import com.firefly.common.domain.events.properties.DomainEventsProperties;
 import com.firefly.common.domain.util.DomainEventAdapterUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.retry.support.RetryTemplate;
 import reactor.core.publisher.Mono;
+import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
 import software.amazon.awssdk.services.kinesis.model.PutRecordRequest;
-import software.amazon.awssdk.core.SdkBytes;
 
 /**
  * AWS Kinesis adapter for DomainEventPublisher using AWS SDK v2 KinesisAsyncClient.

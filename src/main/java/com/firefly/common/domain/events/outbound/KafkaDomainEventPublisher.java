@@ -16,10 +16,10 @@
 
 package com.firefly.common.domain.events.outbound;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.firefly.common.domain.events.DomainEventEnvelope;
 import com.firefly.common.domain.events.properties.DomainEventsProperties;
 import com.firefly.common.domain.util.DomainEventAdapterUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -16,12 +16,12 @@
 
 package com.firefly.common.domain.events.properties;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
