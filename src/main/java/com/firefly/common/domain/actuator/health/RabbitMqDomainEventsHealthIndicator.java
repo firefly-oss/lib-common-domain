@@ -18,10 +18,10 @@ package com.firefly.common.domain.actuator.health;
 
 import com.firefly.common.domain.events.properties.DomainEventsProperties;
 import com.firefly.common.domain.util.DomainEventAdapterUtils;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.context.ApplicationContext;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 
 /**
  * Health indicator for RabbitMQ Domain Events adapter.
