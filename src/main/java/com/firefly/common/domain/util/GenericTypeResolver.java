@@ -60,21 +60,21 @@ public final class GenericTypeResolver {
      * @throws IllegalArgumentException if parameters are invalid
      */
     @SuppressWarnings("unchecked")
-    public static <T> Class<T> resolveGenericType(Class<?> implementationClass, 
-                                                  Class<?> targetInterface, 
+    public static <T> Class<T> resolveGenericType(Class<?> implementationClass,
+                                                  Class<?> targetClass,
                                                   int typeParameterIndex) {
         if (implementationClass == null) {
             throw new IllegalArgumentException("Implementation class cannot be null");
         }
-        if (targetInterface == null) {
-            throw new IllegalArgumentException("Target interface cannot be null");
+        if (targetClass == null) {
+            throw new IllegalArgumentException("Target class cannot be null");
         }
         if (typeParameterIndex < 0) {
             throw new IllegalArgumentException("Type parameter index must be non-negative");
         }
 
-        log.debug("Resolving generic type for class: {} implementing interface: {} at index: {}", 
-            implementationClass.getName(), targetInterface.getName(), typeParameterIndex);
+        log.debug("Resolving generic type for class: {} extending/implementing: {} at index: {}",
+            implementationClass.getName(), targetClass.getName(), typeParameterIndex);
 
         // Walk up the class hierarchy
         Class<?> currentClass = implementationClass;
@@ -83,17 +83,17 @@ public final class GenericTypeResolver {
             // Check direct interfaces
             Type[] interfaces = currentClass.getGenericInterfaces();
             for (Type interfaceType : interfaces) {
-                Class<T> resolvedType = extractTypeFromInterface(interfaceType, targetInterface, typeParameterIndex);
+                Class<T> resolvedType = extractTypeFromInterface(interfaceType, targetClass, typeParameterIndex);
                 if (resolvedType != null) {
                     log.debug("Resolved generic type: {} for class: {}", resolvedType.getName(), implementationClass.getName());
                     return resolvedType;
                 }
             }
-            
+
             // Check superclass
             Type superclass = currentClass.getGenericSuperclass();
             if (superclass instanceof ParameterizedType) {
-                Class<T> resolvedType = extractTypeFromSuperclass(superclass, targetInterface, typeParameterIndex, currentClass);
+                Class<T> resolvedType = extractTypeFromSuperclass(superclass, targetClass, typeParameterIndex, currentClass);
                 if (resolvedType != null) {
                     log.debug("Resolved generic type from superclass: {} for class: {}", resolvedType.getName(), implementationClass.getName());
                     return resolvedType;
@@ -103,8 +103,8 @@ public final class GenericTypeResolver {
             currentClass = currentClass.getSuperclass();
         }
 
-        log.warn("Could not resolve generic type for class: {} implementing interface: {} at index: {}", 
-            implementationClass.getName(), targetInterface.getName(), typeParameterIndex);
+        log.warn("Could not resolve generic type for class: {} extending/implementing: {} at index: {}",
+            implementationClass.getName(), targetClass.getName(), typeParameterIndex);
         return null;
     }
 
@@ -112,8 +112,8 @@ public final class GenericTypeResolver {
      * Extracts type information from a parameterized interface.
      */
     @SuppressWarnings("unchecked")
-    private static <T> Class<T> extractTypeFromInterface(Type interfaceType, 
-                                                         Class<?> targetInterface, 
+    private static <T> Class<T> extractTypeFromInterface(Type interfaceType,
+                                                         Class<?> targetClass,
                                                          int typeParameterIndex) {
         if (!(interfaceType instanceof ParameterizedType)) {
             return null;
@@ -123,12 +123,12 @@ public final class GenericTypeResolver {
         Type rawType = parameterizedType.getRawType();
 
         // Check if this is the target interface
-        if (rawType.equals(targetInterface)) {
+        if (rawType.equals(targetClass)) {
             Type[] typeArguments = parameterizedType.getActualTypeArguments();
-            
+
             if (typeParameterIndex >= typeArguments.length) {
-                log.warn("Type parameter index {} is out of bounds for interface {} with {} type arguments", 
-                    typeParameterIndex, targetInterface.getName(), typeArguments.length);
+                log.warn("Type parameter index {} is out of bounds for interface {} with {} type arguments",
+                    typeParameterIndex, targetClass.getName(), typeArguments.length);
                 return null;
             }
 
@@ -150,8 +150,8 @@ public final class GenericTypeResolver {
      * Extracts type information from a parameterized superclass.
      */
     @SuppressWarnings("unchecked")
-    private static <T> Class<T> extractTypeFromSuperclass(Type superclass, 
-                                                          Class<?> targetInterface, 
+    private static <T> Class<T> extractTypeFromSuperclass(Type superclass,
+                                                          Class<?> targetClass,
                                                           int typeParameterIndex,
                                                           Class<?> currentClass) {
         if (!(superclass instanceof ParameterizedType)) {
@@ -161,38 +161,81 @@ public final class GenericTypeResolver {
         ParameterizedType parameterizedSuperclass = (ParameterizedType) superclass;
         Class<?> superclassRaw = (Class<?>) parameterizedSuperclass.getRawType();
 
-        // Recursively check if the superclass implements the target interface
-        return resolveGenericType(superclassRaw, targetInterface, typeParameterIndex);
+        // Check if this superclass IS the target class (for abstract classes like CommandHandler)
+        if (superclassRaw.equals(targetClass)) {
+            Type[] typeArguments = parameterizedSuperclass.getActualTypeArguments();
+            if (typeArguments.length > typeParameterIndex) {
+                Type typeArg = typeArguments[typeParameterIndex];
+                if (typeArg instanceof Class) {
+                    return (Class<T>) typeArg;
+                }
+            }
+        }
+
+        // Recursively check if the superclass implements the target interface (for interfaces)
+        return resolveGenericType(superclassRaw, targetClass, typeParameterIndex);
     }
 
     /**
      * Convenience method to resolve the command type from a CommandHandler.
-     * 
+     *
      * @param handlerClass the command handler class
      * @return the command type, or null if it cannot be determined
      */
     public static Class<?> resolveCommandType(Class<?> handlerClass) {
         try {
-            Class<?> commandHandlerInterface = Class.forName("com.firefly.common.domain.cqrs.command.CommandHandler");
-            return resolveGenericType(handlerClass, commandHandlerInterface, 0);
+            Class<?> commandHandlerClass = Class.forName("com.firefly.common.domain.cqrs.command.CommandHandler");
+            return resolveGenericType(handlerClass, commandHandlerClass, 0);
         } catch (ClassNotFoundException e) {
-            log.error("CommandHandler interface not found", e);
+            log.error("CommandHandler class not found", e);
+            return null;
+        }
+    }
+
+    /**
+     * Convenience method to resolve the result type from a CommandHandler.
+     *
+     * @param handlerClass the command handler class
+     * @return the result type, or null if it cannot be determined
+     */
+    public static Class<?> resolveCommandResultType(Class<?> handlerClass) {
+        try {
+            Class<?> commandHandlerClass = Class.forName("com.firefly.common.domain.cqrs.command.CommandHandler");
+            return resolveGenericType(handlerClass, commandHandlerClass, 1);
+        } catch (ClassNotFoundException e) {
+            log.error("CommandHandler class not found", e);
             return null;
         }
     }
 
     /**
      * Convenience method to resolve the query type from a QueryHandler.
-     * 
+     *
      * @param handlerClass the query handler class
      * @return the query type, or null if it cannot be determined
      */
     public static Class<?> resolveQueryType(Class<?> handlerClass) {
         try {
-            Class<?> queryHandlerInterface = Class.forName("com.firefly.common.domain.cqrs.query.QueryHandler");
-            return resolveGenericType(handlerClass, queryHandlerInterface, 0);
+            Class<?> queryHandlerClass = Class.forName("com.firefly.common.domain.cqrs.query.QueryHandler");
+            return resolveGenericType(handlerClass, queryHandlerClass, 0);
         } catch (ClassNotFoundException e) {
-            log.error("QueryHandler interface not found", e);
+            log.error("QueryHandler class not found", e);
+            return null;
+        }
+    }
+
+    /**
+     * Convenience method to resolve the result type from a QueryHandler.
+     *
+     * @param handlerClass the query handler class
+     * @return the result type, or null if it cannot be determined
+     */
+    public static Class<?> resolveQueryResultType(Class<?> handlerClass) {
+        try {
+            Class<?> queryHandlerClass = Class.forName("com.firefly.common.domain.cqrs.query.QueryHandler");
+            return resolveGenericType(handlerClass, queryHandlerClass, 1);
+        } catch (ClassNotFoundException e) {
+            log.error("QueryHandler class not found", e);
             return null;
         }
     }
