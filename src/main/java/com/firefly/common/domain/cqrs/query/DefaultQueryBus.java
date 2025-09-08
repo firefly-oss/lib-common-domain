@@ -110,13 +110,20 @@ public class DefaultQueryBus implements QueryBus {
     @SuppressWarnings("unchecked")
     public <R> Mono<R> query(Query<R> query) {
         return Mono.fromCallable(() -> {
-                    log.debug("Processing query: {} with ID: {}", query.getClass().getSimpleName(), query.getQueryId());
-                    
+                    String queryType = query.getClass().getSimpleName();
+                    log.info("CQRS Query Processing Started - Type: {}, ID: {}, CorrelationId: {}, Cacheable: {}",
+                            queryType, query.getQueryId(), query.getCorrelationId(), query.isCacheable());
+
                     QueryHandler<Query<R>, R> handler = (QueryHandler<Query<R>, R>) handlers.get(query.getClass());
                     if (handler == null) {
+                        log.error("CQRS Query Handler Not Found - Type: {}, ID: {}, Available handlers: {}",
+                                queryType, query.getQueryId(), handlers.keySet().stream()
+                                        .map(Class::getSimpleName).toList());
                         throw new QueryHandlerNotFoundException("No handler found for query: " + query.getClass().getName());
                     }
-                    
+
+                    log.debug("CQRS Query Handler Found - Type: {}, Handler: {}, Supports Caching: {}",
+                            queryType, handler.getClass().getSimpleName(), handler.supportsCaching());
                     return handler;
                 })
                 .flatMap(handler -> {
@@ -129,9 +136,8 @@ public class DefaultQueryBus implements QueryBus {
                     return autoValidationProcessor.validate(query)
                             .flatMap(validationResult -> {
                                 if (!validationResult.isValid()) {
-                                    String errorMessage = String.format("Query validation failed for %s: %s",
-                                            query.getClass().getSimpleName(), validationResult.getSummary());
-                                    log.warn(errorMessage);
+                                    log.warn("CQRS Query Validation Failed - Type: {}, ID: {}, Violations: {}",
+                                            query.getClass().getSimpleName(), query.getQueryId(), validationResult.getSummary());
                                     return Mono.error(new ValidationException(validationResult));
                                 }
 
@@ -139,15 +145,23 @@ public class DefaultQueryBus implements QueryBus {
                                 if (query.isCacheable() && handler.supportsCaching()) {
                                     String cacheKey = query.getCacheKey();
                                     if (cacheKey != null) {
+                                        log.debug("CQRS Query Cache Check - Type: {}, ID: {}, CacheKey: {}",
+                                                query.getClass().getSimpleName(), query.getQueryId(), cacheKey);
                                         return getCachedResult(cacheKey, query.getResultType())
                                                 .switchIfEmpty(executeAndCache(handler, query, cacheKey));
                                     }
                                 }
 
                                 // Execute without caching
+                                log.debug("CQRS Query Executing Without Cache - Type: {}, ID: {}",
+                                        query.getClass().getSimpleName(), query.getQueryId());
                                 return executeWithMetrics(handler, query)
-                                        .doOnSuccess(result -> log.debug("Query {} processed successfully", query.getQueryId()))
-                                        .doOnError(error -> log.error("Query {} processing failed: {}", query.getQueryId(), error.getMessage()))
+                                        .doOnSuccess(result -> log.info("CQRS Query Processing Completed - Type: {}, ID: {}, Result: {}",
+                                                query.getClass().getSimpleName(), query.getQueryId(),
+                                                result != null ? "Success" : "Null"))
+                                        .doOnError(error -> log.error("CQRS Query Processing Failed - Type: {}, ID: {}, Error: {}, Cause: {}",
+                                                query.getClass().getSimpleName(), query.getQueryId(),
+                                                error.getClass().getSimpleName(), error.getMessage(), error))
                                         .doFinally(signalType -> correlationContext.clear());
                             });
                 })
@@ -236,8 +250,11 @@ public class DefaultQueryBus implements QueryBus {
             if (cache != null) {
                 Cache.ValueWrapper wrapper = cache.get(cacheKey);
                 if (wrapper != null && wrapper.get() != null) {
-                    log.debug("Cache hit for key: {}", cacheKey);
+                    log.info("CQRS Query Cache Hit - CacheKey: {}, ResultType: {}",
+                            cacheKey, wrapper.get().getClass().getSimpleName());
                     return (R) wrapper.get();
+                } else {
+                    log.debug("CQRS Query Cache Miss - CacheKey: {}", cacheKey);
                 }
             }
             return null;
@@ -251,12 +268,18 @@ public class DefaultQueryBus implements QueryBus {
                         Cache cache = cacheManager.getCache(DEFAULT_CACHE_NAME);
                         if (cache != null) {
                             cache.put(cacheKey, result);
-                            log.debug("Cached result for key: {}", cacheKey);
+                            log.info("CQRS Query Result Cached - Type: {}, ID: {}, CacheKey: {}, ResultType: {}",
+                                    query.getClass().getSimpleName(), query.getQueryId(), cacheKey,
+                                    result.getClass().getSimpleName());
                         }
                     }
-                    log.debug("Query {} processed successfully", query.getQueryId());
+                    log.info("CQRS Query Processing Completed (Cached) - Type: {}, ID: {}, Result: {}",
+                            query.getClass().getSimpleName(), query.getQueryId(),
+                            result != null ? "Success" : "Null");
                 })
-                .doOnError(error -> log.error("Query {} processing failed: {}", query.getQueryId(), error.getMessage()))
+                .doOnError(error -> log.error("CQRS Query Processing Failed (Cached) - Type: {}, ID: {}, Error: {}, Cause: {}",
+                        query.getClass().getSimpleName(), query.getQueryId(),
+                        error.getClass().getSimpleName(), error.getMessage(), error))
                 .doFinally(signalType -> correlationContext.clear());
     }
 

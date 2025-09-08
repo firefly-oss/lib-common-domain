@@ -99,13 +99,19 @@ public class DefaultCommandBus implements CommandBus {
         String commandType = command.getClass().getSimpleName();
         
         return Mono.fromCallable(() -> {
-                    log.debug("Processing command: {} with ID: {}", commandType, command.getCommandId());
-                    
+                    log.info("CQRS Command Processing Started - Type: {}, ID: {}, CorrelationId: {}",
+                            commandType, command.getCommandId(), command.getCorrelationId());
+
                     CommandHandler<Command<R>, R> handler = (CommandHandler<Command<R>, R>) handlers.get(command.getClass());
                     if (handler == null) {
+                        log.error("CQRS Command Handler Not Found - Type: {}, ID: {}, Available handlers: {}",
+                                commandType, command.getCommandId(), handlers.keySet().stream()
+                                        .map(Class::getSimpleName).toList());
                         throw new CommandHandlerNotFoundException("No handler found for command: " + command.getClass().getName());
                     }
-                    
+
+                    log.debug("CQRS Command Handler Found - Type: {}, Handler: {}",
+                            commandType, handler.getClass().getSimpleName());
                     return handler;
                 })
                 .flatMap(handler -> {
@@ -123,9 +129,8 @@ public class DefaultCommandBus implements CommandBus {
                                         validationFailedCounter.increment();
                                     }
 
-                                    String errorMessage = String.format("Command validation failed for %s: %s",
-                                            commandType, autoValidationResult.getSummary());
-                                    log.warn(errorMessage);
+                                    log.warn("CQRS Command Auto-Validation Failed - Type: {}, ID: {}, Violations: {}",
+                                            commandType, command.getCommandId(), autoValidationResult.getSummary());
                                     return Mono.error(new ValidationException(autoValidationResult));
                                 }
 
@@ -138,9 +143,8 @@ public class DefaultCommandBus implements CommandBus {
                                                     validationFailedCounter.increment();
                                                 }
 
-                                                String errorMessage = String.format("Command custom validation failed for %s: %s",
-                                                        commandType, customValidationResult.getSummary());
-                                                log.warn(errorMessage);
+                                                log.warn("CQRS Command Custom-Validation Failed - Type: {}, ID: {}, Violations: {}",
+                                                        commandType, command.getCommandId(), customValidationResult.getSummary());
                                                 return Mono.error(new ValidationException(customValidationResult));
                                             }
 
@@ -149,20 +153,25 @@ public class DefaultCommandBus implements CommandBus {
                                         });
                             })
                             .doOnSuccess(result -> {
-                                log.debug("Command {} processed successfully", command.getCommandId());
-                                
+                                Duration processingTime = Duration.between(startTime, Instant.now());
+                                log.info("CQRS Command Processing Completed - Type: {}, ID: {}, Duration: {}ms, Result: {}",
+                                        commandType, command.getCommandId(), processingTime.toMillis(),
+                                        result != null ? "Success" : "Null");
+
                                 // Record success metrics
                                 if (commandProcessedCounter != null) {
                                     commandProcessedCounter.increment();
                                 }
                                 if (commandProcessingTimer != null) {
-                                    Duration processingTime = Duration.between(startTime, Instant.now());
                                     commandProcessingTimer.record(processingTime);
                                 }
                             })
                             .doOnError(error -> {
-                                log.error("Command {} processing failed: {}", command.getCommandId(), error.getMessage());
-                                
+                                Duration processingTime = Duration.between(startTime, Instant.now());
+                                log.error("CQRS Command Processing Failed - Type: {}, ID: {}, Duration: {}ms, Error: {}, Cause: {}",
+                                        commandType, command.getCommandId(), processingTime.toMillis(),
+                                        error.getClass().getSimpleName(), error.getMessage(), error);
+
                                 // Record failure metrics
                                 if (commandFailedCounter != null) {
                                     commandFailedCounter.increment();

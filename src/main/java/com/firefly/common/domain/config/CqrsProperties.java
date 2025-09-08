@@ -87,5 +87,71 @@ public class CqrsProperties {
          * Whether to enable query tracing.
          */
         private boolean tracingEnabled = true;
+
+        /**
+         * Cache configuration.
+         */
+        private Cache cache = new Cache();
+    }
+
+    @Data
+    public static class Cache {
+        /**
+         * Cache type to use. Supported values: LOCAL, REDIS.
+         */
+        private CacheType type = CacheType.LOCAL;
+
+        /**
+         * Redis cache configuration.
+         */
+        private Redis redis = new Redis();
+
+        public enum CacheType {
+            LOCAL, REDIS
+        }
+    }
+
+    @Data
+    public static class Redis {
+        /**
+         * Whether Redis cache is enabled.
+         * When false, no Redis connection will be attempted.
+         */
+        private boolean enabled = false;
+
+        /**
+         * Redis host.
+         */
+        private String host = "localhost";
+
+        /**
+         * Redis port.
+         */
+        private int port = 6379;
+
+        /**
+         * Redis password (optional).
+         */
+        private String password;
+
+        /**
+         * Redis database index.
+         */
+        private int database = 0;
+
+        /**
+         * Connection timeout.
+         */
+        private Duration timeout = Duration.ofSeconds(2);
+
+        /**
+         * Key prefix for cache entries.
+         */
+        private String keyPrefix = "firefly:cqrs:";
+
+        /**
+         * Whether to enable Redis cache statistics.
+         */
+        private boolean statistics = true;
     }
 }

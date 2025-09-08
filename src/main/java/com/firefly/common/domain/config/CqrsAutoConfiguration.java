@@ -26,6 +26,7 @@ import jakarta.validation.Validator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -41,6 +42,7 @@ import org.springframework.context.annotation.Bean;
  */
 @Slf4j
 @AutoConfiguration
+@AutoConfigureAfter(RedisCacheAutoConfiguration.class)
 @EnableCaching
 @EnableConfigurationProperties(CqrsProperties.class)
 @ConditionalOnProperty(prefix = "firefly.cqrs", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -88,10 +90,24 @@ public class CqrsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(CacheManager.class)
-    public CacheManager cacheManager() {
-        log.info("Configuring default cache manager for CQRS queries");
+    public CacheManager localCacheManager(CqrsProperties cqrsProperties) {
+        CqrsProperties.Cache.CacheType cacheType = cqrsProperties.getQuery().getCache().getType();
+
+        if (cacheType == CqrsProperties.Cache.CacheType.REDIS &&
+            cqrsProperties.getQuery().getCache().getRedis().isEnabled()) {
+            log.warn("Redis cache is configured but Redis auto-configuration did not activate. " +
+                    "Falling back to local cache. Check Redis dependencies and configuration.");
+        }
+
+        log.info("Configuring default local cache manager for CQRS queries");
         ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager();
         cacheManager.setCacheNames(java.util.Arrays.asList("query-cache"));
         return cacheManager;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CacheConfigurationValidator cacheConfigurationValidator(CqrsProperties cqrsProperties) {
+        return new CacheConfigurationValidator(cqrsProperties);
     }
 }
