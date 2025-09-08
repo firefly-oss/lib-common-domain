@@ -304,6 +304,153 @@ public class MyQueryHandler extends QueryHandler<MyQuery, MyResult> {
 }
 ```
 
+## Cache Configuration
+
+The CQRS framework supports two cache types for query results:
+
+### Local Cache (Default)
+- **Type**: In-memory cache using `ConcurrentMapCacheManager`
+- **Scope**: Single application instance
+- **Configuration**: No additional setup required
+- **Use Case**: Development, testing, single-instance deployments
+
+### Redis Cache (Distributed)
+- **Type**: Distributed cache using Redis
+- **Scope**: Shared across multiple application instances
+- **Configuration**: Requires Redis server and explicit enablement
+- **Use Case**: Production, multi-instance deployments
+
+### Switching from Local to Redis Cache
+
+**Step 1: Enable Redis Cache Type**
+```yaml
+firefly:
+  cqrs:
+    query:
+      cache:
+        type: REDIS              # Switch from LOCAL (default) to REDIS
+```
+
+**Step 2: Enable Redis Connection**
+```yaml
+firefly:
+  cqrs:
+    query:
+      cache:
+        type: REDIS
+        redis:
+          enabled: true          # Enable Redis (disabled by default)
+```
+
+**Step 3: Configure Redis Connection (Optional)**
+```yaml
+firefly:
+  cqrs:
+    query:
+      cache:
+        type: REDIS
+        redis:
+          enabled: true
+          host: localhost        # Default: localhost
+          port: 6379            # Default: 6379
+          database: 0           # Default: 0
+          password: your-password # Optional
+          timeout: 2s           # Default: 2s
+          key-prefix: "firefly:cqrs:" # Default: "firefly:cqrs:"
+          statistics: true      # Default: true (reserved for future use)
+```
+
+### Complete Redis Configuration Example
+
+```yaml
+# Production Redis setup
+firefly:
+  cqrs:
+    enabled: true
+    query:
+      caching-enabled: true     # Enable query caching (default: true)
+      cache-ttl: 30m           # Cache TTL (default: 15m)
+      cache:
+        type: REDIS            # Use Redis instead of local cache
+        redis:
+          enabled: true        # Must be explicitly enabled
+          host: redis.production.local
+          port: 6379
+          database: 1
+          password: ${REDIS_PASSWORD}
+          timeout: 5s
+          key-prefix: "banking:cqrs:"
+          statistics: true      # Reserved for future use
+```
+
+### Important Notes
+
+- **Redis is disabled by default**: No Redis connections are attempted unless `firefly.cqrs.query.cache.redis.enabled=true`
+- **Graceful fallback**: If Redis is configured but unavailable, the framework falls back to local cache with a warning
+- **No Redis dependency required**: When using local cache only, Redis dependencies are optional
+- **Cache keys**: Generated automatically based on query class name and parameters
+- **Serialization**: Uses JSON serialization for cache values and string serialization for keys
+
+### Cache Configuration Properties Reference
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `firefly.cqrs.query.caching-enabled` | boolean | `true` | Enable/disable query caching globally |
+| `firefly.cqrs.query.cache-ttl` | Duration | `15m` | Default cache TTL for all queries |
+| `firefly.cqrs.query.cache.type` | enum | `LOCAL` | Cache type: `LOCAL` or `REDIS` |
+| `firefly.cqrs.query.cache.redis.enabled` | boolean | `false` | Enable Redis cache (must be explicitly enabled) |
+| `firefly.cqrs.query.cache.redis.host` | string | `localhost` | Redis server hostname |
+| `firefly.cqrs.query.cache.redis.port` | int | `6379` | Redis server port |
+| `firefly.cqrs.query.cache.redis.database` | int | `0` | Redis database index |
+| `firefly.cqrs.query.cache.redis.password` | string | `null` | Redis password (optional) |
+| `firefly.cqrs.query.cache.redis.timeout` | Duration | `2s` | Redis connection timeout |
+| `firefly.cqrs.query.cache.redis.key-prefix` | string | `firefly:cqrs:` | Prefix for all cache keys |
+| `firefly.cqrs.query.cache.redis.statistics` | boolean | `true` | Enable cache statistics collection (reserved for future use) |
+
+### Cache Migration Guide
+
+**From Local to Redis (Zero Downtime):**
+
+1. **Add Redis dependency** (if not already present):
+   ```xml
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-data-redis</artifactId>
+   </dependency>
+   ```
+
+2. **Configure Redis** without enabling it first:
+   ```yaml
+   firefly:
+     cqrs:
+       query:
+         cache:
+           redis:
+             host: your-redis-host
+             port: 6379
+             # enabled: false (default)
+   ```
+
+3. **Switch cache type** to REDIS:
+   ```yaml
+   firefly:
+     cqrs:
+       query:
+         cache:
+           type: REDIS  # Still uses local cache until Redis is enabled
+   ```
+
+4. **Enable Redis** when ready:
+   ```yaml
+   firefly:
+     cqrs:
+       query:
+         cache:
+           type: REDIS
+           redis:
+             enabled: true  # Now switches to Redis
+   ```
+
 ### Validation
 
 Validation is automatic using Jakarta Bean Validation:

@@ -604,6 +604,145 @@ class CreateAccountHandlerTest {
 }
 ```
 
+## Cache Configuration Examples
+
+### Local Cache (Default)
+
+**Configuration:**
+```yaml
+firefly:
+  cqrs:
+    query:
+      caching-enabled: true
+      cache-ttl: 15m
+      cache:
+        type: LOCAL  # Default - uses ConcurrentMapCacheManager
+```
+
+**Query Handler:**
+```java
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300)
+public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
+
+    @Override
+    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
+        // Business logic - caching handled automatically
+        return accountService.getBalance(query.getAccountNumber());
+    }
+
+    // Cache key automatically generated from query class name and parameters
+    // Cache TTL: 300 seconds (from annotation)
+    // Cache type: Local in-memory (from configuration)
+}
+```
+
+### Redis Cache (Production)
+
+**Configuration:**
+```yaml
+firefly:
+  cqrs:
+    query:
+      caching-enabled: true
+      cache-ttl: 30m  # Default TTL for all queries
+      cache:
+        type: REDIS   # Use Redis instead of local cache
+        redis:
+          enabled: true              # Must be explicitly enabled
+          host: redis.production.local
+          port: 6379
+          database: 1
+          password: ${REDIS_PASSWORD}
+          timeout: 5s
+          key-prefix: "banking:cqrs:"
+          statistics: true      # Reserved for future use
+```
+
+**Query Handler (Same Code):**
+```java
+@QueryHandlerComponent(cacheable = true, cacheTtl = 600)  // 10 minutes
+public class GetCustomerProfileHandler extends QueryHandler<GetCustomerProfileQuery, CustomerProfile> {
+
+    @Override
+    protected Mono<CustomerProfile> doHandle(GetCustomerProfileQuery query) {
+        // Same business logic - Redis caching handled automatically
+        return customerService.getProfile(query.getCustomerId());
+    }
+
+    // Cache key: "banking:cqrs:query-cache:GetCustomerProfileQuery"
+    // Cache TTL: 600 seconds (from annotation, overrides default)
+    // Cache type: Redis distributed cache (from configuration)
+    // Serialization: JSON (automatic)
+}
+```
+
+### Cache Migration Example
+
+**Step 1: Start with Local Cache**
+```yaml
+firefly:
+  cqrs:
+    query:
+      cache:
+        type: LOCAL  # Start with local cache
+```
+
+**Step 2: Add Redis Configuration (Not Enabled)**
+```yaml
+firefly:
+  cqrs:
+    query:
+      cache:
+        type: LOCAL  # Still using local cache
+        redis:
+          host: redis.example.com
+          port: 6379
+          # enabled: false (default)
+```
+
+**Step 3: Switch to Redis**
+```yaml
+firefly:
+  cqrs:
+    query:
+      cache:
+        type: REDIS  # Switch cache type
+        redis:
+          enabled: true  # Enable Redis connections
+          host: redis.example.com
+          port: 6379
+```
+
+**Handler Code (No Changes Needed):**
+```java
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300)
+public class MyQueryHandler extends QueryHandler<MyQuery, MyResult> {
+    @Override
+    protected Mono<MyResult> doHandle(MyQuery query) {
+        // Same code works with both local and Redis cache
+        return processQuery(query);
+    }
+}
+```
+
+### Cache Behavior Examples
+
+**Cache Hit (Redis):**
+```
+2025-09-09 00:15:28.184 INFO  - CQRS Query Cache Hit - CacheKey: GetAccountBalanceQuery, ResultType: AccountBalance
+```
+
+**Cache Miss (Redis):**
+```
+2025-09-09 00:15:28.033 INFO  - CQRS Query Processing Started - Type: GetAccountBalanceQuery, Cacheable: true
+2025-09-09 00:15:28.173 INFO  - CQRS Query Result Cached - CacheKey: GetAccountBalanceQuery, ResultType: AccountBalance
+```
+
+**Redis Fallback (When Redis Unavailable):**
+```
+2025-09-09 00:15:27.479 WARN  - Redis cache is configured but Redis auto-configuration did not activate. Falling back to local cache.
+```
+
 ## Summary
 
 The Firefly CQRS Framework provides:

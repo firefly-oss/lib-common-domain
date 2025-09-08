@@ -59,7 +59,7 @@ This library serves as the foundational architecture framework for the **Core-Do
 - **Zero Boilerplate**: Automatic type detection from generics - no `getCommandType()` or `getResultType()` methods needed
 - **Jakarta Validation Integration**: Automatic validation using @NotBlank, @NotNull, @Min, @Max annotations - no manual validation code
 - **Built-in Features**: Automatic logging, **metrics by default**, error handling, correlation context, and performance monitoring
-- **Smart Caching**: Intelligent query result caching with configurable TTL and automatic cache key generation
+- **Smart Caching**: Intelligent query result caching with configurable TTL, automatic cache key generation, and Redis support
 - **Builder Pattern Support**: Clean command/query creation using @Builder annotation with Lombok
 - **Reactive Processing**: Built on Project Reactor for non-blocking, asynchronous operations
 - **Focus on Business Logic**: Just implement `doHandle()` - everything else is handled automatically
@@ -332,6 +332,10 @@ firefly:
       caching-enabled: true
       cache-ttl: 15m
       timeout: 15s
+      cache:
+        type: LOCAL  # LOCAL (default) or REDIS
+        redis:
+          enabled: false  # Enable Redis cache (disabled by default)
 
   # Domain Events (auto-detects available messaging infrastructure)
   events:
@@ -351,7 +355,43 @@ domain:
   topic: banking-domain-events
 ```
 
-### 4. Create Your First Command and Handler
+### 4. Cache Configuration (Local vs Redis)
+
+The framework supports both local in-memory cache and distributed Redis cache for query results:
+
+#### Local Cache (Default)
+```yaml
+firefly:
+  cqrs:
+    query:
+      cache:
+        type: LOCAL  # Default - no additional configuration needed
+```
+
+#### Redis Cache (Production)
+```yaml
+firefly:
+  cqrs:
+    query:
+      cache:
+        type: REDIS              # Switch to Redis cache
+        redis:
+          enabled: true          # Must be explicitly enabled
+          host: localhost        # Redis server host
+          port: 6379            # Redis server port
+          database: 0           # Redis database index
+          password: your-password # Optional password
+          timeout: 2s           # Connection timeout
+          key-prefix: "firefly:cqrs:" # Cache key prefix
+          statistics: true      # Enable cache statistics (reserved for future use)
+```
+
+**Important Notes:**
+- Redis cache is **disabled by default** - no Redis connections are attempted unless explicitly enabled
+- When Redis is unavailable, the framework gracefully falls back to local cache with a warning
+- Redis dependency is optional when using local cache only
+
+### 5. Create Your First Command and Handler
 
 ```java
 import jakarta.validation.constraints.*;
@@ -1070,7 +1110,8 @@ This integration provides a powerful foundation for building complex, distribute
 - **Multiple Messaging** - Kafka, RabbitMQ, AWS SQS/Kinesis support with auto-detection
 - **lib-transactional-engine** - Saga orchestration and distributed transaction management (manual integration)
 - **Jackson** - JSON serialization/deserialization with reactive streaming support
-- **Caffeine** - High-performance caching for query results and metadata
+- **Redis Cache** - Optional distributed caching support for CQRS queries (disabled by default, requires explicit enablement)
+- **Local Cache** - High-performance in-memory caching using ConcurrentMapCacheManager (default)
 
 ## 📄 License
 
