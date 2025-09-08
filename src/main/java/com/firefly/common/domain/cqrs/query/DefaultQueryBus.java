@@ -17,7 +17,10 @@
 package com.firefly.common.domain.cqrs.query;
 
 import com.firefly.common.domain.tracing.CorrelationContext;
+import com.firefly.common.domain.validation.AutoValidationProcessor;
+import com.firefly.common.domain.validation.ValidationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationContext;
@@ -42,15 +45,65 @@ public class DefaultQueryBus implements QueryBus {
     private final Map<Class<? extends Query<?>>, QueryHandler<?, ?>> handlers = new ConcurrentHashMap<>();
     private final ApplicationContext applicationContext;
     private final CorrelationContext correlationContext;
+    private final AutoValidationProcessor autoValidationProcessor;
     private final CacheManager cacheManager;
+    private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
 
-    public DefaultQueryBus(ApplicationContext applicationContext, 
+    // Metrics
+    private io.micrometer.core.instrument.Counter processedCounter;
+    private io.micrometer.core.instrument.Timer processingTimer;
+
+    @Autowired
+    public DefaultQueryBus(ApplicationContext applicationContext,
                           CorrelationContext correlationContext,
-                          CacheManager cacheManager) {
+                          AutoValidationProcessor autoValidationProcessor,
+                          @Autowired(required = false) CacheManager cacheManager,
+                          @Autowired(required = false) io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.applicationContext = applicationContext;
         this.correlationContext = correlationContext;
+        this.autoValidationProcessor = autoValidationProcessor;
         this.cacheManager = cacheManager;
+        this.meterRegistry = meterRegistry;
+
+        if (meterRegistry != null) {
+            initializeMetrics();
+        }
+
         discoverHandlers();
+    }
+
+    /**
+     * Initialize metrics for query processing.
+     */
+    private void initializeMetrics() {
+        this.processedCounter = io.micrometer.core.instrument.Counter.builder("firefly.cqrs.query.processed")
+            .description("Total number of queries processed")
+            .register(meterRegistry);
+
+        this.processingTimer = io.micrometer.core.instrument.Timer.builder("firefly.cqrs.query.processing.time")
+            .description("Query processing time")
+            .register(meterRegistry);
+
+        log.debug("Initialized CQRS query metrics");
+    }
+
+    /**
+     * Execute query handler with metrics collection.
+     */
+    private <R> Mono<R> executeWithMetrics(QueryHandler<Query<R>, R> handler, Query<R> query) {
+        if (meterRegistry != null && processingTimer != null) {
+            io.micrometer.core.instrument.Timer.Sample sample = io.micrometer.core.instrument.Timer.start(meterRegistry);
+            return handler.handle(query)
+                    .doOnSuccess(result -> {
+                        sample.stop(processingTimer);
+                        if (processedCounter != null) {
+                            processedCounter.increment();
+                        }
+                    })
+                    .doOnError(error -> sample.stop(processingTimer));
+        } else {
+            return handler.handle(query);
+        }
     }
 
     @Override
@@ -71,24 +124,38 @@ public class DefaultQueryBus implements QueryBus {
                     if (query.getCorrelationId() != null) {
                         correlationContext.setCorrelationId(query.getCorrelationId());
                     }
-                    
-                    // Check cache if enabled
-                    if (query.isCacheable() && handler.supportsCaching()) {
-                        String cacheKey = query.getCacheKey();
-                        if (cacheKey != null) {
-                            return getCachedResult(cacheKey, query.getResultType())
-                                    .switchIfEmpty(executeAndCache(handler, query, cacheKey));
-                        }
-                    }
-                    
-                    // Execute without caching
-                    return handler.handle(query)
-                            .doOnSuccess(result -> log.debug("Query {} processed successfully", query.getQueryId()))
-                            .doOnError(error -> log.error("Query {} processing failed: {}", query.getQueryId(), error.getMessage()))
-                            .doFinally(signalType -> correlationContext.clear());
+
+                    // Perform automatic Jakarta validation first
+                    return autoValidationProcessor.validate(query)
+                            .flatMap(validationResult -> {
+                                if (!validationResult.isValid()) {
+                                    String errorMessage = String.format("Query validation failed for %s: %s",
+                                            query.getClass().getSimpleName(), validationResult.getSummary());
+                                    log.warn(errorMessage);
+                                    return Mono.error(new ValidationException(validationResult));
+                                }
+
+                                // Check cache if enabled
+                                if (query.isCacheable() && handler.supportsCaching()) {
+                                    String cacheKey = query.getCacheKey();
+                                    if (cacheKey != null) {
+                                        return getCachedResult(cacheKey, query.getResultType())
+                                                .switchIfEmpty(executeAndCache(handler, query, cacheKey));
+                                    }
+                                }
+
+                                // Execute without caching
+                                return executeWithMetrics(handler, query)
+                                        .doOnSuccess(result -> log.debug("Query {} processed successfully", query.getQueryId()))
+                                        .doOnError(error -> log.error("Query {} processing failed: {}", query.getQueryId(), error.getMessage()))
+                                        .doFinally(signalType -> correlationContext.clear());
+                            });
                 })
                 .onErrorMap(throwable -> {
                     if (throwable instanceof QueryHandlerNotFoundException) {
+                        return throwable;
+                    }
+                    if (throwable instanceof ValidationException) {
                         return throwable;
                     }
                     return new QueryProcessingException("Failed to process query: " + query.getQueryId(), throwable);
@@ -178,7 +245,7 @@ public class DefaultQueryBus implements QueryBus {
     }
 
     private <R> Mono<R> executeAndCache(QueryHandler<Query<R>, R> handler, Query<R> query, String cacheKey) {
-        return handler.handle(query)
+        return executeWithMetrics(handler, query)
                 .doOnSuccess(result -> {
                     if (result != null) {
                         Cache cache = cacheManager.getCache(DEFAULT_CACHE_NAME);

@@ -176,45 +176,82 @@ public interface Command<R> {
     }
 
     /**
-     * Validates this command and returns a validation result.
+     * Validates this command using both automatic annotation-based validation and custom business rules.
      *
-     * <p>This method performs both field-level and business rule validation and is
-     * called automatically by the {@link CommandBus} before command handlers execute.
+     * <p>This method performs validation in two phases:
+     * <ol>
+     *   <li><strong>Automatic Validation:</strong> Processes validation annotations (@Valid, @NotNull, @NotEmpty, etc.)</li>
+     *   <li><strong>Custom Validation:</strong> Calls {@link #customValidate()} for business-specific rules</li>
+     * </ol>
+     *
+     * <p>The validation is called automatically by the {@link CommandBus} before command handlers execute.
      * If validation fails, the command will not be processed and a
      * {@link com.firefly.common.domain.validation.ValidationException} will be thrown.
      *
-     * <p>The validation process supports both synchronous and asynchronous validation:
-     * <ul>
-     *   <li>Synchronous validation for simple field checks</li>
-     *   <li>Asynchronous validation for external service calls</li>
-     *   <li>Complex business rule validation</li>
-     *   <li>Cross-field validation</li>
-     * </ul>
+     * <p>Example with Jakarta validation:
+     * <pre>{@code
+     * import jakarta.validation.constraints.*;
      *
-     * <p>The default implementation returns a successful validation result.
-     * Override this method to implement custom validation logic specific to your command.
+     * @Data
+     * @Builder
+     * public class CreateAccountCommand implements Command<AccountResult> {
+     *     @NotNull(message = "Customer ID is required")
+     *     private final String customerId;
+     *
+     *     @NotBlank
+     *     @Email(message = "Please provide a valid email address")
+     *     private final String email;
+     *
+     *     @NotNull
+     *     @Min(value = 0, message = "Initial deposit cannot be negative")
+     *     private final BigDecimal initialDeposit;
+     *
+     *     // Jakarta validation is handled automatically by the CommandBus
+     *
+     *     @Override
+     *     public Mono<ValidationResult> customValidate() {
+     *         // Only add business-specific validation here
+     *         if (initialDeposit.compareTo(new BigDecimal("1000000")) > 0) {
+     *             return Mono.just(ValidationResult.failure("initialDeposit", "Deposit exceeds maximum limit"));
+     *         }
+     *         return Mono.just(ValidationResult.success());
+     *     }
+     * }
+     * }</pre>
+     *
+     * @return a Mono containing the validation result, never null
+     * @since 1.0.0
+     * @see ValidationResult
+     * @see #customValidate()
+     * @see CommandBus#send(Command)
+     * @see com.firefly.common.domain.validation.ValidationException
+     */
+    default Mono<ValidationResult> validate() {
+        // Note: Automatic validation is now handled by the CommandBus using AutoValidationProcessor bean
+        // This method is kept for backward compatibility and custom validation
+        return customValidate();
+    }
+
+    /**
+     * Override this method to provide custom business validation logic.
+     *
+     * <p>This method is called after automatic annotation-based validation passes.
+     * Use this for complex business rules that cannot be expressed with simple annotations.
      *
      * <p>Examples:
      * <pre>{@code
-     * // Simple field validation
+     * // Business rule validation
      * @Override
-     * public Mono<ValidationResult> validate() {
-     *     ValidationResult.Builder builder = ValidationResult.builder();
-     *
-     *     if (customerId == null || customerId.trim().isEmpty()) {
-     *         builder.addError("customerId", "Customer ID is required");
+     * public Mono<ValidationResult> customValidate() {
+     *     if (transferAmount.compareTo(accountBalance) > 0) {
+     *         return Mono.just(ValidationResult.failure("transferAmount", "Insufficient funds"));
      *     }
-     *
-     *     if (amount != null && amount.compareTo(BigDecimal.ZERO) <= 0) {
-     *         builder.addError("amount", "Amount must be positive");
-     *     }
-     *
-     *     return Mono.just(builder.build());
+     *     return Mono.just(ValidationResult.success());
      * }
      *
      * // Async validation with external service
      * @Override
-     * public Mono<ValidationResult> validate() {
+     * public Mono<ValidationResult> customValidate() {
      *     return validateCustomerExists(customerId)
      *         .flatMap(customerValid -> {
      *             if (!customerValid) {
@@ -225,13 +262,10 @@ public interface Command<R> {
      * }
      * }</pre>
      *
-     * @return a Mono containing the validation result, never null
+     * @return a Mono containing the custom validation result, never null
      * @since 1.0.0
-     * @see ValidationResult
-     * @see CommandBus#send(Command)
-     * @see com.firefly.common.domain.validation.ValidationException
      */
-    default Mono<ValidationResult> validate() {
+    default Mono<ValidationResult> customValidate() {
         return Mono.just(ValidationResult.success());
     }
 }

@@ -1,10 +1,7 @@
 package com.firefly.common.domain.cqrs.command;
 
-import com.firefly.common.domain.cqrs.annotations.CommandHandler;
+import com.firefly.common.domain.cqrs.annotations.CommandHandlerComponent;
 import reactor.core.publisher.Mono;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 /**
  * Test Command Handler: Create Account
@@ -12,12 +9,12 @@ import java.time.LocalDateTime;
  * <p>This demonstrates the consolidated CQRS approach:
  * <ul>
  *   <li>@CommandHandler annotation for configuration and Spring registration</li>
- *   <li>Extends CommandHandler&lt;Command, Result&gt; for automatic type detection</li>
+ *   <li>Extends CommandHandler&l;Command, Result&gt; for automatic type detection</li>
  *   <li>Only implement doHandle() - everything else is automatic</li>
  *   <li>Built-in validation, logging, metrics, error handling</li>
  * </ul>
  */
-@CommandHandler(timeout = 30000, retries = 3, metrics = true)
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
 public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, AccountCreatedResult> {
 
     @Override

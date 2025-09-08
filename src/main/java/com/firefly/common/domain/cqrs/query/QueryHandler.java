@@ -24,33 +24,33 @@ import java.time.Duration;
 import java.time.Instant;
 
 /**
- * Abstract base class for query handlers that provides common functionality
- * and eliminates boilerplate code.
+ * Base class for all query handlers in the CQRS framework.
  *
- * <p>This base class provides:
+ * <p>This is the <strong>only</strong> way to create query handlers. It provides:
  * <ul>
- *   <li>Automatic type detection from generics</li>
- *   <li>Built-in logging with structured context</li>
- *   <li>Performance monitoring and metrics</li>
- *   <li>Automatic caching support</li>
- *   <li>Error handling and retry logic</li>
+ *   <li><strong>Zero Boilerplate:</strong> Automatic type detection from generics</li>
+ *   <li><strong>Smart Caching:</strong> Built-in caching with configurable TTL and automatic key generation</li>
+ *   <li><strong>Performance Monitoring:</strong> Automatic timing and success/failure tracking</li>
+ *   <li><strong>Extensibility:</strong> Pre/post processing hooks for custom logic</li>
+ *   <li><strong>Clean API:</strong> Just implement doHandle() - everything else is automatic</li>
  * </ul>
  *
- * <p>Example usage:
+ * <p><strong>Example - Account Balance Query Handler:</strong>
  * <pre>{@code
- * @QueryHandler(cacheable = true, cacheTtl = 300)
- * public class GetAccountBalanceHandler extends BaseQueryHandler<GetAccountBalanceQuery, AccountBalance> {
- *     
+ * @Component
+ * public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
+ *
+ *     private final ServiceClient accountService;
+ *
  *     @Override
  *     protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
- *         // Only business logic needed - caching, logging, metrics handled by base class
- *         return getAccountBalance(query.getAccountNumber())
- *             .map(balance -> AccountBalance.builder()
- *                 .accountNumber(query.getAccountNumber())
- *                 .balance(balance)
- *                 .currency("USD")
- *                 .build());
+ *         // Only business logic - validation, caching, metrics handled automatically
+ *         return accountService.get("/accounts/{accountNumber}/balance", AccountBalance.class)
+ *             .withPathVariable("accountNumber", query.getAccountNumber())
+ *             .execute();
  *     }
+ *
+ *     // No need to override caching methods - handled automatically by annotation!
  * }
  * }</pre>
  *
@@ -60,7 +60,7 @@ import java.time.Instant;
  * @since 1.0.0
  */
 @Slf4j
-public abstract class BaseQueryHandler<Q extends Query<R>, R> implements QueryHandler<Q, R> {
+public abstract class QueryHandler<Q extends Query<R>, R> {
 
     private final Class<Q> queryType;
     private final Class<R> resultType;
@@ -69,23 +69,39 @@ public abstract class BaseQueryHandler<Q extends Query<R>, R> implements QueryHa
      * Constructor that automatically detects query and result types from generics.
      */
     @SuppressWarnings("unchecked")
-    protected BaseQueryHandler() {
+    protected QueryHandler() {
         this.queryType = (Class<Q>) GenericTypeResolver.resolveQueryType(this.getClass());
         this.resultType = (Class<R>) GenericTypeResolver.resolveQueryResultType(this.getClass());
-        
+
         if (this.queryType == null) {
             throw new IllegalStateException(
                 "Could not automatically determine query type for handler: " + this.getClass().getName() +
-                ". Please ensure the handler extends BaseQueryHandler with proper generic types."
+                ". Please ensure the handler extends QueryHandler with proper generic types."
             );
         }
-        
-        log.debug("Initialized query handler for {} -> {}", 
-            queryType.getSimpleName(), 
+
+        log.debug("Initialized query handler for {} -> {}",
+            queryType.getSimpleName(),
             resultType != null ? resultType.getSimpleName() : "Unknown");
     }
 
-    @Override
+
+
+    /**
+     * Handles the given query asynchronously with automatic caching, logging, and metrics.
+     *
+     * <p>This method is final and provides the complete query processing pipeline:
+     * <ol>
+     *   <li>Pre-processing (validation already done by QueryBus)</li>
+     *   <li>Cache lookup (if caching is enabled)</li>
+     *   <li>Business logic execution via doHandle() (if cache miss)</li>
+     *   <li>Cache storage and result transformation</li>
+     *   <li>Success/error callbacks for monitoring</li>
+     * </ol>
+     *
+     * @param query the query to handle, guaranteed to be non-null and validated
+     * @return a Mono containing the result of query processing
+     */
     public final Mono<R> handle(Q query) {
         Instant startTime = Instant.now();
         String queryId = query.getQueryId();
@@ -114,11 +130,27 @@ public abstract class BaseQueryHandler<Q extends Query<R>, R> implements QueryHa
     }
 
     /**
-     * Implement this method with your business logic.
-     * All boilerplate (logging, metrics, caching) is handled by the base class.
+     * Implement this method with your business logic only.
      *
-     * @param query the query to process
-     * @return a Mono containing the result
+     * <p><strong>What you get for free:</strong>
+     * <ul>
+     *   <li>Query validation (Jakarta + custom) already completed</li>
+     *   <li>Automatic caching with configurable TTL</li>
+     *   <li>Performance metrics and timing</li>
+     *   <li>Error handling and mapping</li>
+     *   <li>Success/failure callbacks</li>
+     * </ul>
+     *
+     * <p><strong>Focus only on:</strong>
+     * <ul>
+     *   <li>Data retrieval logic</li>
+     *   <li>Service orchestration</li>
+     *   <li>Result transformation</li>
+     *   <li>Business calculations</li>
+     * </ul>
+     *
+     * @param query the validated query to process
+     * @return a Mono containing the business result
      */
     protected abstract Mono<R> doHandle(Q query);
 
@@ -180,12 +212,22 @@ public abstract class BaseQueryHandler<Q extends Query<R>, R> implements QueryHa
         return error; // Default: no mapping
     }
 
-    @Override
+    /**
+     * Gets the query type this handler processes.
+     * Automatically detected from generics - no need to override.
+     *
+     * @return the query type
+     */
     public final Class<Q> getQueryType() {
         return queryType;
     }
 
-    @Override
+    /**
+     * Gets the result type this handler returns.
+     * Automatically detected from generics - no need to override.
+     *
+     * @return the result type
+     */
     public final Class<R> getResultType() {
         return resultType;
     }
@@ -201,29 +243,52 @@ public abstract class BaseQueryHandler<Q extends Query<R>, R> implements QueryHa
 
     /**
      * Checks if this handler can process the given query.
-     * Override for custom validation logic.
+     * Uses automatic type detection - no need to override.
      *
      * @param query the query to check
      * @return true if this handler can process the query
      */
-    @Override
     public boolean canHandle(Query<?> query) {
         return queryType.isInstance(query);
     }
 
     /**
-     * Default caching support - override to customize.
+     * Determines if caching is enabled for this query handler.
+     * Automatically reads from @QueryHandlerComponent annotation.
+     *
+     * <p>You don't need to override this method - it's handled automatically!
+     * Just specify cacheable=true in your @QueryHandlerComponent annotation.
+     *
+     * @return true if results should be cached, false otherwise
      */
-    @Override
-    public boolean supportsCaching() {
-        return true;
+    public final boolean supportsCaching() {
+        com.firefly.common.domain.cqrs.annotations.QueryHandlerComponent annotation =
+            this.getClass().getAnnotation(com.firefly.common.domain.cqrs.annotations.QueryHandlerComponent.class);
+
+        if (annotation != null) {
+            return annotation.cacheable();
+        }
+
+        return false; // Default: no caching
     }
 
     /**
-     * Default cache TTL - override to customize.
+     * Gets the cache TTL in seconds for this query handler.
+     * Automatically reads from @QueryHandlerComponent annotation.
+     *
+     * <p>You don't need to override this method - it's handled automatically!
+     * Just specify cacheTtl=300 in your @QueryHandlerComponent annotation.
+     *
+     * @return cache TTL in seconds
      */
-    @Override
-    public Long getCacheTtlSeconds() {
-        return 300L; // 5 minutes default
+    public final Long getCacheTtlSeconds() {
+        com.firefly.common.domain.cqrs.annotations.QueryHandlerComponent annotation =
+            this.getClass().getAnnotation(com.firefly.common.domain.cqrs.annotations.QueryHandlerComponent.class);
+
+        if (annotation != null && annotation.cacheTtl() > 0) {
+            return annotation.cacheTtl();
+        }
+
+        return 300L; // Default: 5 minutes
     }
 }

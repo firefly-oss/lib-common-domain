@@ -68,7 +68,7 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 @Component
-public @interface QueryHandler {
+public @interface QueryHandlerComponent {
 
     /**
      * The value may indicate a suggestion for a logical component name,

@@ -53,11 +53,11 @@ class CqrsFrameworkIntegrationTest {
         CacheManager cacheManager = new ConcurrentMapCacheManager();
         
         commandBus = new DefaultCommandBus(applicationContext, correlationContext, validationProcessor, meterRegistry);
-        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor, cacheManager);
+        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor, cacheManager, meterRegistry);
         
         // Register handlers manually with explicit type specification
-        ((DefaultCommandBus) commandBus).registerHandler(TestCreateAccountCommand.class, new TestCreateAccountHandler());
-        ((DefaultQueryBus) queryBus).registerHandler(TestGetBalanceQuery.class, new TestGetBalanceHandler());
+        ((DefaultCommandBus) commandBus).registerHandler(new TestCreateAccountHandler());
+        ((DefaultQueryBus) queryBus).registerHandler(new TestGetBalanceHandler());
     }
 
     @Test
@@ -167,11 +167,6 @@ class CqrsFrameworkIntegrationTest {
      */
     static class TestCreateAccountHandler extends CommandHandler<TestCreateAccountCommand, TestAccountResult> {
 
-        // Constructor that bypasses automatic type detection for testing
-        public TestCreateAccountHandler() {
-            super(TestCreateAccountCommand.class, TestAccountResult.class);
-        }
-
         @Override
         protected Mono<TestAccountResult> doHandle(TestCreateAccountCommand command) {
             // Only business logic - validation, logging, metrics handled automatically!
@@ -194,11 +189,6 @@ class CqrsFrameworkIntegrationTest {
      */
     static class TestGetBalanceHandler extends QueryHandler<TestGetBalanceQuery, TestBalanceResult> {
 
-        // Constructor that bypasses automatic type detection for testing
-        public TestGetBalanceHandler() {
-            super(TestGetBalanceQuery.class, TestBalanceResult.class);
-        }
-
         @Override
         protected Mono<TestBalanceResult> doHandle(TestGetBalanceQuery query) {
             // Only business logic - validation, caching, metrics handled automatically!
@@ -210,10 +200,6 @@ class CqrsFrameworkIntegrationTest {
             return Mono.just(result);
         }
 
-        @Override
-        public boolean supportsCaching() { return true; }
-
-        @Override
-        public Long getCacheTtlSeconds() { return 300L; }
+        // No caching methods needed - would be handled automatically by @QueryHandlerComponent annotation!
     }
 }

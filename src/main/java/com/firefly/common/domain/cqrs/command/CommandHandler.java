@@ -24,31 +24,41 @@ import java.time.Duration;
 import java.time.Instant;
 
 /**
- * Abstract base class for command handlers that provides common functionality
- * and eliminates boilerplate code.
+ * Base class for all command handlers in the CQRS framework.
  *
- * <p>This base class provides:
+ * <p>This is the <strong>only</strong> way to create command handlers. It provides:
  * <ul>
- *   <li>Automatic type detection from generics</li>
- *   <li>Built-in logging with structured context</li>
- *   <li>Performance monitoring and metrics</li>
- *   <li>Error handling and retry logic</li>
- *   <li>Correlation context management</li>
+ *   <li><strong>Zero Boilerplate:</strong> Automatic type detection from generics</li>
+ *   <li><strong>Built-in Features:</strong> Logging, metrics, error handling, correlation context</li>
+ *   <li><strong>Performance Monitoring:</strong> Automatic timing and success/failure tracking</li>
+ *   <li><strong>Extensibility:</strong> Pre/post processing hooks for custom logic</li>
+ *   <li><strong>Clean API:</strong> Just implement doHandle() - everything else is automatic</li>
  * </ul>
  *
- * <p>Example usage:
+ * <p><strong>Example - Money Transfer Handler:</strong>
  * <pre>{@code
- * @CommandHandler
- * public class CreateAccountHandler extends BaseCommandHandler<CreateAccountCommand, AccountResult> {
- *     
+ * @Component
+ * public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
+ *
+ *     private final ServiceClient accountService;
+ *     private final DomainEventPublisher eventPublisher;
+ *
  *     @Override
- *     protected Mono<AccountResult> doHandle(CreateAccountCommand command) {
- *         // Only business logic needed - logging, metrics, etc. handled by base class
- *         return createAccount(command)
- *             .map(account -> AccountResult.builder()
- *                 .accountId(account.getId())
- *                 .status("CREATED")
- *                 .build());
+ *     protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+ *         // Only business logic - validation, logging, metrics handled automatically
+ *         return executeTransfer(command)
+ *             .flatMap(this::publishTransferEvent);
+ *     }
+ *
+ *     private Mono<TransferResult> executeTransfer(TransferMoneyCommand command) {
+ *         return accountService.post("/transfers", TransferResult.class)
+ *             .withBody(command)
+ *             .execute();
+ *     }
+ *
+ *     private Mono<TransferResult> publishTransferEvent(TransferResult result) {
+ *         return eventPublisher.publish(createTransferEvent(result))
+ *             .thenReturn(result);
  *     }
  * }
  * }</pre>
@@ -59,7 +69,7 @@ import java.time.Instant;
  * @since 1.0.0
  */
 @Slf4j
-public abstract class BaseCommandHandler<C extends Command<R>, R> implements CommandHandler<C, R> {
+public abstract class CommandHandler<C extends Command<R>, R> {
 
     private final Class<C> commandType;
     private final Class<R> resultType;
@@ -68,23 +78,38 @@ public abstract class BaseCommandHandler<C extends Command<R>, R> implements Com
      * Constructor that automatically detects command and result types from generics.
      */
     @SuppressWarnings("unchecked")
-    protected BaseCommandHandler() {
+    protected CommandHandler() {
         this.commandType = (Class<C>) GenericTypeResolver.resolveCommandType(this.getClass());
         this.resultType = (Class<R>) GenericTypeResolver.resolveCommandResultType(this.getClass());
-        
+
         if (this.commandType == null) {
             throw new IllegalStateException(
                 "Could not automatically determine command type for handler: " + this.getClass().getName() +
-                ". Please ensure the handler extends BaseCommandHandler with proper generic types."
+                ". Please ensure the handler extends CommandHandler with proper generic types."
             );
         }
-        
-        log.debug("Initialized command handler for {} -> {}", 
-            commandType.getSimpleName(), 
+
+        log.debug("Initialized command handler for {} -> {}",
+            commandType.getSimpleName(),
             resultType != null ? resultType.getSimpleName() : "Unknown");
     }
 
-    @Override
+
+
+    /**
+     * Handles the given command asynchronously with automatic logging, metrics, and error handling.
+     *
+     * <p>This method is final and provides the complete command processing pipeline:
+     * <ol>
+     *   <li>Pre-processing (validation already done by CommandBus)</li>
+     *   <li>Business logic execution via doHandle()</li>
+     *   <li>Post-processing and result transformation</li>
+     *   <li>Success/error callbacks for monitoring</li>
+     * </ol>
+     *
+     * @param command the command to handle, guaranteed to be non-null and validated
+     * @return a Mono containing the result of command processing
+     */
     public final Mono<R> handle(C command) {
         Instant startTime = Instant.now();
         String commandId = command.getCommandId();
@@ -113,11 +138,27 @@ public abstract class BaseCommandHandler<C extends Command<R>, R> implements Com
     }
 
     /**
-     * Implement this method with your business logic.
-     * All boilerplate (logging, metrics, error handling) is handled by the base class.
+     * Implement this method with your business logic only.
      *
-     * @param command the command to process
-     * @return a Mono containing the result
+     * <p><strong>What you get for free:</strong>
+     * <ul>
+     *   <li>Command validation (Jakarta + custom) already completed</li>
+     *   <li>Automatic logging with correlation context</li>
+     *   <li>Performance metrics and timing</li>
+     *   <li>Error handling and mapping</li>
+     *   <li>Success/failure callbacks</li>
+     * </ul>
+     *
+     * <p><strong>Focus only on:</strong>
+     * <ul>
+     *   <li>Business logic execution</li>
+     *   <li>Service orchestration</li>
+     *   <li>Domain event publishing</li>
+     *   <li>Result creation</li>
+     * </ul>
+     *
+     * @param command the validated command to process
+     * @return a Mono containing the business result
      */
     protected abstract Mono<R> doHandle(C command);
 
@@ -179,12 +220,22 @@ public abstract class BaseCommandHandler<C extends Command<R>, R> implements Com
         return error; // Default: no mapping
     }
 
-    @Override
+    /**
+     * Gets the command type this handler processes.
+     * Automatically detected from generics - no need to override.
+     *
+     * @return the command type
+     */
     public final Class<C> getCommandType() {
         return commandType;
     }
 
-    @Override
+    /**
+     * Gets the result type this handler returns.
+     * Automatically detected from generics - no need to override.
+     *
+     * @return the result type
+     */
     public final Class<R> getResultType() {
         return resultType;
     }
@@ -200,12 +251,11 @@ public abstract class BaseCommandHandler<C extends Command<R>, R> implements Com
 
     /**
      * Checks if this handler can process the given command.
-     * Override for custom validation logic.
+     * Uses automatic type detection - no need to override.
      *
      * @param command the command to check
      * @return true if this handler can process the command
      */
-    @Override
     public boolean canHandle(Command<?> command) {
         return commandType.isInstance(command);
     }

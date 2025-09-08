@@ -70,7 +70,7 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 @Component
-public @interface CommandHandler {
+public @interface CommandHandlerComponent {
 
     /**
      * The value may indicate a suggestion for a logical component name,

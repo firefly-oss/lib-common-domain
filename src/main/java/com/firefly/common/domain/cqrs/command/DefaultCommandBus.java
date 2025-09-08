@@ -17,17 +17,25 @@
 package com.firefly.common.domain.cqrs.command;
 
 import com.firefly.common.domain.tracing.CorrelationContext;
+import com.firefly.common.domain.validation.AutoValidationProcessor;
+import com.firefly.common.domain.validation.ValidationException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Default implementation of CommandBus with automatic handler discovery,
- * tracing support, error handling, and metrics integration.
+ * tracing support, error handling, validation, and metrics integration.
  */
 @Slf4j
 @Component
@@ -36,18 +44,62 @@ public class DefaultCommandBus implements CommandBus {
     private final Map<Class<? extends Command<?>>, CommandHandler<?, ?>> handlers = new ConcurrentHashMap<>();
     private final ApplicationContext applicationContext;
     private final CorrelationContext correlationContext;
+    private final AutoValidationProcessor autoValidationProcessor;
+    private final MeterRegistry meterRegistry;
+    private final Counter commandProcessedCounter;
+    private final Counter commandFailedCounter;
+    private final Counter validationFailedCounter;
+    private final Timer commandProcessingTimer;
 
-    public DefaultCommandBus(ApplicationContext applicationContext, CorrelationContext correlationContext) {
+    @Autowired
+    public DefaultCommandBus(ApplicationContext applicationContext,
+                            CorrelationContext correlationContext,
+                            AutoValidationProcessor autoValidationProcessor,
+                            @Autowired(required = false) MeterRegistry meterRegistry) {
         this.applicationContext = applicationContext;
         this.correlationContext = correlationContext;
+        this.autoValidationProcessor = autoValidationProcessor;
+        this.meterRegistry = meterRegistry;
+        
+        // Initialize metrics if MeterRegistry is available
+        if (meterRegistry != null) {
+            this.commandProcessedCounter = Counter.builder("firefly.cqrs.command.processed")
+                .description("Number of commands processed successfully")
+                .register(meterRegistry);
+            this.commandFailedCounter = Counter.builder("firefly.cqrs.command.failed")
+                .description("Number of commands that failed processing")
+                .register(meterRegistry);
+            this.validationFailedCounter = Counter.builder("firefly.cqrs.command.validation.failed")
+                .description("Number of commands that failed validation")
+                .register(meterRegistry);
+            this.commandProcessingTimer = Timer.builder("firefly.cqrs.command.processing.time")
+                .description("Time taken to process commands")
+                .register(meterRegistry);
+        } else {
+            this.commandProcessedCounter = null;
+            this.commandFailedCounter = null;
+            this.validationFailedCounter = null;
+            this.commandProcessingTimer = null;
+        }
+        
         discoverHandlers();
+    }
+    
+    // Constructor for backward compatibility without metrics and validation processor
+    public DefaultCommandBus(ApplicationContext applicationContext,
+                            CorrelationContext correlationContext,
+                            AutoValidationProcessor autoValidationProcessor) {
+        this(applicationContext, correlationContext, autoValidationProcessor, null);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public <R> Mono<R> send(Command<R> command) {
+        Instant startTime = Instant.now();
+        String commandType = command.getClass().getSimpleName();
+        
         return Mono.fromCallable(() -> {
-                    log.debug("Processing command: {} with ID: {}", command.getClass().getSimpleName(), command.getCommandId());
+                    log.debug("Processing command: {} with ID: {}", commandType, command.getCommandId());
                     
                     CommandHandler<Command<R>, R> handler = (CommandHandler<Command<R>, R>) handlers.get(command.getClass());
                     if (handler == null) {
@@ -62,13 +114,67 @@ public class DefaultCommandBus implements CommandBus {
                         correlationContext.setCorrelationId(command.getCorrelationId());
                     }
                     
-                    return handler.handle(command)
-                            .doOnSuccess(result -> log.debug("Command {} processed successfully", command.getCommandId()))
-                            .doOnError(error -> log.error("Command {} processing failed: {}", command.getCommandId(), error.getMessage()))
+                    // Perform automatic Jakarta validation first, then custom validation
+                    return autoValidationProcessor.validate(command)
+                            .flatMap(autoValidationResult -> {
+                                if (!autoValidationResult.isValid()) {
+                                    // Record validation failure metric
+                                    if (validationFailedCounter != null) {
+                                        validationFailedCounter.increment();
+                                    }
+
+                                    String errorMessage = String.format("Command validation failed for %s: %s",
+                                            commandType, autoValidationResult.getSummary());
+                                    log.warn(errorMessage);
+                                    return Mono.error(new ValidationException(autoValidationResult));
+                                }
+
+                                // If automatic validation passes, perform custom validation
+                                return command.validate()
+                                        .flatMap(customValidationResult -> {
+                                            if (!customValidationResult.isValid()) {
+                                                // Record validation failure metric
+                                                if (validationFailedCounter != null) {
+                                                    validationFailedCounter.increment();
+                                                }
+
+                                                String errorMessage = String.format("Command custom validation failed for %s: %s",
+                                                        commandType, customValidationResult.getSummary());
+                                                log.warn(errorMessage);
+                                                return Mono.error(new ValidationException(customValidationResult));
+                                            }
+
+                                            // Execute the command handler
+                                            return handler.handle(command);
+                                        });
+                            })
+                            .doOnSuccess(result -> {
+                                log.debug("Command {} processed successfully", command.getCommandId());
+                                
+                                // Record success metrics
+                                if (commandProcessedCounter != null) {
+                                    commandProcessedCounter.increment();
+                                }
+                                if (commandProcessingTimer != null) {
+                                    Duration processingTime = Duration.between(startTime, Instant.now());
+                                    commandProcessingTimer.record(processingTime);
+                                }
+                            })
+                            .doOnError(error -> {
+                                log.error("Command {} processing failed: {}", command.getCommandId(), error.getMessage());
+                                
+                                // Record failure metrics
+                                if (commandFailedCounter != null) {
+                                    commandFailedCounter.increment();
+                                }
+                            })
                             .doFinally(signalType -> correlationContext.clear());
                 })
                 .onErrorMap(throwable -> {
                     if (throwable instanceof CommandHandlerNotFoundException) {
+                        return throwable;
+                    }
+                    if (throwable instanceof ValidationException) {
                         return throwable;
                     }
                     return new CommandProcessingException("Failed to process command: " + command.getCommandId(), throwable);

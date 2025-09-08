@@ -1,6 +1,6 @@
 package com.firefly.common.domain.cqrs.query;
 
-import com.firefly.common.domain.cqrs.annotations.QueryHandler;
+import com.firefly.common.domain.cqrs.annotations.QueryHandlerComponent;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
  *   <li>Built-in caching, validation, logging, metrics</li>
  * </ul>
  */
-@QueryHandler(cacheable = true, cacheTtl = 300, metrics = true)
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
 public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
 
     @Override
@@ -34,14 +34,5 @@ public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuer
     }
 
     // No getQueryType() needed - automatically detected from generics!
-
-    @Override
-    public boolean supportsCaching() {
-        return true;
-    }
-
-    @Override
-    public Long getCacheTtlSeconds() {
-        return 300L;
-    }
+    // No caching methods needed - handled automatically by @QueryHandlerComponent annotation!
 }

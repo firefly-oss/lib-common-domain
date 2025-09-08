@@ -36,7 +36,7 @@ class QueryBusTest {
         AutoValidationProcessor validationProcessor = new AutoValidationProcessor(null);
         cacheManager = new ConcurrentMapCacheManager();
         
-        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor, cacheManager);
+        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor, cacheManager, null);
         
         // Register handlers manually for testing - using the external classes with @QueryHandlerComponent
         ((DefaultQueryBus) queryBus).registerHandler(new GetAccountBalanceHandler());

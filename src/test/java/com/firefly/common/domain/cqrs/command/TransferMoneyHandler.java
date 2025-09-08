@@ -1,6 +1,6 @@
 package com.firefly.common.domain.cqrs.command;
 
-import com.firefly.common.domain.cqrs.annotations.CommandHandler;
+import com.firefly.common.domain.cqrs.annotations.CommandHandlerComponent;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  *   <li>Built-in validation, logging, metrics, error handling</li>
  * </ul>
  */
-@CommandHandler(timeout = 15000, retries = 2, metrics = true)
+@CommandHandlerComponent(timeout = 15000, retries = 2, metrics = true)
 public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
 
     @Override
