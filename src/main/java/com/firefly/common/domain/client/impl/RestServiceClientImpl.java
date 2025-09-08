@@ -18,7 +18,6 @@ package com.firefly.common.domain.client.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.firefly.common.domain.client.ClientType;
-import com.firefly.common.domain.client.RequestBuilder;
 import com.firefly.common.domain.client.ServiceClient;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
@@ -30,7 +29,6 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 
 /**
  * REST implementation of ServiceClient using WebClient.
@@ -142,39 +140,6 @@ public class RestServiceClientImpl implements ServiceClient {
         return new RestRequestBuilder<>("PATCH", endpoint, null, typeReference);
     }
 
-    // ========================================
-    // SDK-specific Methods (Not Supported)
-    // ========================================
-
-    @Override
-    public <R> Mono<R> execute(Function<Object, R> operation) {
-        return Mono.error(new UnsupportedOperationException(
-            "SDK operations are not supported for REST clients. Use HTTP methods instead."));
-    }
-
-    @Override
-    public <R> Mono<R> executeAsync(Function<Object, Mono<R>> operation) {
-        return Mono.error(new UnsupportedOperationException(
-            "SDK operations are not supported for REST clients. Use HTTP methods instead."));
-    }
-
-    @Override
-    public <S, R> Mono<R> call(Function<S, R> operation) {
-        return Mono.error(new UnsupportedOperationException(
-            "SDK operations are not supported for REST clients. Use HTTP methods instead."));
-    }
-
-    @Override
-    public <S, R> Mono<R> callAsync(Function<S, Mono<R>> operation) {
-        return Mono.error(new UnsupportedOperationException(
-            "SDK operations are not supported for REST clients. Use HTTP methods instead."));
-    }
-
-    @Override
-    public <S> S sdk() {
-        throw new UnsupportedOperationException(
-            "SDK operations are not supported for REST clients. Use HTTP methods instead.");
-    }
 
     // ========================================
     // Streaming Methods

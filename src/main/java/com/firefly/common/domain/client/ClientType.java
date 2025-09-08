@@ -41,15 +41,8 @@ public enum ClientType {
      * <p>Supports unary and streaming gRPC calls with efficient binary
      * serialization and built-in load balancing.
      */
-    GRPC("gRPC"),
+    GRPC("gRPC");
     
-    /**
-     * SDK-based service client wrapping third-party SDKs.
-     * 
-     * <p>Provides a unified interface for external service SDKs
-     * while maintaining SDK-specific optimizations and features.
-     */
-    SDK("SDK");
 
     private final String displayName;
 
@@ -78,7 +71,7 @@ public enum ClientType {
     /**
      * Returns true if this client type supports streaming operations.
      *
-     * @return true for gRPC and REST clients, false for SDK clients
+     * @return true for gRPC and REST clients
      */
     public boolean supportsStreaming() {
         return this == GRPC || this == REST;
@@ -87,10 +80,10 @@ public enum ClientType {
     /**
      * Returns true if this client type requires custom SDK integration.
      *
-     * @return true for SDK clients, false for others
+     * @return always false since SDK clients are no longer supported
      */
     public boolean requiresSdkIntegration() {
-        return this == SDK;
+        return false;
     }
 
     @Override

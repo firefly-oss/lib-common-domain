@@ -18,7 +18,6 @@ package com.firefly.common.domain.client.integration;
 
 import com.firefly.common.domain.client.ServiceClient;
 import com.firefly.common.domain.client.health.ServiceClientHealthManager;
-import com.firefly.common.domain.client.interceptor.LoggingInterceptor;
 import com.firefly.common.domain.client.interceptor.MetricsInterceptor;
 import com.firefly.common.domain.client.resilience.AdvancedResilienceManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +34,6 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
@@ -285,8 +283,8 @@ class AdvancedServiceClientTest {
         metricsCollector.incrementSuccessCount("payment-service", "/payments", "POST", "REST", 201);
         metricsCollector.recordResponseTime("payment-service", "/payments", "POST", "REST", Duration.ofMillis(300));
 
-        metricsCollector.incrementRequestCount("fraud-service", "/check", "POST", "SDK");
-        metricsCollector.incrementErrorCount("fraud-service", "/check", "POST", "SDK", "TimeoutException");
+        metricsCollector.incrementRequestCount("fraud-service", "/check", "POST", "REST");
+        metricsCollector.incrementErrorCount("fraud-service", "/check", "POST", "REST", "TimeoutException");
     }
 
     /**

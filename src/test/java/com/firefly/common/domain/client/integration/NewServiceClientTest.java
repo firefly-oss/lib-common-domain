@@ -16,19 +16,13 @@
 
 package com.firefly.common.domain.client.integration;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.firefly.common.domain.client.ClientType;
-import com.firefly.common.domain.client.RequestBuilder;
 import com.firefly.common.domain.client.ServiceClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import reactor.core.publisher.Mono;
-import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
 import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -37,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * Comprehensive test suite for the redesigned ServiceClient framework.
  * 
  * <p>This test demonstrates the new simplified API and improved developer experience
- * across all client types (REST, gRPC, SDK) with banking domain examples.
+ * across all client types (REST, gRPC) with banking domain examples.
  */
 @DisplayName("New ServiceClient Framework - Banking Integration Tests")
 class NewServiceClientTest {
@@ -103,89 +97,8 @@ class NewServiceClientTest {
         assertThat(grpcClient.isReady()).isTrue();
     }
 
-    @Test
-    @DisplayName("Should create SDK client with simplified configuration")
-    void shouldCreateSdkClientWithSimplifiedConfiguration() {
-        // Given: SDK client creation
-        ServiceClient sdkClient = ServiceClient.sdk("fraud-detection", FraudDetectionSDK.class)
-            .sdkSupplier(() -> new FraudDetectionSDK("api-key", "production"))
-            .timeout(Duration.ofSeconds(45))
-            .autoShutdown(true)
-            .build();
 
-        // Then: Client should be properly configured
-        assertThat(sdkClient).isNotNull();
-        assertThat(sdkClient.getServiceName()).isEqualTo("fraud-detection");
-        assertThat(sdkClient.getBaseUrl()).isNull(); // SDK clients don't have base URLs
-        assertThat(sdkClient.getClientType()).isEqualTo(ClientType.SDK);
-        assertThat(sdkClient.isReady()).isTrue();
-    }
 
-    @Test
-    @DisplayName("Should demonstrate SDK client execute operations")
-    void shouldDemonstrateSdkClientExecuteOperations() {
-        // Given: A fraud detection SDK client
-        ServiceClient fraudClient = ServiceClient.sdk("fraud-detection", FraudDetectionSDK.class)
-            .sdkSupplier(() -> new MockFraudDetectionSDK())
-            .build();
-
-        // When: Executing SDK operation with new improved API
-        Mono<FraudCheckResult> result = fraudClient.<FraudDetectionSDK, FraudCheckResult>call(sdk ->
-            sdk.checkTransaction("TXN-123", new BigDecimal("1000.00"), "USD")
-        );
-
-        // Then: Operation should complete successfully
-        StepVerifier.create(result)
-            .assertNext(fraudResult -> {
-                assertThat(fraudResult).isNotNull();
-                assertThat(fraudResult.getTransactionId()).isEqualTo("TXN-123");
-                assertThat(fraudResult.isApproved()).isTrue();
-            })
-            .verifyComplete();
-    }
-
-    @Test
-    @DisplayName("Should demonstrate direct SDK access for complex operations")
-    void shouldDemonstrateDirectSDKAccess() {
-        // Given: SDK client for fraud detection
-        ServiceClient fraudClient = ServiceClient.sdk("fraud-detection", FraudDetectionSDK.class)
-            .sdkSupplier(() -> new MockFraudDetectionSDK())
-            .build();
-
-        // When: Using direct SDK access for complex operations
-        FraudDetectionSDK sdk = fraudClient.<FraudDetectionSDK>sdk();
-
-        // Then: Should have direct access to all SDK methods
-        assertThat(sdk).isNotNull();
-        assertThat(sdk).isInstanceOf(FraudDetectionSDK.class);
-
-        // Can use SDK directly for complex operations
-        FraudCheckResult result = sdk.checkTransaction("TXN-456", new BigDecimal("500.00"), "EUR");
-        assertThat(result.getTransactionId()).isEqualTo("TXN-456");
-        assertThat(result.isApproved()).isTrue();
-    }
-
-    @Test
-    @DisplayName("Should demonstrate async SDK operations")
-    void shouldDemonstrateAsyncSDKOperations() {
-        // Given: SDK client that supports async operations
-        ServiceClient fraudClient = ServiceClient.sdk("fraud-detection", FraudDetectionSDK.class)
-            .sdkSupplier(() -> new MockFraudDetectionSDK())
-            .build();
-
-        // When: Using callAsync for reactive SDK operations
-        Mono<FraudCheckResult> asyncResult = fraudClient.<FraudDetectionSDK, FraudCheckResult>callAsync(sdk ->
-            Mono.fromCallable(() -> sdk.checkTransaction("TXN-789", new BigDecimal("2000.00"), "GBP"))
-        );
-
-        // Then: Async operation should complete successfully
-        StepVerifier.create(asyncResult)
-            .assertNext(fraudResult -> {
-                assertThat(fraudResult.getTransactionId()).isEqualTo("TXN-789");
-                assertThat(fraudResult.isApproved()).isTrue();
-            })
-            .verifyComplete();
-    }
 
     @Test
     @DisplayName("Should handle client type validation correctly")
@@ -194,19 +107,11 @@ class NewServiceClientTest {
         ServiceClient restClient = ServiceClient.rest("test-service")
             .baseUrl("http://test:8080")
             .build();
-        
-        ServiceClient sdkClient = ServiceClient.sdk("test-sdk", MockSDK.class)
-            .sdkSupplier(MockSDK::new)
-            .build();
 
         // Then: Client types should be correctly identified
         assertThat(restClient.getClientType().isHttpBased()).isTrue();
         assertThat(restClient.getClientType().supportsStreaming()).isTrue();
         assertThat(restClient.getClientType().requiresSdkIntegration()).isFalse();
-
-        assertThat(sdkClient.getClientType().isHttpBased()).isFalse();
-        assertThat(sdkClient.getClientType().supportsStreaming()).isFalse();
-        assertThat(sdkClient.getClientType().requiresSdkIntegration()).isTrue();
     }
 
     @Test
@@ -217,35 +122,12 @@ class NewServiceClientTest {
             ServiceClient.rest("test-service").build();
         });
 
-        // When: Creating SDK client without SDK factory
-        assertThrows(IllegalStateException.class, () -> {
-            ServiceClient.sdk("test-service", MockSDK.class).build();
-        });
-
         // When: Creating client with invalid service name
         assertThrows(IllegalArgumentException.class, () -> {
             ServiceClient.rest("");
         });
     }
 
-    @Test
-    @DisplayName("Should demonstrate improved error handling")
-    void shouldDemonstrateImprovedErrorHandling() {
-        // Given: An SDK client
-        ServiceClient sdkClient = ServiceClient.sdk("test-service", MockSDK.class)
-            .sdkSupplier(MockSDK::new)
-            .build();
-
-        // When: Trying to use HTTP methods on SDK client
-        ServiceClient.RequestBuilder<String> getRequest = sdkClient.get("/test", String.class);
-
-        // Then: Should get appropriate error message
-        StepVerifier.create(getRequest.execute())
-            .expectErrorMatches(throwable -> 
-                throwable instanceof UnsupportedOperationException &&
-                throwable.getMessage().contains("SDK clients do not support HTTP operations"))
-            .verify();
-    }
 
     // ========================================
     // Mock Classes for Testing
@@ -286,44 +168,4 @@ class NewServiceClientTest {
         // Mock gRPC stub
     }
 
-    static class FraudDetectionSDK {
-        public FraudDetectionSDK() {}
-
-        public FraudDetectionSDK(String apiKey, String environment) {
-            // Constructor for initialization
-        }
-
-        public FraudCheckResult checkTransaction(String transactionId, BigDecimal amount, String currency) {
-            return new FraudCheckResult(transactionId, true, "Low risk transaction");
-        }
-    }
-
-    static class MockFraudDetectionSDK extends FraudDetectionSDK {
-        @Override
-        public FraudCheckResult checkTransaction(String transactionId, BigDecimal amount, String currency) {
-            return new FraudCheckResult(transactionId, true, "Low risk transaction");
-        }
-    }
-
-    static class FraudCheckResult {
-        private final String transactionId;
-        private final boolean approved;
-        private final String reason;
-
-        public FraudCheckResult(String transactionId, boolean approved, String reason) {
-            this.transactionId = transactionId;
-            this.approved = approved;
-            this.reason = reason;
-        }
-
-        public String getTransactionId() { return transactionId; }
-        public boolean isApproved() { return approved; }
-        public String getReason() { return reason; }
-    }
-
-    static class MockSDK {
-        public String performOperation() {
-            return "success";
-        }
-    }
 }

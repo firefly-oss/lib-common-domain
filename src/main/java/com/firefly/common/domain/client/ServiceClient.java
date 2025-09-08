@@ -28,7 +28,7 @@ import java.util.function.Function;
  * Unified interface for service clients providing reactive communication patterns.
  *
  * <p>This redesigned interface provides a simplified, consistent API for all service communication
- * types (REST, gRPC, SDK) while maintaining protocol-specific optimizations under the hood.
+ * types (REST, gRPC) while maintaining protocol-specific optimizations under the hood.
  *
  * <p>Key improvements:
  * <ul>
@@ -56,15 +56,6 @@ import java.util.function.Function;
  * Mono<User> created = client.post("/users", User.class)
  *     .withBody(newUser)
  *     .execute();
- *
- * // SDK client - simplified creation
- * ServiceClient sdkClient = ServiceClient.sdk("payment-service", PaymentSDK.class)
- *     .sdkFactory(() -> new PaymentSDK(apiKey))
- *     .build();
- *
- * // Execute SDK operation
- * Mono<PaymentResult> result = sdkClient.execute(sdk ->
- *     sdk.processPayment(paymentRequest));
  * }</pre>
  *
  * @author Firefly Software Solutions Inc
@@ -98,17 +89,6 @@ public interface ServiceClient {
         return new com.firefly.common.domain.client.builder.GrpcClientBuilder<>(serviceName, stubType);
     }
 
-    /**
-     * Creates an SDK service client builder.
-     *
-     * @param serviceName the name of the service
-     * @param sdkType the SDK type
-     * @param <S> the SDK type
-     * @return an SDK client builder
-     */
-    static <S> com.firefly.common.domain.client.builder.SdkClientBuilder<S> sdk(String serviceName, Class<S> sdkType) {
-        return new com.firefly.common.domain.client.builder.SdkClientBuilder<>(serviceName, sdkType);
-    }
 
     // ========================================
     // Request Builder Methods
@@ -214,126 +194,7 @@ public interface ServiceClient {
      */
     <R> RequestBuilder<R> patch(String endpoint, TypeReference<R> typeReference);
 
-    // ========================================
-    // SDK-specific Methods
-    // ========================================
 
-    /**
-     * Executes an operation using the underlying SDK (for SDK clients only).
-     *
-     * @param operation the operation to execute with the SDK
-     * @param <R> the return type
-     * @return a Mono containing the operation result
-     * @throws UnsupportedOperationException if called on non-SDK clients
-     * @deprecated Use call() for better type safety
-     */
-    @Deprecated
-    <R> Mono<R> execute(Function<Object, R> operation);
-
-    /**
-     * Executes an asynchronous operation using the underlying SDK (for SDK clients only).
-     *
-     * @param operation the async operation to execute with the SDK
-     * @param <R> the return type
-     * @return a Mono containing the operation result
-     * @throws UnsupportedOperationException if called on non-SDK clients
-     * @deprecated Use callAsync() for better type safety
-     */
-    @Deprecated
-    <R> Mono<R> executeAsync(Function<Object, Mono<R>> operation);
-
-    // ========================================
-    // Enhanced SDK Methods (Type-Safe)
-    // ========================================
-
-    /**
-     * Execute a synchronous operation with the SDK instance (for SDK clients only).
-     *
-     * <p>This method provides type-safe access to the SDK without casting.
-     *
-     * <p>Example usage:
-     * <pre>{@code
-     * // Type-safe SDK operation - no casting required!
-     * ServiceClient client = ServiceClient.sdk("payment-service", PaymentSDK.class)
-     *     .sdkSupplier(() -> new PaymentSDK(apiKey))
-     *     .build();
-     *
-     * Mono<PaymentResult> result = client.call(sdk -> sdk.processPayment(request));
-     * }</pre>
-     *
-     * @param operation the operation to execute with the SDK
-     * @param <S> the SDK type
-     * @param <R> the return type
-     * @return a Mono containing the operation result
-     * @throws UnsupportedOperationException if called on non-SDK clients
-     */
-    default <S, R> Mono<R> call(Function<S, R> operation) {
-        throw new UnsupportedOperationException("call() method is only supported by SDK clients");
-    }
-
-    /**
-     * Execute an asynchronous operation with the SDK instance (for SDK clients only).
-     *
-     * <p>This method provides type-safe access to the SDK for async operations.
-     *
-     * <p>Example usage:
-     * <pre>{@code
-     * // Type-safe async SDK operation
-     * Mono<PaymentResult> result = client.callAsync(sdk -> sdk.processPaymentAsync(request));
-     * }</pre>
-     *
-     * @param operation the async operation to execute with the SDK
-     * @param <S> the SDK type
-     * @param <R> the return type
-     * @return a Mono containing the operation result
-     * @throws UnsupportedOperationException if called on non-SDK clients
-     */
-    default <S, R> Mono<R> callAsync(Function<S, Mono<R>> operation) {
-        throw new UnsupportedOperationException("callAsync() method is only supported by SDK clients");
-    }
-
-    /**
-     * Get direct access to the SDK instance (for SDK clients only).
-     *
-     * <p>This method provides direct, type-safe access to the SDK instance.
-     *
-     * <p>Example usage:
-     * <pre>{@code
-     * // Direct SDK access for complex operations
-     * PaymentSDK sdk = client.sdk();
-     * PaymentResult result = sdk.processPayment(request);
-     * }</pre>
-     *
-     * @param <S> the SDK type
-     * @return the SDK instance
-     * @throws UnsupportedOperationException if called on non-SDK clients
-     */
-    default <S> S sdk() {
-        throw new UnsupportedOperationException("sdk() method is only supported by SDK clients");
-    }
-
-    /**
-     * Get a type-safe wrapper for SDK operations (for SDK clients only).
-     *
-     * <p>This method returns a TypedSdkClient that provides type-safe access to SDK operations
-     * without casting.
-     *
-     * <p>Example usage:
-     * <pre>{@code
-     * // Create a typed SDK client
-     * TypedSdkClient<PaymentSDK> typedClient = client.typed();
-     *
-     * // Type-safe operations - no casting required!
-     * Mono<PaymentResult> result = typedClient.call(sdk -> sdk.processPayment(request));
-     * }</pre>
-     *
-     * @param <S> the SDK type
-     * @return a type-safe SDK client wrapper
-     * @throws UnsupportedOperationException if called on non-SDK clients
-     */
-    default <S> TypedSdkClient<S> typed() {
-        throw new UnsupportedOperationException("typed() method is only supported by SDK clients");
-    }
 
     // ========================================
     // Streaming Methods
@@ -517,11 +378,4 @@ public interface ServiceClient {
         ServiceClient build();
     }
 
-    interface SdkClientBuilder<S> {
-        SdkClientBuilder<S> sdkFactory(Function<Void, S> sdkFactory);
-        SdkClientBuilder<S> sdkSupplier(java.util.function.Supplier<S> sdkSupplier);
-        SdkClientBuilder<S> timeout(Duration timeout);
-        SdkClientBuilder<S> autoShutdown(boolean autoShutdown);
-        ServiceClient build();
-    }
 }
