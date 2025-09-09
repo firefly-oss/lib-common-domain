@@ -17,239 +17,201 @@
 package com.firefly.common.domain.cqrs.command;
 
 import com.firefly.common.domain.tracing.CorrelationContext;
-import com.firefly.common.domain.validation.AutoValidationProcessor;
-import com.firefly.common.domain.validation.ValidationException;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.List;
 
 /**
- * Default implementation of CommandBus with automatic handler discovery,
- * tracing support, error handling, validation, and metrics integration.
+ * Simplified implementation of CommandBus that orchestrates dedicated services.
+ *
+ * <p>This refactored CommandBus focuses solely on command routing and orchestration,
+ * delegating specialized concerns to dedicated services:
+ * <ul>
+ *   <li><strong>CommandHandlerRegistry:</strong> Handler discovery and management</li>
+ *   <li><strong>CommandValidationService:</strong> Jakarta and custom validation</li>
+ *   <li><strong>CommandMetricsService:</strong> Metrics collection and monitoring</li>
+ *   <li><strong>CorrelationContext:</strong> Distributed tracing context</li>
+ * </ul>
+ *
+ * <p>This separation of concerns provides:
+ * <ul>
+ *   <li>Cleaner, more maintainable code with single responsibilities</li>
+ *   <li>Better testability with focused unit tests</li>
+ *   <li>Enhanced error handling with preserved stack traces</li>
+ *   <li>Improved debugging with detailed context information</li>
+ * </ul>
+ *
+ * @author Firefly Software Solutions Inc
+ * @since 1.0.0
+ * @see CommandHandlerRegistry
+ * @see CommandValidationService
+ * @see CommandMetricsService
  */
 @Slf4j
 @Component
 public class DefaultCommandBus implements CommandBus {
 
-    private final Map<Class<? extends Command<?>>, CommandHandler<?, ?>> handlers = new ConcurrentHashMap<>();
-    private final ApplicationContext applicationContext;
+    private final CommandHandlerRegistry handlerRegistry;
+    private final CommandValidationService validationService;
+    private final CommandMetricsService metricsService;
     private final CorrelationContext correlationContext;
-    private final AutoValidationProcessor autoValidationProcessor;
-    private final MeterRegistry meterRegistry;
-    private final Counter commandProcessedCounter;
-    private final Counter commandFailedCounter;
-    private final Counter validationFailedCounter;
-    private final Timer commandProcessingTimer;
 
+    /**
+     * Constructs a DefaultCommandBus with the required services.
+     *
+     * @param handlerRegistry the registry for command handler management
+     * @param validationService the service for command validation
+     * @param metricsService the service for metrics collection
+     * @param correlationContext the context for distributed tracing
+     */
     @Autowired
-    public DefaultCommandBus(ApplicationContext applicationContext,
-                            CorrelationContext correlationContext,
-                            AutoValidationProcessor autoValidationProcessor,
-                            @Autowired(required = false) MeterRegistry meterRegistry) {
-        this.applicationContext = applicationContext;
+    public DefaultCommandBus(CommandHandlerRegistry handlerRegistry,
+                           CommandValidationService validationService,
+                           CommandMetricsService metricsService,
+                           CorrelationContext correlationContext) {
+        this.handlerRegistry = handlerRegistry;
+        this.validationService = validationService;
+        this.metricsService = metricsService;
         this.correlationContext = correlationContext;
-        this.autoValidationProcessor = autoValidationProcessor;
-        this.meterRegistry = meterRegistry;
-        
-        // Initialize metrics if MeterRegistry is available
-        if (meterRegistry != null) {
-            this.commandProcessedCounter = Counter.builder("firefly.cqrs.command.processed")
-                .description("Number of commands processed successfully")
-                .register(meterRegistry);
-            this.commandFailedCounter = Counter.builder("firefly.cqrs.command.failed")
-                .description("Number of commands that failed processing")
-                .register(meterRegistry);
-            this.validationFailedCounter = Counter.builder("firefly.cqrs.command.validation.failed")
-                .description("Number of commands that failed validation")
-                .register(meterRegistry);
-            this.commandProcessingTimer = Timer.builder("firefly.cqrs.command.processing.time")
-                .description("Time taken to process commands")
-                .register(meterRegistry);
-        } else {
-            this.commandProcessedCounter = null;
-            this.commandFailedCounter = null;
-            this.validationFailedCounter = null;
-            this.commandProcessingTimer = null;
-        }
-        
-        discoverHandlers();
-    }
-    
-    // Constructor for backward compatibility without metrics and validation processor
-    public DefaultCommandBus(ApplicationContext applicationContext,
-                            CorrelationContext correlationContext,
-                            AutoValidationProcessor autoValidationProcessor) {
-        this(applicationContext, correlationContext, autoValidationProcessor, null);
+
+        log.info("DefaultCommandBus initialized with {} registered handlers",
+            handlerRegistry.getHandlerCount());
     }
 
+
+    /**
+     * Sends a command for processing through the CQRS pipeline.
+     *
+     * <p>This simplified implementation orchestrates the command processing pipeline
+     * by delegating to specialized services while maintaining clean separation of concerns:
+     * <ol>
+     *   <li><strong>Handler Discovery:</strong> Find appropriate handler via registry</li>
+     *   <li><strong>Correlation Context:</strong> Set up distributed tracing context</li>
+     *   <li><strong>Validation:</strong> Perform Jakarta and custom validation</li>
+     *   <li><strong>Execution:</strong> Execute the command handler</li>
+     *   <li><strong>Metrics:</strong> Record success/failure metrics</li>
+     *   <li><strong>Error Handling:</strong> Provide enhanced error context</li>
+     * </ol>
+     *
+     * @param command the command to process
+     * @return a Mono containing the command result
+     * @throws CommandHandlerNotFoundException if no handler is found
+     * @throws ValidationException if validation fails
+     * @throws CommandProcessingException if processing fails
+     */
     @Override
     @SuppressWarnings("unchecked")
     public <R> Mono<R> send(Command<R> command) {
         Instant startTime = Instant.now();
         String commandType = command.getClass().getSimpleName();
-        
-        return Mono.fromCallable(() -> {
-                    log.info("CQRS Command Processing Started - Type: {}, ID: {}, CorrelationId: {}",
-                            commandType, command.getCommandId(), command.getCorrelationId());
 
-                    CommandHandler<Command<R>, R> handler = (CommandHandler<Command<R>, R>) handlers.get(command.getClass());
-                    if (handler == null) {
-                        log.error("CQRS Command Handler Not Found - Type: {}, ID: {}, Available handlers: {}",
-                                commandType, command.getCommandId(), handlers.keySet().stream()
-                                        .map(Class::getSimpleName).toList());
-                        throw new CommandHandlerNotFoundException("No handler found for command: " + command.getClass().getName());
-                    }
+        log.info("CQRS Command Processing Started - Type: {}, ID: {}, CorrelationId: {}",
+            commandType, command.getCommandId(), command.getCorrelationId());
+
+        // Step 1: Find handler
+        return Mono.fromCallable(() -> {
+                    CommandHandler<Command<R>, R> handler = (CommandHandler<Command<R>, R>)
+                        handlerRegistry.findHandler((Class<Command<R>>) command.getClass())
+                            .orElseThrow(() -> CommandHandlerNotFoundException.forCommand(
+                                command,
+                                handlerRegistry.getRegisteredCommandTypes().stream()
+                                    .map(Class::getSimpleName)
+                                    .toList()
+                            ));
 
                     log.debug("CQRS Command Handler Found - Type: {}, Handler: {}",
-                            commandType, handler.getClass().getSimpleName());
+                        commandType, handler.getClass().getSimpleName());
                     return handler;
                 })
                 .flatMap(handler -> {
-                    // Set correlation context if available
+                    // Step 2: Set correlation context
                     if (command.getCorrelationId() != null) {
                         correlationContext.setCorrelationId(command.getCorrelationId());
                     }
-                    
-                    // Perform automatic Jakarta validation first, then custom validation
-                    return autoValidationProcessor.validate(command)
-                            .flatMap(autoValidationResult -> {
-                                if (!autoValidationResult.isValid()) {
-                                    // Record validation failure metric
-                                    if (validationFailedCounter != null) {
-                                        validationFailedCounter.increment();
-                                    }
 
-                                    log.warn("CQRS Command Auto-Validation Failed - Type: {}, ID: {}, Violations: {}",
-                                            commandType, command.getCommandId(), autoValidationResult.getSummary());
-                                    return Mono.error(new ValidationException(autoValidationResult));
+                    // Step 3: Validate command
+                    return validationService.validateCommand(command)
+                            .then(Mono.defer(() -> {
+                                // Step 4: Execute handler
+                                try {
+                                    return handler.handle(command);
+                                } catch (Exception e) {
+                                    return Mono.error(CommandProcessingException.forCommandFailure(
+                                        command, handler, Duration.between(startTime, Instant.now()), e
+                                    ));
                                 }
-
-                                // If automatic validation passes, perform custom validation
-                                return command.validate()
-                                        .flatMap(customValidationResult -> {
-                                            if (!customValidationResult.isValid()) {
-                                                // Record validation failure metric
-                                                if (validationFailedCounter != null) {
-                                                    validationFailedCounter.increment();
-                                                }
-
-                                                log.warn("CQRS Command Custom-Validation Failed - Type: {}, ID: {}, Violations: {}",
-                                                        commandType, command.getCommandId(), customValidationResult.getSummary());
-                                                return Mono.error(new ValidationException(customValidationResult));
-                                            }
-
-                                            // Execute the command handler
-                                            return handler.handle(command);
-                                        });
-                            })
+                            }))
+                            // Step 5: Record metrics and handle completion
                             .doOnSuccess(result -> {
                                 Duration processingTime = Duration.between(startTime, Instant.now());
-                                log.info("CQRS Command Processing Completed - Type: {}, ID: {}, Duration: {}ms, Result: {}",
-                                        commandType, command.getCommandId(), processingTime.toMillis(),
-                                        result != null ? "Success" : "Null");
+                                log.info("CQRS Command Processing Completed - Type: {}, ID: {}, Duration: {}ms",
+                                    commandType, command.getCommandId(), processingTime.toMillis());
 
-                                // Record success metrics
-                                if (commandProcessedCounter != null) {
-                                    commandProcessedCounter.increment();
-                                }
-                                if (commandProcessingTimer != null) {
-                                    commandProcessingTimer.record(processingTime);
-                                }
+                                metricsService.recordCommandSuccess(command, processingTime);
                             })
                             .doOnError(error -> {
                                 Duration processingTime = Duration.between(startTime, Instant.now());
-                                log.error("CQRS Command Processing Failed - Type: {}, ID: {}, Duration: {}ms, Error: {}, Cause: {}",
-                                        commandType, command.getCommandId(), processingTime.toMillis(),
-                                        error.getClass().getSimpleName(), error.getMessage(), error);
 
-                                // Record failure metrics
-                                if (commandFailedCounter != null) {
-                                    commandFailedCounter.increment();
+                                // Handle validation failures specifically
+                                if (error instanceof com.firefly.common.domain.validation.ValidationException) {
+                                    metricsService.recordValidationFailure(command, "Combined");
+                                    log.warn("CQRS Command Validation Failed - Type: {}, ID: {}, Duration: {}ms",
+                                        commandType, command.getCommandId(), processingTime.toMillis());
+                                } else {
+                                    metricsService.recordCommandFailure(command, error, processingTime);
+                                    log.error("CQRS Command Processing Failed - Type: {}, ID: {}, Duration: {}ms, Error: {}",
+                                        commandType, command.getCommandId(), processingTime.toMillis(),
+                                        error.getClass().getSimpleName(), error);
                                 }
                             })
                             .doFinally(signalType -> correlationContext.clear());
-                })
-                .onErrorMap(throwable -> {
-                    if (throwable instanceof CommandHandlerNotFoundException) {
-                        return throwable;
-                    }
-                    if (throwable instanceof ValidationException) {
-                        return throwable;
-                    }
-                    return new CommandProcessingException("Failed to process command: " + command.getCommandId(), throwable);
                 });
     }
 
     @Override
+    /**
+     * Registers a command handler with the command bus.
+     *
+     * <p>This method delegates to the CommandHandlerRegistry for consistent
+     * handler management and registration validation.
+     *
+     * @param handler the handler to register
+     */
     public <C extends Command<R>, R> void registerHandler(CommandHandler<C, R> handler) {
-        Class<C> commandType = handler.getCommandType();
-        
-        if (handlers.containsKey(commandType)) {
-            log.warn("Replacing existing handler for command: {}", commandType.getName());
-        }
-        
-        handlers.put(commandType, handler);
-        log.info("Registered command handler for: {}", commandType.getName());
+        handlerRegistry.registerHandler(handler);
     }
 
+    /**
+     * Unregisters a command handler from the command bus.
+     *
+     * <p>This method delegates to the CommandHandlerRegistry for consistent
+     * handler management and cleanup.
+     *
+     * @param commandType the command type to unregister
+     */
     @Override
     public <C extends Command<?>> void unregisterHandler(Class<C> commandType) {
-        CommandHandler<?, ?> removed = handlers.remove(commandType);
-        if (removed != null) {
-            log.info("Unregistered command handler for: {}", commandType.getName());
-        } else {
-            log.warn("No handler found to unregister for command: {}", commandType.getName());
-        }
+        handlerRegistry.unregisterHandler(commandType);
     }
 
+    /**
+     * Checks if a handler is registered for the specified command type.
+     *
+     * <p>This method delegates to the CommandHandlerRegistry for consistent
+     * handler lookup behavior.
+     *
+     * @param commandType the command type to check
+     * @return true if a handler is registered, false otherwise
+     */
     @Override
     public boolean hasHandler(Class<? extends Command<?>> commandType) {
-        return handlers.containsKey(commandType);
+        return handlerRegistry.hasHandler(commandType);
     }
 
-    /**
-     * Discovers all CommandHandler beans in the ApplicationContext and registers them.
-     */
-    @SuppressWarnings("unchecked")
-    private void discoverHandlers() {
-        Map<String, CommandHandler> handlerBeans = applicationContext.getBeansOfType(CommandHandler.class);
-        
-        for (CommandHandler<?, ?> handler : handlerBeans.values()) {
-            try {
-                registerHandler(handler);
-            } catch (Exception e) {
-                log.error("Failed to register command handler: {}", handler.getClass().getName(), e);
-            }
-        }
-        
-        log.info("Discovered and registered {} command handlers", handlers.size());
-    }
 
-    /**
-     * Exception thrown when no handler is found for a command.
-     */
-    public static class CommandHandlerNotFoundException extends RuntimeException {
-        public CommandHandlerNotFoundException(String message) {
-            super(message);
-        }
-    }
-
-    /**
-     * Exception thrown when command processing fails.
-     */
-    public static class CommandProcessingException extends RuntimeException {
-        public CommandProcessingException(String message, Throwable cause) {
-            super(message, cause);
-        }
-    }
 }
