@@ -118,7 +118,7 @@ Understanding these fundamental patterns is essential for effectively using this
 import jakarta.validation.constraints.*;
 import lombok.Builder;
 import lombok.Data;
-import com.firefly.common.domain.cqrs.annotations.CommandHandler;
+import com.firefly.common.domain.cqrs.annotations.CommandHandlerComponent;
 
 // Command with Jakarta validation - no boilerplate!
 @Data
@@ -145,7 +145,7 @@ public class TransferMoneyCommand implements Command<TransferResult> {
 }
 
 // Zero-boilerplate command handler - THE ONLY WAY to create handlers!
-@CommandHandler(timeout = 30000, retries = 3, metrics = true)
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
 public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
 
     private final ServiceClient accountServiceClient;
@@ -279,8 +279,8 @@ public Mono<TransferResult> transferMoney(TransferRequest request) {
 
 This framework provides **ONE clear way** to create CQRS handlers - no confusion, no multiple approaches:
 
-- **Commands**: Use `@CommandHandler` + extend `CommandHandler<Command, Result>` + implement `doHandle()`
-- **Queries**: Use `@QueryHandler` + extend `QueryHandler<Query, Result>` + implement `doHandle()`
+- **Commands**: Use `@CommandHandlerComponent` + extend `CommandHandler<Command, Result>` + implement `doHandle()`
+- **Queries**: Use `@QueryHandlerComponent` + extend `QueryHandler<Query, Result>` + implement `doHandle()`
 - **Zero Boilerplate**: Automatic type detection, logging, metrics, validation, caching
 - **Annotations**: Configure timeout, retries, caching, metrics via annotations
 - **Focus**: Only write business logic - everything else is handled automatically
@@ -422,7 +422,7 @@ public class ProcessPaymentCommand implements Command<PaymentResult> {
 }
 
 // THE ONLY WAY to create command handlers - extend CommandHandler!
-@CommandHandler(timeout = 15000, metrics = true)
+@CommandHandlerComponent(timeout = 15000, metrics = true)
 public class ProcessPaymentHandler extends CommandHandler<ProcessPaymentCommand, PaymentResult> {
 
     private final ServiceClient paymentClient;
@@ -523,7 +523,7 @@ public class TransferMoneyCommand implements Command<TransferResult> {
 THE ONLY WAY to create command handlers - extend CommandHandler for automatic features:
 
 ```java
-@CommandHandler(timeout = 30000, retries = 3, metrics = true)
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
 public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
 
     private final ServiceClient accountServiceClient;
@@ -643,7 +643,7 @@ public class GetAccountBalanceQuery implements Query<AccountBalance> {
     // No need to override getCacheKey() - automatic generation based on fields!
 }
 
-@QueryHandler(cacheable = true, cacheTtl = 300, metrics = true)
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
 public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
 
     private final ServiceClient accountServiceClient;
@@ -697,7 +697,7 @@ queryBus.query(query)
 ### Money Transfer with ServiceClient Integration
 
 ```java
-@CommandHandler(timeout = 30000, retries = 3, metrics = true)
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
 public class MoneyTransferHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
 
     private final ServiceClient accountServiceClient;
