@@ -103,8 +103,9 @@ public final class GenericTypeResolver {
             currentClass = currentClass.getSuperclass();
         }
 
-        log.warn("Could not resolve generic type for class: {} extending/implementing: {} at index: {}",
-            implementationClass.getName(), targetClass.getName(), typeParameterIndex);
+        log.error("Could not resolve generic type for class: {} extending/implementing: {} at index: {}\n{}",
+            implementationClass.getName(), targetClass.getName(), typeParameterIndex,
+            buildTroubleshootingMessage(implementationClass, targetClass, typeParameterIndex));
         return null;
     }
 
@@ -181,14 +182,26 @@ public final class GenericTypeResolver {
      *
      * @param handlerClass the command handler class
      * @return the command type, or null if it cannot be determined
+     * @throws TypeResolutionException if type resolution fails with detailed troubleshooting information
      */
     public static Class<?> resolveCommandType(Class<?> handlerClass) {
         try {
             Class<?> commandHandlerClass = Class.forName("com.firefly.common.domain.cqrs.command.CommandHandler");
-            return resolveGenericType(handlerClass, commandHandlerClass, 0);
+            Class<?> result = resolveGenericType(handlerClass, commandHandlerClass, 0);
+
+            if (result == null) {
+                throw new TypeResolutionException(
+                    "Failed to resolve command type from handler: " + handlerClass.getName(),
+                    handlerClass, commandHandlerClass, 0
+                );
+            }
+
+            return result;
         } catch (ClassNotFoundException e) {
-            log.error("CommandHandler class not found", e);
-            return null;
+            log.error("CommandHandler class not found - ensure lib-common-domain is properly configured", e);
+            throw new TypeResolutionException(
+                "CommandHandler class not found in classpath", handlerClass, null, 0, e
+            );
         }
     }
 
@@ -197,13 +210,21 @@ public final class GenericTypeResolver {
      *
      * @param handlerClass the command handler class
      * @return the result type, or null if it cannot be determined
+     * @throws TypeResolutionException if type resolution fails with detailed troubleshooting information
      */
     public static Class<?> resolveCommandResultType(Class<?> handlerClass) {
         try {
             Class<?> commandHandlerClass = Class.forName("com.firefly.common.domain.cqrs.command.CommandHandler");
-            return resolveGenericType(handlerClass, commandHandlerClass, 1);
+            Class<?> result = resolveGenericType(handlerClass, commandHandlerClass, 1);
+
+            if (result == null) {
+                log.warn("Could not resolve result type from handler: {} - this is optional and may be normal",
+                    handlerClass.getName());
+            }
+
+            return result;
         } catch (ClassNotFoundException e) {
-            log.error("CommandHandler class not found", e);
+            log.error("CommandHandler class not found - ensure lib-common-domain is properly configured", e);
             return null;
         }
     }
@@ -238,5 +259,103 @@ public final class GenericTypeResolver {
             log.error("QueryHandler class not found", e);
             return null;
         }
+    }
+
+    /**
+     * Builds a comprehensive troubleshooting message for type resolution failures.
+     *
+     * <p>This method provides detailed guidance to help developers resolve generic type
+     * detection issues, including common patterns and examples.
+     *
+     * @param implementationClass the class that failed type resolution
+     * @param targetClass the target class/interface being resolved
+     * @param typeParameterIndex the type parameter index that failed
+     * @return a detailed troubleshooting message
+     */
+    private static String buildTroubleshootingMessage(Class<?> implementationClass,
+                                                     Class<?> targetClass,
+                                                     int typeParameterIndex) {
+        StringBuilder message = new StringBuilder();
+        message.append("\n=== GENERIC TYPE RESOLUTION FAILURE ===");
+        message.append("\nClass: ").append(implementationClass.getName());
+        message.append("\nTarget: ").append(targetClass != null ? targetClass.getName() : "null");
+        message.append("\nType Parameter Index: ").append(typeParameterIndex);
+
+        message.append("\n\nCOMMON CAUSES:");
+        message.append("\n1. Missing generic type parameters in class declaration");
+        message.append("\n2. Using raw types instead of parameterized types");
+        message.append("\n3. Complex inheritance hierarchy with type erasure");
+        message.append("\n4. Anonymous classes or lambda expressions");
+
+        message.append("\n\nCORRECT PATTERNS:");
+        if (targetClass != null && targetClass.getName().contains("CommandHandler")) {
+            message.append("\n✓ public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, AccountResult> { }");
+            message.append("\n✗ public class CreateAccountHandler extends CommandHandler { }  // Missing generics");
+            message.append("\n✗ public class CreateAccountHandler implements CommandHandler<CreateAccountCommand, AccountResult> { }  // Should extend, not implement");
+        } else if (targetClass != null && targetClass.getName().contains("QueryHandler")) {
+            message.append("\n✓ public class GetAccountHandler extends QueryHandler<GetAccountQuery, Account> { }");
+            message.append("\n✗ public class GetAccountHandler extends QueryHandler { }  // Missing generics");
+        } else {
+            message.append("\n✓ public class MyClass extends BaseClass<ConcreteType> { }");
+            message.append("\n✗ public class MyClass extends BaseClass { }  // Missing generics");
+        }
+
+        message.append("\n\nDEBUGGING STEPS:");
+        message.append("\n1. Verify your class extends (not implements) the target class");
+        message.append("\n2. Ensure generic types are concrete classes, not type variables");
+        message.append("\n3. Check that all generic parameters are specified");
+        message.append("\n4. Avoid anonymous classes for handlers");
+        message.append("\n5. Review the class hierarchy for type erasure issues");
+
+        message.append("\n\nCLASS HIERARCHY ANALYSIS:");
+        Class<?> current = implementationClass;
+        int depth = 0;
+        while (current != null && current != Object.class && depth < 5) {
+            message.append("\n  ").append("  ".repeat(depth)).append(current.getName());
+            if (current.getGenericSuperclass() != null) {
+                message.append(" extends ").append(current.getGenericSuperclass());
+            }
+            current = current.getSuperclass();
+            depth++;
+        }
+
+        message.append("\n\nFor more help, see: https://docs.oracle.com/javase/tutorial/java/generics/");
+        message.append("\n=====================================");
+
+        return message.toString();
+    }
+
+    /**
+     * Exception thrown when generic type resolution fails with detailed troubleshooting information.
+     */
+    public static class TypeResolutionException extends RuntimeException {
+        private final Class<?> implementationClass;
+        private final Class<?> targetClass;
+        private final int typeParameterIndex;
+
+        public TypeResolutionException(String message,
+                                     Class<?> implementationClass,
+                                     Class<?> targetClass,
+                                     int typeParameterIndex) {
+            super(message + buildTroubleshootingMessage(implementationClass, targetClass, typeParameterIndex));
+            this.implementationClass = implementationClass;
+            this.targetClass = targetClass;
+            this.typeParameterIndex = typeParameterIndex;
+        }
+
+        public TypeResolutionException(String message,
+                                     Class<?> implementationClass,
+                                     Class<?> targetClass,
+                                     int typeParameterIndex,
+                                     Throwable cause) {
+            super(message + buildTroubleshootingMessage(implementationClass, targetClass, typeParameterIndex), cause);
+            this.implementationClass = implementationClass;
+            this.targetClass = targetClass;
+            this.typeParameterIndex = typeParameterIndex;
+        }
+
+        public Class<?> getImplementationClass() { return implementationClass; }
+        public Class<?> getTargetClass() { return targetClass; }
+        public int getTypeParameterIndex() { return typeParameterIndex; }
     }
 }
