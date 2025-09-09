@@ -37,39 +37,37 @@ The Firefly Common Domain Library provides a **comprehensive, enterprise-grade C
 │          └─────────────────┘                    └─────────────────┘             │
 │                   │                                       │                     │
 │                   ▼                                       ▼                     │
-│         ┌─────────────────────────────────────┐ ┌─────────────────┐             │
-│         │        Dedicated Services           │ │  QueryHandler   │             │
-│         │                                     │ │                 │             │
-│         │ ┌─────────────────┐                 │ │ • Auto Caching  │             │
-│         │ │ HandlerRegistry │                 │ │ • Type Detection│             │
-│         │ │ • Discovery     │                 │ │ • Validation    │             │
-│         │ │ • Registration  │                 │ │ • Metrics       │             │
-│         │ └─────────────────┘                 │ └─────────────────┘             │
-│         │                                     │                                 │
-│         │ ┌─────────────────┐                 │                                 │
-│         │ │ValidationService│                 │                                 │
-│         │ │ • Jakarta Bean  │                 │                                 │
-│         │ │ • Custom Rules  │                 │                                 │
-│         │ └─────────────────┘                 │                                 │
-│         │                                     │                                 │
-│         │ ┌─────────────────┐                 │                                 │
-│         │ │ MetricsService  │                 │                                 │
-│         │ │ • Success/Fail  │                 │                                 │
-│         │ │ • Timing        │                 │                                 │
-│         │ │ • Per-Type      │                 │                                 │
-│         │ └─────────────────┘                 │                                 │
-│         └─────────────────────────────────────┘                                 │
-│                            │                                                    │
-│                            ▼                                                    │
-│                   ┌─────────────────┐                                           │
-│                   │ CommandHandler  │                                           │
-│                   │                 │                                           │
-│                   │ • Auto Type     │                                           │
-│                   │ • Built-in      │                                           │
-│                   │   Features      │                                           │
-│                   │ • Zero          │                                           │
-│                   │   Boilerplate   │                                           │
-│                   └─────────────────┘                                           │
+│          ┌────────────────────────────────┐     ┌─────────────────┐             │
+│          │        Dedicated Services      │     │  QueryHandler   │             │
+│          │                                │     │                 │             │
+│          │       ┌─────────────────┐      │     │ • Auto Caching  │             │
+│          │       │ HandlerRegistry │      │     │ • Type Detection│             │
+│          │       │ • Discovery     │      │     │ • Validation    │             │
+│          │       │ • Registration  │      │     │ • Metrics       │             │
+│          │       └─────────────────┘      │     └─────────────────┘             │
+│          │       ┌─────────────────┐      │                                     │
+│          │       │ValidationService│      │                                     │
+│          │       │ • Jakarta Bean  │      │                                     │
+│          │       │ • Custom Rules  │      │                                     │
+│          │       └─────────────────┘      │                                     │
+│          │       ┌─────────────────┐      │                                     │
+│          │       │ MetricsService  │      │                                     │
+│          │       │ • Success/Fail  │      │                                     │
+│          │       │ • Timing        │      │                                     │
+│          │       │ • Per-Type      │      │                                     │
+│          │       └─────────────────┘      │                                     │
+│          └────────────────────────────────┘                                     │
+│                           │                                                     │
+│                           ▼                                                     │
+│                  ┌─────────────────┐                                            │
+│                  │ CommandHandler  │                                            │
+│                  │                 │                                            │
+│                  │ • Auto Type     │                                            │
+│                  │ • Built-in      │                                            │
+│                  │   Features      │                                            │
+│                  │ • Zero          │                                            │
+│                  │   Boilerplate   │                                            │
+│                  └─────────────────┘                                            │
 │                                                                                 │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
