@@ -52,7 +52,12 @@ class CqrsFrameworkIntegrationTest {
         meterRegistry = new SimpleMeterRegistry();
         CacheManager cacheManager = new ConcurrentMapCacheManager();
         
-        commandBus = new DefaultCommandBus(applicationContext, correlationContext, validationProcessor, meterRegistry);
+        // Create the new separated services
+        CommandHandlerRegistry handlerRegistry = new CommandHandlerRegistry(applicationContext);
+        CommandValidationService validationService = new CommandValidationService(validationProcessor);
+        CommandMetricsService metricsService = new CommandMetricsService(meterRegistry);
+
+        commandBus = new DefaultCommandBus(handlerRegistry, validationService, metricsService, correlationContext);
         queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor, cacheManager, meterRegistry);
         
         // Register handlers manually with explicit type specification

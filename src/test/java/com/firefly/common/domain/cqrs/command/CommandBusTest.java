@@ -36,9 +36,14 @@ class CommandBusTest {
         CorrelationContext correlationContext = new CorrelationContext();
         AutoValidationProcessor validationProcessor = new AutoValidationProcessor(null);
         meterRegistry = new SimpleMeterRegistry();
-        
-        commandBus = new DefaultCommandBus(applicationContext, correlationContext, validationProcessor, meterRegistry);
-        
+
+        // Create the new separated services
+        CommandHandlerRegistry handlerRegistry = new CommandHandlerRegistry(applicationContext);
+        CommandValidationService validationService = new CommandValidationService(validationProcessor);
+        CommandMetricsService metricsService = new CommandMetricsService(meterRegistry);
+
+        commandBus = new DefaultCommandBus(handlerRegistry, validationService, metricsService, correlationContext);
+
         // Register handlers manually for testing - using the external classes with @CommandHandlerComponent
         ((DefaultCommandBus) commandBus).registerHandler(new CreateAccountHandler());
         ((DefaultCommandBus) commandBus).registerHandler(new TransferMoneyHandler());
