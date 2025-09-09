@@ -17,6 +17,9 @@
 package com.firefly.common.domain.config;
 
 import com.firefly.common.domain.cqrs.command.CommandBus;
+import com.firefly.common.domain.cqrs.command.CommandHandlerRegistry;
+import com.firefly.common.domain.cqrs.command.CommandMetricsService;
+import com.firefly.common.domain.cqrs.command.CommandValidationService;
 import com.firefly.common.domain.cqrs.command.DefaultCommandBus;
 import com.firefly.common.domain.cqrs.query.DefaultQueryBus;
 import com.firefly.common.domain.cqrs.query.QueryBus;
@@ -69,12 +72,33 @@ public class CqrsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public CommandBus commandBus(ApplicationContext applicationContext,
-                               CorrelationContext correlationContext,
-                               AutoValidationProcessor autoValidationProcessor,
-                               io.micrometer.core.instrument.MeterRegistry meterRegistry) {
-        log.info("Configuring CQRS Command Bus with Jakarta validation and metrics (auto-configured)");
-        return new DefaultCommandBus(applicationContext, correlationContext, autoValidationProcessor, meterRegistry);
+    public CommandHandlerRegistry commandHandlerRegistry(ApplicationContext applicationContext) {
+        log.info("Configuring CQRS Command Handler Registry (auto-configured)");
+        return new CommandHandlerRegistry(applicationContext);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CommandValidationService commandValidationService(AutoValidationProcessor autoValidationProcessor) {
+        log.info("Configuring CQRS Command Validation Service (auto-configured)");
+        return new CommandValidationService(autoValidationProcessor);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CommandMetricsService commandMetricsService(@Autowired(required = false) io.micrometer.core.instrument.MeterRegistry meterRegistry) {
+        log.info("Configuring CQRS Command Metrics Service (auto-configured)");
+        return new CommandMetricsService(meterRegistry);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CommandBus commandBus(CommandHandlerRegistry handlerRegistry,
+                               CommandValidationService validationService,
+                               CommandMetricsService metricsService,
+                               CorrelationContext correlationContext) {
+        log.info("Configuring CQRS Command Bus with separated services (auto-configured)");
+        return new DefaultCommandBus(handlerRegistry, validationService, metricsService, correlationContext);
     }
 
     @Bean
