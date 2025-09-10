@@ -20,10 +20,9 @@ import com.firefly.common.domain.cqrs.command.CommandBus;
 import com.firefly.common.domain.cqrs.query.QueryBus;
 import com.firefly.common.domain.events.outbound.DomainEventPublisher;
 import com.firefly.common.domain.events.properties.DomainEventsProperties;
+import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import com.firefly.common.domain.stepevents.StepEventPublisherBridge;
 import com.firefly.common.domain.tracing.CorrelationContext;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import io.github.resilience4j.retry.RetryRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -162,18 +161,14 @@ class AutoConfigurationTest {
             .run(context -> {
                 // Then: ServiceClient components should be available
                 assertThat(context).hasSingleBean(WebClient.Builder.class);
-                assertThat(context).hasSingleBean(CircuitBreakerRegistry.class);
-                assertThat(context).hasSingleBean(RetryRegistry.class);
-                
+                assertThat(context).hasSingleBean(CircuitBreakerManager.class);
+
                 // Verify components are properly configured
                 WebClient.Builder webClientBuilder = context.getBean(WebClient.Builder.class);
                 assertThat(webClientBuilder).isNotNull();
-                
-                CircuitBreakerRegistry circuitBreakerRegistry = context.getBean(CircuitBreakerRegistry.class);
-                assertThat(circuitBreakerRegistry).isNotNull();
-                
-                RetryRegistry retryRegistry = context.getBean(RetryRegistry.class);
-                assertThat(retryRegistry).isNotNull();
+
+                CircuitBreakerManager circuitBreakerManager = context.getBean(CircuitBreakerManager.class);
+                assertThat(circuitBreakerManager).isNotNull();
             });
     }
 
@@ -187,8 +182,7 @@ class AutoConfigurationTest {
             .run(context -> {
                 // Then: ServiceClient components should not be available
                 assertThat(context).doesNotHaveBean(WebClient.Builder.class);
-                assertThat(context).doesNotHaveBean(CircuitBreakerRegistry.class);
-                assertThat(context).doesNotHaveBean(RetryRegistry.class);
+                assertThat(context).doesNotHaveBean(CircuitBreakerManager.class);
             });
     }
 
@@ -234,8 +228,7 @@ class AutoConfigurationTest {
                 
                 // ServiceClient Framework
                 assertThat(context).hasSingleBean(WebClient.Builder.class);
-                assertThat(context).hasSingleBean(CircuitBreakerRegistry.class);
-                assertThat(context).hasSingleBean(RetryRegistry.class);
+                assertThat(context).hasSingleBean(CircuitBreakerManager.class);
                 
                 // Correlation Context
                 assertThat(context).hasSingleBean(CorrelationContext.class);

@@ -16,14 +16,14 @@
 
 package com.firefly.common.domain.config;
 
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import io.github.resilience4j.retry.Retry;
-import io.github.resilience4j.retry.RetryConfig;
-import io.github.resilience4j.retry.RetryRegistry;
+import com.firefly.common.domain.client.ServiceClient;
+import com.firefly.common.domain.client.builder.GrpcClientBuilder;
+import com.firefly.common.domain.client.builder.RestClientBuilder;
+import com.firefly.common.domain.resilience.CircuitBreakerConfig;
+import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -36,16 +36,17 @@ import reactor.netty.resources.ConnectionProvider;
 import java.time.Duration;
 
 /**
- * Enhanced auto-configuration for ServiceClient framework components.
+ * Auto-configuration for ServiceClient framework components.
  *
- * <p>Provides automatic setup of WebClient, gRPC channels, circuit breakers, retry mechanisms,
- * and environment-specific configurations with validation and monitoring support.
+ * <p>Provides automatic setup of WebClient, circuit breakers, and service client builders
+ * with enhanced circuit breaker functionality as the default.
  *
  * @author Firefly Software Solutions Inc
  * @since 2.0.0
  */
 @Slf4j
 @AutoConfiguration
+@ConditionalOnClass(ServiceClient.class)
 @EnableConfigurationProperties(ServiceClientProperties.class)
 @ConditionalOnProperty(prefix = "firefly.service-client", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ServiceClientAutoConfiguration {
@@ -116,78 +117,83 @@ public class ServiceClientAutoConfiguration {
         return builder;
     }
 
+    /**
+     * Creates a default circuit breaker configuration if none is provided.
+     */
     @Bean
     @ConditionalOnMissingBean
-    public CircuitBreakerRegistry circuitBreakerRegistry() {
-        log.info("Configuring circuit breaker registry");
-        
-        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
-                .failureRateThreshold(properties.getCircuitBreaker().getFailureRateThreshold())
-                .waitDurationInOpenState(properties.getCircuitBreaker().getWaitDurationInOpenState())
-                .slidingWindowSize(properties.getCircuitBreaker().getSlidingWindowSize())
-                .minimumNumberOfCalls(properties.getCircuitBreaker().getMinimumNumberOfCalls())
-                .slowCallRateThreshold(properties.getCircuitBreaker().getSlowCallRateThreshold())
-                .slowCallDurationThreshold(properties.getCircuitBreaker().getSlowCallDurationThreshold())
-                .permittedNumberOfCallsInHalfOpenState(properties.getCircuitBreaker().getPermittedNumberOfCallsInHalfOpenState())
-                .maxWaitDurationInHalfOpenState(properties.getCircuitBreaker().getMaxWaitDurationInHalfOpenState())
-                .automaticTransitionFromOpenToHalfOpenEnabled(true)
-                .build();
+    public CircuitBreakerConfig circuitBreakerConfig() {
+        log.info("Configuring enhanced circuit breaker configuration");
 
-        return CircuitBreakerRegistry.of(config);
-    }
+        var circuitBreakerProps = properties.getCircuitBreaker();
 
-    @Bean
-    @ConditionalOnMissingBean
-    public RetryRegistry retryRegistry() {
-        log.info("Configuring retry registry");
-        
-        RetryConfig config = RetryConfig.custom()
-                .maxAttempts(properties.getRetry().getMaxAttempts())
-                .waitDuration(properties.getRetry().getWaitDuration())
-                .retryOnResult(result -> false) // Don't retry on successful results
-                .retryExceptions(
-                    java.net.ConnectException.class,
-                    java.net.SocketTimeoutException.class,
-                    java.util.concurrent.TimeoutException.class
-                )
-                .build();
-
-        return RetryRegistry.of(config);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "defaultCircuitBreaker")
-    public CircuitBreaker defaultCircuitBreaker(CircuitBreakerRegistry circuitBreakerRegistry) {
-        return circuitBreakerRegistry.circuitBreaker("default");
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(name = "defaultRetry")
-    public Retry defaultRetry(RetryRegistry retryRegistry) {
-        return retryRegistry.retry("default");
+        return CircuitBreakerConfig.builder()
+            .failureRateThreshold(circuitBreakerProps.getFailureRateThreshold())
+            .minimumNumberOfCalls(circuitBreakerProps.getMinimumNumberOfCalls())
+            .slidingWindowSize(circuitBreakerProps.getSlidingWindowSize())
+            .waitDurationInOpenState(circuitBreakerProps.getWaitDurationInOpenState())
+            .permittedNumberOfCallsInHalfOpenState(circuitBreakerProps.getPermittedNumberOfCallsInHalfOpenState())
+            .maxWaitDurationInHalfOpenState(circuitBreakerProps.getMaxWaitDurationInHalfOpenState())
+            .callTimeout(circuitBreakerProps.getCallTimeout())
+            .slowCallDurationThreshold(circuitBreakerProps.getSlowCallDurationThreshold())
+            .slowCallRateThreshold(circuitBreakerProps.getSlowCallRateThreshold())
+            .automaticTransitionFromOpenToHalfOpenEnabled(circuitBreakerProps.isAutomaticTransitionFromOpenToHalfOpenEnabled())
+            .build();
     }
 
     /**
-     * Factory method to create circuit breakers for specific services.
-     * 
-     * @param serviceName the service name
-     * @param circuitBreakerRegistry the circuit breaker registry
-     * @return a circuit breaker for the service
+     * Creates a default circuit breaker manager if none is provided.
      */
-    public static CircuitBreaker createCircuitBreaker(String serviceName, CircuitBreakerRegistry circuitBreakerRegistry) {
-        return circuitBreakerRegistry.circuitBreaker(serviceName);
+    @Bean
+    @ConditionalOnMissingBean
+    public CircuitBreakerManager circuitBreakerManager(CircuitBreakerConfig config) {
+        log.info("Configuring enhanced circuit breaker manager");
+        return new CircuitBreakerManager(config);
     }
 
     /**
-     * Factory method to create retry instances for specific services.
-     *
-     * @param serviceName the service name
-     * @param retryRegistry the retry registry
-     * @return a retry instance for the service
+     * Creates a default REST client builder if none is provided.
      */
-    public static Retry createRetry(String serviceName, RetryRegistry retryRegistry) {
-        return retryRegistry.retry(serviceName);
+    @Bean
+    @ConditionalOnMissingBean
+    public RestClientBuilder restClientBuilder(CircuitBreakerManager circuitBreakerManager) {
+        log.info("Configuring default REST client builder with enhanced circuit breaker");
+        return new RestClientBuilder("default")
+            .circuitBreakerManager(circuitBreakerManager);
     }
 
-    // Additional beans can be added here as needed
+    /**
+     * Creates a default gRPC client builder factory if none is provided.
+     * Note: gRPC builders are created per service, so this provides a factory method.
+     */
+    @Bean
+    @ConditionalOnMissingBean(name = "grpcClientBuilderFactory")
+    public GrpcClientBuilderFactory grpcClientBuilderFactory(CircuitBreakerManager circuitBreakerManager) {
+        log.info("Configuring gRPC client builder factory with enhanced circuit breaker");
+        return new GrpcClientBuilderFactory(circuitBreakerManager);
+    }
+
+    /**
+     * Factory for creating gRPC client builders with auto-configured circuit breaker.
+     */
+    public static class GrpcClientBuilderFactory {
+        private final CircuitBreakerManager circuitBreakerManager;
+
+        public GrpcClientBuilderFactory(CircuitBreakerManager circuitBreakerManager) {
+            this.circuitBreakerManager = circuitBreakerManager;
+        }
+
+        /**
+         * Creates a new gRPC client builder with auto-configured circuit breaker.
+         *
+         * @param serviceName the service name
+         * @param stubType the gRPC stub type
+         * @param <T> the stub type
+         * @return a configured gRPC client builder
+         */
+        public <T> GrpcClientBuilder<T> create(String serviceName, Class<T> stubType) {
+            return new GrpcClientBuilder<>(serviceName, stubType)
+                .circuitBreakerManager(circuitBreakerManager);
+        }
+    }
 }

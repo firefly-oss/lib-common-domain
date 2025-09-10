@@ -405,8 +405,20 @@ public class ServiceClientProperties {
         /**
          * Maximum wait duration in half-open state.
          */
-        
+
         private Duration maxWaitDurationInHalfOpenState = Duration.ofSeconds(0);
+
+        /**
+         * Call timeout duration.
+         */
+
+        private Duration callTimeout = Duration.ofSeconds(30);
+
+        /**
+         * Whether automatic transition from open to half-open state is enabled.
+         */
+
+        private boolean automaticTransitionFromOpenToHalfOpenEnabled = true;
 
         /**
          * Environment-specific settings.
