@@ -19,8 +19,7 @@ package com.firefly.common.domain.client.impl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.firefly.common.domain.client.ClientType;
 import com.firefly.common.domain.client.ServiceClient;
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.retry.Retry;
+import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
@@ -58,8 +57,7 @@ public class RestServiceClientImpl implements ServiceClient {
     private final int maxConnections;
     private final Map<String, String> defaultHeaders;
     private final WebClient webClient;
-    private final CircuitBreaker circuitBreaker;
-    private final Retry retry;
+    private final CircuitBreakerManager circuitBreakerManager;
     private final AtomicBoolean isShutdown = new AtomicBoolean(false);
 
     /**
@@ -71,19 +69,16 @@ public class RestServiceClientImpl implements ServiceClient {
                                 int maxConnections,
                                 Map<String, String> defaultHeaders,
                                 WebClient webClient,
-                                CircuitBreaker circuitBreaker,
-                                Retry retry) {
+                                CircuitBreakerManager circuitBreakerManager) {
         this.serviceName = serviceName;
         this.baseUrl = baseUrl;
         this.timeout = timeout;
         this.maxConnections = maxConnections;
         this.defaultHeaders = Map.copyOf(defaultHeaders);
         this.webClient = webClient != null ? webClient : createDefaultWebClient();
-        this.circuitBreaker = circuitBreaker;
-        this.retry = retry;
-        
-        log.info("Initialized REST service client for service '{}' with base URL '{}'", 
-                serviceName, baseUrl);
+        this.circuitBreakerManager = circuitBreakerManager;
+
+        log.info("Initialized REST service client for '{}' with enhanced circuit breaker and base URL '{}'", serviceName, baseUrl);
     }
 
     // ========================================
@@ -393,12 +388,14 @@ public class RestServiceClientImpl implements ServiceClient {
 
         @SuppressWarnings("unchecked")
         private Mono<R> executeRequest(WebClient.RequestHeadersSpec<?> requestSpec) {
+            Mono<R> baseRequest;
+
             if (responseType != null) {
-                return requestSpec.retrieve().bodyToMono(responseType);
+                baseRequest = requestSpec.retrieve().bodyToMono(responseType);
             } else if (typeReference != null) {
                 // For TypeReference, we need to use a different approach
                 // This is a simplified implementation - in practice, you'd need proper Jackson integration
-                return requestSpec.retrieve().bodyToMono(String.class)
+                baseRequest = requestSpec.retrieve().bodyToMono(String.class)
                     .map(json -> {
                         try {
                             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -409,6 +406,24 @@ public class RestServiceClientImpl implements ServiceClient {
                     });
             } else {
                 throw new IllegalStateException("Either responseType or typeReference must be provided");
+            }
+
+            // Apply circuit breaker protection
+            return applyCircuitBreakerProtection(baseRequest);
+        }
+
+        private Mono<R> applyCircuitBreakerProtection(Mono<R> operation) {
+            // Use enhanced circuit breaker
+            if (circuitBreakerManager != null) {
+                return circuitBreakerManager.executeWithCircuitBreaker(serviceName, () -> operation)
+                    .doOnError(error -> log.warn("Circuit breaker detected failure for service '{}': {}",
+                        serviceName, error.getMessage()))
+                    .doOnSuccess(result -> log.debug("Circuit breaker allowed successful request for service '{}'",
+                        serviceName));
+            } else {
+                // No circuit breaker protection (should not happen with auto-configuration)
+                log.warn("No circuit breaker configured for service '{}'", serviceName);
+                return operation;
             }
         }
     }

@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.client.resilience;
 
+import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
@@ -49,9 +50,16 @@ public class AdvancedResilienceManager {
     private final Map<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
     private final Map<String, AdaptiveTimeout> adaptiveTimeouts = new ConcurrentHashMap<>();
     private final LoadSheddingStrategy loadSheddingStrategy;
+    private final CircuitBreakerManager circuitBreakerManager;
+
+    public AdvancedResilienceManager(LoadSheddingStrategy loadSheddingStrategy, CircuitBreakerManager circuitBreakerManager) {
+        this.loadSheddingStrategy = loadSheddingStrategy;
+        this.circuitBreakerManager = circuitBreakerManager;
+    }
 
     public AdvancedResilienceManager(LoadSheddingStrategy loadSheddingStrategy) {
         this.loadSheddingStrategy = loadSheddingStrategy;
+        this.circuitBreakerManager = null; // For backward compatibility
     }
 
     /**
@@ -72,15 +80,15 @@ public class AdvancedResilienceManager {
 
             // Apply bulkhead isolation
             BulkheadIsolation bulkhead = getBulkhead(serviceName, config);
-            
+
             return bulkhead.execute(() -> {
                 // Apply adaptive timeout
                 AdaptiveTimeout adaptiveTimeout = getAdaptiveTimeout(serviceName, config);
                 Duration timeout = adaptiveTimeout.calculateTimeout();
-                
+
                 long startTime = System.nanoTime();
-                
-                return operation
+
+                Mono<T> resilientOperation = operation
                     .timeout(timeout)
                     .doOnSuccess(result -> {
                         long duration = System.nanoTime() - startTime;
@@ -92,6 +100,13 @@ public class AdvancedResilienceManager {
                         adaptiveTimeout.recordFailure(Duration.ofNanos(duration), error);
                         rateLimiter.onError();
                     });
+
+                // Apply enhanced circuit breaker if available
+                if (circuitBreakerManager != null) {
+                    return circuitBreakerManager.executeWithCircuitBreaker(serviceName, () -> resilientOperation);
+                }
+
+                return resilientOperation;
             });
         });
     }

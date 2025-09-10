@@ -18,8 +18,7 @@ package com.firefly.common.domain.client.builder;
 
 import com.firefly.common.domain.client.ServiceClient;
 import com.firefly.common.domain.client.impl.GrpcServiceClientImpl;
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.retry.Retry;
+import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import lombok.extern.slf4j.Slf4j;
@@ -64,8 +63,7 @@ public class GrpcClientBuilder<T> implements ServiceClient.GrpcClientBuilder<T> 
     private boolean useTransportSecurity = false;
     private Function<Object, T> stubFactory;
     private ManagedChannel channel;
-    private CircuitBreaker circuitBreaker;
-    private Retry retry;
+    private CircuitBreakerManager circuitBreakerManager;
 
     /**
      * Creates a new gRPC client builder.
@@ -143,24 +141,13 @@ public class GrpcClientBuilder<T> implements ServiceClient.GrpcClientBuilder<T> 
     }
 
     /**
-     * Sets a custom circuit breaker.
+     * Sets the circuit breaker manager.
      *
-     * @param circuitBreaker the circuit breaker
+     * @param circuitBreakerManager the circuit breaker manager
      * @return this builder
      */
-    public GrpcClientBuilder<T> circuitBreaker(CircuitBreaker circuitBreaker) {
-        this.circuitBreaker = circuitBreaker;
-        return this;
-    }
-
-    /**
-     * Sets a custom retry policy.
-     *
-     * @param retry the retry policy
-     * @return this builder
-     */
-    public GrpcClientBuilder<T> retry(Retry retry) {
-        this.retry = retry;
+    public GrpcClientBuilder<T> circuitBreakerManager(CircuitBreakerManager circuitBreakerManager) {
+        this.circuitBreakerManager = circuitBreakerManager;
         return this;
     }
 
@@ -181,8 +168,7 @@ public class GrpcClientBuilder<T> implements ServiceClient.GrpcClientBuilder<T> 
             timeout,
             finalChannel,
             stub,
-            circuitBreaker,
-            retry
+            circuitBreakerManager
         );
     }
 

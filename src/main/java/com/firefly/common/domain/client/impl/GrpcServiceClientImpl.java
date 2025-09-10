@@ -19,8 +19,7 @@ package com.firefly.common.domain.client.impl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.firefly.common.domain.client.ClientType;
 import com.firefly.common.domain.client.ServiceClient;
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.retry.Retry;
+import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import io.grpc.ManagedChannel;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
@@ -50,8 +49,7 @@ public class GrpcServiceClientImpl<T> implements ServiceClient {
     private final Duration timeout;
     private final ManagedChannel channel;
     private final T stub;
-    private final CircuitBreaker circuitBreaker;
-    private final Retry retry;
+    private final CircuitBreakerManager circuitBreakerManager;
     private final AtomicBoolean isShutdown = new AtomicBoolean(false);
 
     /**
@@ -63,18 +61,16 @@ public class GrpcServiceClientImpl<T> implements ServiceClient {
                                 Duration timeout,
                                 ManagedChannel channel,
                                 T stub,
-                                CircuitBreaker circuitBreaker,
-                                Retry retry) {
+                                CircuitBreakerManager circuitBreakerManager) {
         this.serviceName = serviceName;
         this.stubType = stubType;
         this.address = address;
         this.timeout = timeout;
         this.channel = channel;
         this.stub = stub;
-        this.circuitBreaker = circuitBreaker;
-        this.retry = retry;
-        
-        log.info("Initialized gRPC service client for service '{}' with address '{}'", 
+        this.circuitBreakerManager = circuitBreakerManager;
+
+        log.info("Initialized gRPC service client for service '{}' with enhanced circuit breaker and address '{}'",
                 serviceName, address);
     }
 
@@ -173,9 +169,9 @@ public class GrpcServiceClientImpl<T> implements ServiceClient {
         if (isShutdown.get()) {
             return Mono.error(new IllegalStateException("Client has been shut down"));
         }
-        
-        // For gRPC, we check if the channel is ready
-        return Mono.<Void>fromCallable(() -> {
+
+        // For gRPC, we check if the channel is ready with circuit breaker protection
+        Mono<Void> healthCheckOperation = Mono.<Void>fromCallable(() -> {
             if (channel.isShutdown() || channel.isTerminated()) {
                 throw new RuntimeException("gRPC channel is not available");
             }
@@ -183,6 +179,8 @@ public class GrpcServiceClientImpl<T> implements ServiceClient {
         })
         .timeout(Duration.ofSeconds(5))
         .onErrorMap(throwable -> new RuntimeException("Health check failed for gRPC service: " + serviceName, throwable));
+
+        return applyCircuitBreakerProtection(healthCheckOperation);
     }
 
     @Override
@@ -210,6 +208,63 @@ public class GrpcServiceClientImpl<T> implements ServiceClient {
             throw new IllegalStateException("Client has been shut down");
         }
         return stub;
+    }
+
+    /**
+     * Executes a gRPC operation with circuit breaker protection.
+     *
+     * @param operation the gRPC operation to execute
+     * @param <R> the response type
+     * @return the result wrapped in a Mono with circuit breaker protection
+     */
+    public <R> Mono<R> executeWithCircuitBreaker(Mono<R> operation) {
+        return applyCircuitBreakerProtection(operation);
+    }
+
+    /**
+     * Executes a streaming gRPC operation with circuit breaker protection.
+     *
+     * @param operation the gRPC streaming operation to execute
+     * @param <R> the response type
+     * @return the result wrapped in a Flux with circuit breaker protection
+     */
+    public <R> Flux<R> executeStreamWithCircuitBreaker(Flux<R> operation) {
+        return applyCircuitBreakerProtectionFlux(operation);
+    }
+
+    // ========================================
+    // Circuit Breaker Protection
+    // ========================================
+
+    private <R> Mono<R> applyCircuitBreakerProtection(Mono<R> operation) {
+        // Use enhanced circuit breaker
+        if (circuitBreakerManager != null) {
+            return circuitBreakerManager.executeWithCircuitBreaker(serviceName, () -> operation)
+                .doOnError(error -> log.warn("Circuit breaker detected failure for gRPC service '{}': {}",
+                    serviceName, error.getMessage()))
+                .doOnSuccess(result -> log.debug("Circuit breaker allowed successful gRPC request for service '{}'",
+                    serviceName));
+        } else {
+            // No circuit breaker protection (should not happen with auto-configuration)
+            log.warn("No circuit breaker configured for gRPC service '{}'", serviceName);
+            return operation;
+        }
+    }
+
+    private <R> Flux<R> applyCircuitBreakerProtectionFlux(Flux<R> operation) {
+        // For streaming operations, we apply circuit breaker protection to the entire stream
+        if (circuitBreakerManager != null) {
+            return circuitBreakerManager.executeWithCircuitBreaker(serviceName, () -> operation.collectList())
+                .flatMapMany(Flux::fromIterable)
+                .doOnError(error -> log.warn("Circuit breaker detected failure for gRPC streaming service '{}': {}",
+                    serviceName, error.getMessage()))
+                .doOnComplete(() -> log.debug("Circuit breaker allowed successful gRPC streaming request for service '{}'",
+                    serviceName));
+        } else {
+            // No circuit breaker protection (should not happen with auto-configuration)
+            log.warn("No circuit breaker configured for gRPC streaming service '{}'", serviceName);
+            return operation;
+        }
     }
 
     // ========================================

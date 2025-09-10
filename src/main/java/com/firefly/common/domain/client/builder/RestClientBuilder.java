@@ -18,8 +18,7 @@ package com.firefly.common.domain.client.builder;
 
 import com.firefly.common.domain.client.ServiceClient;
 import com.firefly.common.domain.client.impl.RestServiceClientImpl;
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.retry.Retry;
+import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -62,8 +61,7 @@ public class RestClientBuilder implements ServiceClient.RestClientBuilder {
     private int maxConnections = 100;
     private Map<String, String> defaultHeaders = new HashMap<>();
     private WebClient webClient;
-    private CircuitBreaker circuitBreaker;
-    private Retry retry;
+    private CircuitBreakerManager circuitBreakerManager;
 
     /**
      * Creates a new REST client builder.
@@ -141,24 +139,13 @@ public class RestClientBuilder implements ServiceClient.RestClientBuilder {
     }
 
     /**
-     * Sets a custom circuit breaker.
+     * Sets the circuit breaker manager.
      *
-     * @param circuitBreaker the circuit breaker
+     * @param circuitBreakerManager the circuit breaker manager
      * @return this builder
      */
-    public RestClientBuilder circuitBreaker(CircuitBreaker circuitBreaker) {
-        this.circuitBreaker = circuitBreaker;
-        return this;
-    }
-
-    /**
-     * Sets a custom retry policy.
-     *
-     * @param retry the retry policy
-     * @return this builder
-     */
-    public RestClientBuilder retry(Retry retry) {
-        this.retry = retry;
+    public RestClientBuilder circuitBreakerManager(CircuitBreakerManager circuitBreakerManager) {
+        this.circuitBreakerManager = circuitBreakerManager;
         return this;
     }
 
@@ -196,8 +183,7 @@ public class RestClientBuilder implements ServiceClient.RestClientBuilder {
             maxConnections,
             defaultHeaders,
             webClient,
-            circuitBreaker,
-            retry
+            circuitBreakerManager
         );
     }
 
