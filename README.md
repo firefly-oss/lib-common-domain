@@ -1060,17 +1060,17 @@ firefly:
 
 **Required Dependencies:**
 ```xml
+<!-- Only lib-common-domain needed - includes lib-transactional-engine as dependency -->
 <dependency>
     <groupId>com.firefly</groupId>
     <artifactId>lib-common-domain</artifactId>
-</dependency>
-<dependency>
-    <groupId>com.firefly</groupId>
-    <artifactId>lib-transactional-engine</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
-**Auto-Configuration:** The integration is automatically configured when both libraries are on the classpath. The following components are auto-wired:
+> **Note**: lib-common-domain automatically includes lib-transactional-engine as a transitive dependency.
+
+**Auto-Configuration:** The integration is automatically configured when lib-common-domain is on the classpath. The following components are auto-wired:
 - `CommandBus` and `QueryBus` for CQRS operations
 - `SagaEngine` for saga orchestration
 - `StepEventPublisherBridge` for step event publishing

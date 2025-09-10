@@ -1,6 +1,17 @@
 # Examples
 
-Real working examples based on the actual codebase implementation, demonstrating the **consolidated zero-boilerplate CQRS framework**.
+Real working examples based on the actual codebase implementation, demonstrating all components of the **Firefly Common Domain Library**.
+
+## Table of Contents
+
+1. [Quick Start](#quick-start)
+2. [CQRS Framework Examples](#cqrs-framework-examples)
+3. [Domain Events Examples](#domain-events-examples)
+4. [Service Client Examples](#service-client-examples)
+5. [Resilience Patterns Examples](#resilience-patterns-examples)
+6. [Distributed Tracing Examples](#distributed-tracing-examples)
+7. [lib-transactional-engine Integration Examples](#lib-transactional-engine-integration-examples)
+8. [Complete Banking Application Example](#complete-banking-application-example)
 
 ## Quick Start
 
@@ -743,13 +754,1368 @@ public class MyQueryHandler extends QueryHandler<MyQuery, MyResult> {
 2025-09-09 00:15:27.479 WARN  - Redis cache is configured but Redis auto-configuration did not activate. Falling back to local cache.
 ```
 
+---
+
+## Domain Events Examples
+
+### Basic Event Publishing
+
+#### Programmatic Event Publishing
+
+```java
+@Service
+public class AccountService {
+    private final DomainEventPublisher eventPublisher;
+
+    public Mono<Account> createAccount(CreateAccountRequest request) {
+        return processAccountCreation(request)
+            .flatMap(account -> {
+                // Create domain event
+                DomainEventEnvelope event = DomainEventEnvelope.builder()
+                    .topic("banking-events")
+                    .type("account.created")
+                    .key(account.getId())
+                    .payload(new AccountCreatedEvent(
+                        account.getId(),
+                        account.getCustomerId(),
+                        account.getAccountType(),
+                        account.getInitialBalance(),
+                        Instant.now()
+                    ))
+                    .timestamp(Instant.now())
+                    .headers(Map.of(
+                        "source", "account-service",
+                        "version", "v1"
+                    ))
+                    .build();
+
+                // Publish event
+                return eventPublisher.publish(event)
+                    .thenReturn(account);
+            });
+    }
+}
+```
+
+#### Annotation-Based Event Publishing
+
+```java
+@Service
+public class TransferService {
+
+    @EventPublisher(
+        topic = "banking-events",
+        type = "transfer.completed",
+        key = "#result.transactionId"
+    )
+    public Mono<TransferResult> processTransfer(TransferRequest request) {
+        return validateTransfer(request)
+            .flatMap(this::executeTransfer)
+            .flatMap(this::updateBalances)
+            .map(transfer -> new TransferResult(
+                transfer.getTransactionId(),
+                transfer.getFromAccount(),
+                transfer.getToAccount(),
+                transfer.getAmount(),
+                "COMPLETED",
+                Instant.now()
+            ));
+        // Event automatically published with TransferResult as payload
+    }
+
+    @EventPublisher(
+        topic = "banking-events",
+        type = "transfer.failed",
+        key = "#args[0].transactionId",
+        payload = "new TransferFailedEvent(#args[0].transactionId, #ex.message)"
+    )
+    public Mono<TransferResult> processTransferWithFailureEvent(TransferRequest request) {
+        return processTransfer(request)
+            .onErrorMap(InsufficientFundsException.class,
+                ex -> new TransferFailedException("Transfer failed: " + ex.getMessage()));
+        // Failure event automatically published on error
+    }
+}
+```
+
+### Event Consumption
+
+#### Event Handler Registration
+
+```java
+@EventHandler
+@Component
+public class AccountEventHandler {
+
+    @EventListener(topic = "banking-events", type = "account.created")
+    public void handleAccountCreated(AccountCreatedEvent event) {
+        log.info("Account created: {} for customer: {}",
+            event.getAccountId(), event.getCustomerId());
+
+        // Process account creation
+        sendWelcomeEmail(event.getCustomerId());
+        createInitialStatements(event.getAccountId());
+    }
+
+    @EventListener(topic = "banking-events", type = "transfer.completed")
+    public Mono<Void> handleTransferCompleted(TransferCompletedEvent event) {
+        log.info("Transfer completed: {} from {} to {} amount {}",
+            event.getTransactionId(),
+            event.getFromAccount(),
+            event.getToAccount(),
+            event.getAmount());
+
+        return updateAccountStatements(event)
+            .then(sendTransferNotification(event))
+            .then(updateAnalytics(event));
+    }
+
+    @EventListener(topic = "banking-events", type = "transfer.failed")
+    public void handleTransferFailed(TransferFailedEvent event) {
+        log.warn("Transfer failed: {} - {}",
+            event.getTransactionId(), event.getReason());
+
+        // Handle failure
+        notifyCustomerOfFailure(event);
+        recordFailureMetrics(event);
+    }
+}
+```
+
+### Messaging Infrastructure Configuration
+
+#### Automatic Adapter Selection
+
+```yaml
+# application.yml - Automatic adapter selection
+firefly:
+  events:
+    enabled: true
+    adapter: auto  # Automatically selects best available adapter
+```
+
+#### Kafka Configuration
+
+```yaml
+# application.yml - Kafka configuration
+firefly:
+  events:
+    enabled: true
+    adapter: kafka
+    kafka:
+      topic: banking-domain-events
+      partition-key: "${key}"
+
+# Spring Kafka configuration
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: banking-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+```
+
+#### RabbitMQ Configuration
+
+```yaml
+# application.yml - RabbitMQ configuration
+firefly:
+  events:
+    enabled: true
+    adapter: rabbit
+    rabbit:
+      exchange: banking.events
+      routing-key: "${type}"
+
+# Spring RabbitMQ configuration
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+```
+
+---
+
+## Service Client Examples
+
+### REST Service Client
+
+#### Basic REST Client Usage
+
+```java
+@Service
+public class UserService {
+    private final ServiceClient userServiceClient;
+
+    public UserService() {
+        this.userServiceClient = ServiceClient.rest("user-service")
+            .baseUrl("http://user-service:8080")
+            .timeout(Duration.ofSeconds(30))
+            .defaultHeader("Content-Type", "application/json")
+            .build();
+    }
+
+    public Mono<User> getUser(String userId) {
+        return userServiceClient.get("/users/{id}", User.class)
+            .withPathParam("id", userId)
+            .withHeader("X-Request-ID", UUID.randomUUID().toString())
+            .execute();
+    }
+
+    public Mono<User> createUser(CreateUserRequest request) {
+        return userServiceClient.post("/users", User.class)
+            .withBody(request)
+            .withQueryParam("notify", true)
+            .execute();
+    }
+
+    public Mono<User> updateUser(String userId, UpdateUserRequest request) {
+        return userServiceClient.put("/users/{id}", User.class)
+            .withPathParam("id", userId)
+            .withBody(request)
+            .execute();
+    }
+
+    public Mono<Void> deleteUser(String userId) {
+        return userServiceClient.delete("/users/{id}", Void.class)
+            .withPathParam("id", userId)
+            .execute()
+            .then();
+    }
+}
+```
+
+#### Advanced REST Client Configuration
+
+```java
+@Configuration
+public class ServiceClientConfig {
+
+    @Bean
+    public ServiceClient paymentServiceClient(CircuitBreakerManager circuitBreakerManager) {
+        return ServiceClient.rest("payment-service")
+            .baseUrl("https://payment-service.example.com")
+            .timeout(Duration.ofSeconds(45))
+            .maxConnections(100)
+            .defaultHeader("Authorization", "Bearer " + getApiToken())
+            .defaultHeader("X-API-Version", "v2")
+            .defaultHeader("User-Agent", "banking-service/1.0")
+            .circuitBreakerManager(circuitBreakerManager)
+            .build();
+    }
+
+    private String getApiToken() {
+        // Retrieve API token from secure storage
+        return tokenService.getToken();
+    }
+}
+
+@Service
+public class PaymentService {
+    private final ServiceClient paymentServiceClient;
+
+    public Mono<PaymentResult> processPayment(PaymentRequest request) {
+        return paymentServiceClient.post("/payments", PaymentResult.class)
+            .withBody(request)
+            .withHeader("Idempotency-Key", request.getIdempotencyKey())
+            .withQueryParam("async", false)
+            .execute()
+            .timeout(Duration.ofSeconds(30))
+            .retry(2);
+    }
+
+    public Flux<PaymentStatus> streamPaymentUpdates(String paymentId) {
+        return paymentServiceClient.stream("/payments/{id}/status", PaymentStatus.class)
+            .withPathParam("id", paymentId)
+            .execute();
+    }
+}
+```
+
+### gRPC Service Client
+
+#### Basic gRPC Client Usage
+
+```java
+@Service
+public class AccountService {
+    private final ServiceClient accountServiceClient;
+
+    public AccountService() {
+        this.accountServiceClient = ServiceClient.grpc("account-service",
+                AccountServiceGrpc.AccountServiceBlockingStub.class)
+            .address("account-service:9090")
+            .timeout(Duration.ofSeconds(30))
+            .build();
+    }
+
+    public Mono<GetAccountResponse> getAccount(String accountId) {
+        GetAccountRequest request = GetAccountRequest.newBuilder()
+            .setAccountId(accountId)
+            .build();
+
+        return accountServiceClient.execute(stub ->
+            Mono.fromCallable(() -> stub.getAccount(request))
+        );
+    }
+
+    public Mono<CreateAccountResponse> createAccount(CreateAccountRequest request) {
+        return accountServiceClient.execute(stub ->
+            Mono.fromCallable(() -> stub.createAccount(request))
+        );
+    }
+
+    public Flux<TransactionEvent> streamTransactions(String accountId) {
+        StreamTransactionsRequest request = StreamTransactionsRequest.newBuilder()
+            .setAccountId(accountId)
+            .build();
+
+        return accountServiceClient.executeStream(stub ->
+            Flux.fromIterable(() -> stub.streamTransactions(request))
+        );
+    }
+}
+```
+
+#### Advanced gRPC Client with Custom Configuration
+
+```java
+@Configuration
+public class GrpcClientConfig {
+
+    @Bean
+    public ServiceClient notificationServiceClient(CircuitBreakerManager circuitBreakerManager) {
+        return ServiceClient.grpc("notification-service",
+                NotificationServiceGrpc.NotificationServiceBlockingStub.class)
+            .address("notification-service:9090")
+            .timeout(Duration.ofSeconds(15))
+            .circuitBreakerManager(circuitBreakerManager)
+            .build();
+    }
+}
+
+@Service
+public class NotificationService {
+    private final ServiceClient notificationServiceClient;
+
+    public Mono<SendNotificationResponse> sendNotification(String userId, String message) {
+        SendNotificationRequest request = SendNotificationRequest.newBuilder()
+            .setUserId(userId)
+            .setMessage(message)
+            .setType(NotificationType.EMAIL)
+            .build();
+
+        return notificationServiceClient.execute(stub ->
+            Mono.fromCallable(() -> stub.sendNotification(request))
+        );
+    }
+}
+```
+
+## Resilience Patterns Examples
+
+### Circuit Breaker Configuration
+
+#### Auto-Configuration (Default)
+
+```yaml
+# application.yml - Circuit breaker auto-configured with defaults
+firefly:
+  circuit-breaker:
+    enabled: true  # Default: true
+    failure-rate-threshold: 50.0  # Default: 50%
+    minimum-number-of-calls: 10   # Default: 10
+    sliding-window-size: 100      # Default: 100
+    wait-duration-in-open-state: 60s  # Default: 60 seconds
+    permitted-number-of-calls-in-half-open-state: 3  # Default: 3
+```
+
+#### Manual Circuit Breaker Usage
+
+```java
+@Service
+public class ExternalPaymentService {
+    private final CircuitBreakerManager circuitBreakerManager;
+    private final WebClient webClient;
+
+    public Mono<PaymentResponse> processPayment(PaymentRequest request) {
+        return circuitBreakerManager.executeWithCircuitBreaker(
+            "external-payment-service",
+            () -> webClient.post()
+                .uri("/payments")
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(PaymentResponse.class)
+        ).onErrorMap(CircuitBreakerOpenException.class,
+            ex -> new ServiceUnavailableException("Payment service is currently unavailable"));
+    }
+
+    public Mono<Boolean> checkServiceHealth() {
+        return circuitBreakerManager.executeWithCircuitBreaker(
+            "external-payment-service",
+            () -> webClient.get()
+                .uri("/health")
+                .retrieve()
+                .bodyToMono(String.class)
+                .map(response -> "OK".equals(response))
+        ).onErrorReturn(false);
+    }
+}
+```
+
+#### Circuit Breaker State Monitoring
+
+```java
+@RestController
+public class CircuitBreakerController {
+    private final CircuitBreakerManager circuitBreakerManager;
+
+    @GetMapping("/circuit-breakers")
+    public Mono<Map<String, CircuitBreakerInfo>> getCircuitBreakerStates() {
+        return Mono.fromCallable(() -> {
+            Map<String, CircuitBreakerInfo> states = new HashMap<>();
+
+            // Get all circuit breaker states
+            circuitBreakerManager.getAllCircuitBreakers()
+                .forEach((serviceName, circuitBreaker) -> {
+                    states.put(serviceName, CircuitBreakerInfo.builder()
+                        .serviceName(serviceName)
+                        .state(circuitBreaker.getState())
+                        .failureRate(circuitBreaker.getFailureRate())
+                        .totalCalls(circuitBreaker.getTotalCalls())
+                        .failedCalls(circuitBreaker.getFailedCalls())
+                        .lastFailureTime(circuitBreaker.getLastFailureTime())
+                        .build());
+                });
+
+            return states;
+        });
+    }
+
+    @PostMapping("/circuit-breakers/{serviceName}/reset")
+    public Mono<Void> resetCircuitBreaker(@PathVariable String serviceName) {
+        return Mono.fromRunnable(() ->
+            circuitBreakerManager.resetCircuitBreaker(serviceName)
+        );
+    }
+}
+```
+
+### Service Client Resilience Integration
+
+#### Automatic Circuit Breaker Protection
+
+```java
+@Service
+public class ResilientUserService {
+    private final ServiceClient userServiceClient;
+
+    public ResilientUserService() {
+        // Circuit breaker automatically applied to all service calls
+        this.userServiceClient = ServiceClient.rest("user-service")
+            .baseUrl("http://user-service:8080")
+            .timeout(Duration.ofSeconds(30))
+            .build();
+    }
+
+    public Mono<User> getUserWithFallback(String userId) {
+        return userServiceClient.get("/users/{id}", User.class)
+            .withPathParam("id", userId)
+            .execute()
+            .onErrorResume(CircuitBreakerOpenException.class,
+                ex -> getCachedUser(userId))
+            .onErrorResume(TimeoutException.class,
+                ex -> getDefaultUser(userId));
+    }
+
+    private Mono<User> getCachedUser(String userId) {
+        // Fallback to cached data
+        return cacheService.getUser(userId);
+    }
+
+    private Mono<User> getDefaultUser(String userId) {
+        // Fallback to default user
+        return Mono.just(User.builder()
+            .id(userId)
+            .name("Unknown User")
+            .status("UNAVAILABLE")
+            .build());
+    }
+}
+```
+
+---
+
+## Distributed Tracing Examples
+
+### Automatic Context Propagation
+
+#### Service-to-Service Tracing
+
+```java
+@RestController
+public class TransferController {
+    private final TransferService transferService;
+    private final ServiceClient accountServiceClient;
+
+    @PostMapping("/transfers")
+    public Mono<TransferResponse> createTransfer(@RequestBody TransferRequest request) {
+        // Correlation context automatically created from HTTP headers
+        return transferService.validateTransfer(request)
+            .flatMap(this::checkAccountBalances)  // Context propagated automatically
+            .flatMap(transferService::executeTransfer)  // Context propagated automatically
+            .map(this::toTransferResponse);
+    }
+
+    private Mono<TransferRequest> checkAccountBalances(TransferRequest request) {
+        // Service client automatically propagates correlation headers
+        return accountServiceClient.get("/accounts/{id}/balance", AccountBalance.class)
+            .withPathParam("id", request.getFromAccountId())
+            .execute()
+            .flatMap(fromBalance ->
+                accountServiceClient.get("/accounts/{id}/balance", AccountBalance.class)
+                    .withPathParam("id", request.getToAccountId())
+                    .execute()
+                    .map(toBalance -> validateBalances(request, fromBalance, toBalance))
+            );
+    }
+}
+```
+
+#### Manual Context Management
+
+```java
+@Service
+public class AuditService {
+    private final CorrelationContext correlationContext;
+    private final DomainEventPublisher eventPublisher;
+
+    public Mono<Void> auditTransaction(TransactionEvent event) {
+        // Create new correlation context for audit trail
+        String auditCorrelationId = correlationContext.generateCorrelationId();
+        String auditTraceId = correlationContext.generateTraceId();
+
+        return correlationContext.withContext(
+            auditCorrelationId,
+            auditTraceId,
+            () -> processAuditEvent(event)
+                .flatMap(this::publishAuditEvent)
+                .then()
+        );
+    }
+
+    private Mono<AuditEvent> processAuditEvent(TransactionEvent event) {
+        // Current correlation context available in logs
+        log.info("Processing audit for transaction: {}", event.getTransactionId());
+
+        return Mono.fromCallable(() -> AuditEvent.builder()
+            .transactionId(event.getTransactionId())
+            .auditType("TRANSACTION_COMPLETED")
+            .timestamp(Instant.now())
+            .correlationId(correlationContext.getCurrentCorrelationId())
+            .traceId(correlationContext.getCurrentTraceId())
+            .build());
+    }
+
+    private Mono<Void> publishAuditEvent(AuditEvent auditEvent) {
+        // Event published with current correlation context
+        return eventPublisher.publish(DomainEventEnvelope.builder()
+            .topic("audit-events")
+            .type("audit.transaction.completed")
+            .key(auditEvent.getTransactionId())
+            .payload(auditEvent)
+            .timestamp(Instant.now())
+            .build());
+    }
+}
+```
+
+#### Reactive Context Propagation
+
+```java
+@Service
+public class ReactiveTransactionService {
+    private final CorrelationContext correlationContext;
+
+    public Mono<TransactionResult> processTransactionChain(TransactionRequest request) {
+        return correlationContext.withContext(
+            Mono.just(request)
+                .flatMap(this::validateTransaction)
+                .flatMap(this::reserveFunds)
+                .flatMap(this::executeTransaction)
+                .flatMap(this::confirmTransaction)
+                .flatMap(this::notifyParties)
+        );
+    }
+
+    private Mono<TransactionRequest> validateTransaction(TransactionRequest request) {
+        // Context automatically available in reactive chain
+        return Mono.fromCallable(() -> {
+            log.info("Validating transaction: {} [correlation: {}]",
+                request.getId(),
+                correlationContext.getCurrentCorrelationId());
+            return request;
+        });
+    }
+
+    private Mono<TransactionRequest> reserveFunds(TransactionRequest request) {
+        return Mono.fromCallable(() -> {
+            log.info("Reserving funds for transaction: {} [trace: {}]",
+                request.getId(),
+                correlationContext.getCurrentTraceId());
+            return request;
+        });
+    }
+}
+```
+
+### Logging Integration
+
+#### Automatic MDC Population
+
+```java
+@Service
+public class LoggingExampleService {
+
+    public Mono<String> processWithLogging(String data) {
+        // MDC automatically populated with correlation context
+        log.info("Starting processing"); // Includes correlationId and traceId
+
+        return Mono.fromCallable(() -> {
+            log.debug("Processing data: {}", data); // Context preserved
+            return processData(data);
+        })
+        .doOnSuccess(result -> log.info("Processing completed successfully"))
+        .doOnError(error -> log.error("Processing failed", error));
+    }
+
+    private String processData(String data) {
+        log.trace("Internal processing step"); // Context preserved
+        return data.toUpperCase();
+    }
+}
+```
+
+**Log Output Example:**
+```
+2025-09-09 10:15:30.123 INFO  [correlationId=550e8400-e29b-41d4-a716-446655440000, traceId=1234567890abcdef] - Starting processing
+2025-09-09 10:15:30.125 DEBUG [correlationId=550e8400-e29b-41d4-a716-446655440000, traceId=1234567890abcdef] - Processing data: example
+2025-09-09 10:15:30.127 TRACE [correlationId=550e8400-e29b-41d4-a716-446655440000, traceId=1234567890abcdef] - Internal processing step
+2025-09-09 10:15:30.129 INFO  [correlationId=550e8400-e29b-41d4-a716-446655440000, traceId=1234567890abcdef] - Processing completed successfully
+```
+
+## lib-transactional-engine Integration Examples
+
+> **Important**: The Firefly Common Domain Library does **NOT** implement saga orchestration. It only provides a bridge to publish step events from [lib-transactional-engine](https://github.com/firefly-oss/lib-transactional-engine) through the domain events infrastructure.
+
+### Step Event Bridge Configuration
+
+#### Auto-Configuration
+
+```yaml
+# application.yml - Step event bridge auto-configured
+firefly:
+  step-events:
+    enabled: true
+    topic: banking-step-events  # Default topic for step events
+```
+
+#### Manual Bridge Configuration
+
+```java
+@Configuration
+public class StepEventConfig {
+
+    @Bean
+    public StepEventPublisherBridge stepEventBridge(DomainEventPublisher eventPublisher) {
+        return new StepEventPublisherBridge(eventPublisher, "banking-step-events");
+    }
+}
+```
+
+### Saga Implementation (Using lib-transactional-engine)
+
+#### Dependencies Required
+
+```xml
+<!-- Only lib-common-domain needed - includes lib-transactional-engine as dependency -->
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-domain</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+> **Note**: lib-common-domain automatically includes lib-transactional-engine as a transitive dependency, so you don't need to add it separately.
+
+#### Enable Transactional Engine
+
+```java
+@SpringBootApplication
+@EnableTransactionalEngine  // From lib-transactional-engine
+public class BankingApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(BankingApplication.class, args);
+        // ✅ SagaEngine auto-configured
+        // ✅ StepEventPublisherBridge auto-configured (from lib-common-domain)
+        // ✅ Domain events infrastructure available for step events
+    }
+}
+```
+
+#### Money Transfer Saga Definition
+
+```java
+@Component
+@Saga(name = "money-transfer-saga")  // From lib-transactional-engine
+public class MoneyTransferSaga {
+
+    private final AccountService accountService;
+    private final NotificationService notificationService;
+
+    @SagaStep(id = "validate-accounts", retry = 3, backoffMs = 1000)
+    public Mono<ValidationResult> validateAccounts(@Input("transferRequest") TransferRequest request) {
+        return accountService.validateAccountExists(request.getFromAccountId())
+            .then(accountService.validateAccountExists(request.getToAccountId()))
+            .then(accountService.validateSufficientFunds(request.getFromAccountId(), request.getAmount()))
+            .thenReturn(new ValidationResult("VALID", request));
+    }
+
+    @SagaStep(id = "reserve-funds",
+              dependsOn = "validate-accounts",
+              compensate = "releaseReservation",
+              timeoutMs = 30000)
+    public Mono<ReservationResult> reserveFunds(
+            @FromStep("validate-accounts") ValidationResult validation) {
+        TransferRequest request = validation.getRequest();
+        return accountService.reserveFunds(request.getFromAccountId(), request.getAmount());
+    }
+
+    @SagaStep(id = "transfer-funds",
+              dependsOn = "reserve-funds",
+              compensate = "reverseTransfer",
+              timeoutMs = 30000)
+    public Mono<TransferResult> transferFunds(
+            @FromStep("validate-accounts") ValidationResult validation,
+            @FromStep("reserve-funds") ReservationResult reservation) {
+        TransferRequest request = validation.getRequest();
+        return accountService.transferFunds(
+            request.getFromAccountId(),
+            request.getToAccountId(),
+            request.getAmount(),
+            reservation.getReservationId()
+        );
+    }
+
+    @SagaStep(id = "send-notifications",
+              dependsOn = "transfer-funds",
+              retry = 2)  // Non-critical step
+    public Mono<NotificationResult> sendNotifications(
+            @FromStep("transfer-funds") TransferResult transfer) {
+        return notificationService.sendTransferNotification(transfer)
+            .onErrorReturn(new NotificationResult("FAILED", "Notification failed but transfer succeeded"));
+    }
+
+    // Compensation methods
+    public Mono<Void> releaseReservation(@FromStep("reserve-funds") ReservationResult reservation) {
+        return accountService.releaseReservation(reservation.getReservationId());
+    }
+
+    public Mono<Void> reverseTransfer(@FromStep("transfer-funds") TransferResult transfer) {
+        return accountService.reverseTransfer(transfer.getTransactionId());
+    }
+}
+```
+
+#### Saga Execution
+
+```java
+@RestController
+@RequestMapping("/transfers")
+public class TransferController {
+
+    private final SagaEngine sagaEngine;  // From lib-transactional-engine
+
+    @PostMapping
+    public Mono<ResponseEntity<TransferResponse>> createTransfer(@RequestBody CreateTransferRequest request) {
+
+        TransferRequest transferRequest = TransferRequest.builder()
+            .fromAccountId(request.getFromAccountId())
+            .toAccountId(request.getToAccountId())
+            .amount(request.getAmount())
+            .reference(request.getReference())
+            .build();
+
+        StepInputs inputs = StepInputs.of("transferRequest", transferRequest);
+
+        return sagaEngine.execute("money-transfer-saga", inputs)
+            .map(sagaResult -> {
+                if (sagaResult.isSuccess()) {
+                    TransferResult transfer = sagaResult.resultOf("transfer-funds", TransferResult.class)
+                        .orElseThrow(() -> new IllegalStateException("Transfer result not found"));
+
+                    return ResponseEntity.ok(TransferResponse.builder()
+                        .transactionId(transfer.getTransactionId())
+                        .status("COMPLETED")
+                        .timestamp(Instant.now())
+                        .build());
+                } else {
+                    throw new TransferFailedException("Transfer failed: " + sagaResult.failedSteps());
+                }
+            });
+    }
+}
+```
+
+#### Step Event Handling (Bridge Integration)
+
+The StepEventPublisherBridge automatically publishes step events from lib-transactional-engine through the domain events infrastructure. You can handle these events using the same `@EventHandler` pattern:
+
+```java
+@EventHandler
+@Component
+public class SagaStepEventHandler {
+
+    private final MeterRegistry meterRegistry;
+    private final AlertingService alertingService;
+    private final DomainEventPublisher eventPublisher;
+
+    // Handle step events published by the bridge
+    @EventListener(topic = "banking-step-events", type = "step.completed")
+    public void handleStepCompleted(StepEventEnvelope stepEvent) {
+        log.info("Saga step completed: {} in saga: {} [{}]",
+            stepEvent.getStepId(),
+            stepEvent.getSagaName(),
+            stepEvent.getSagaId());
+
+        // Extract step metadata (automatically added by lib-transactional-engine)
+        Map<String, Object> metadata = stepEvent.getMetadata();
+        long latencyMs = (Long) metadata.getOrDefault("step.latency_ms", 0L);
+        int attempts = (Integer) metadata.getOrDefault("step.attempts", 1);
+        String resultType = (String) metadata.getOrDefault("step.result_type", "SUCCESS");
+
+        // Record metrics
+        meterRegistry.timer("saga.step.duration",
+            "saga", stepEvent.getSagaName(),
+            "step", stepEvent.getStepId()
+        ).record(latencyMs, TimeUnit.MILLISECONDS);
+
+        if (attempts > 1) {
+            meterRegistry.counter("saga.step.retries",
+                "saga", stepEvent.getSagaName(),
+                "step", stepEvent.getStepId()
+            ).increment();
+        }
+
+        // Process based on step type
+        switch (stepEvent.getStepId()) {
+            case "validate-accounts":
+                handleValidationCompleted(stepEvent);
+                break;
+            case "reserve-funds":
+                handleReserveFundsCompleted(stepEvent);
+                break;
+            case "transfer-funds":
+                handleTransferFundsCompleted(stepEvent);
+                break;
+            case "send-notifications":
+                handleNotificationsCompleted(stepEvent);
+                break;
+        }
+    }
+
+    @EventListener(topic = "banking-step-events", type = "step.failed")
+    public void handleStepFailed(StepEventEnvelope stepEvent) {
+        log.error("Saga step failed: {} in saga: {} [{}]",
+            stepEvent.getStepId(),
+            stepEvent.getSagaName(),
+            stepEvent.getSagaId());
+
+        // Handle step failure
+        alertingService.sendStepFailureAlert(stepEvent);
+
+        // Record failure metrics
+        meterRegistry.counter("saga.step.failures",
+            "saga", stepEvent.getSagaName(),
+            "step", stepEvent.getStepId()
+        ).increment();
+
+        // Trigger additional business logic based on failed step
+        if ("transfer-funds".equals(stepEvent.getStepId())) {
+            // Critical step failed - send immediate alert
+            alertingService.sendCriticalTransferFailureAlert(stepEvent);
+        }
+    }
+
+    @EventListener(topic = "banking-step-events", type = "compensation.completed")
+    public void handleCompensationCompleted(StepEventEnvelope stepEvent) {
+        log.info("Compensation completed for step: {} in saga: {} [{}]",
+            stepEvent.getStepId(),
+            stepEvent.getSagaName(),
+            stepEvent.getSagaId());
+
+        // Record compensation metrics
+        meterRegistry.counter("saga.compensation.success",
+            "saga", stepEvent.getSagaName(),
+            "step", stepEvent.getStepId()
+        ).increment();
+    }
+
+    private void handleReserveFundsCompleted(StepEventEnvelope stepEvent) {
+        // The step event contains the result from the saga step
+        // Note: stepEvent.getPayload() contains the StepEventEnvelope from lib-transactional-engine
+
+        // Publish additional domain event for business processes
+        eventPublisher.publish(DomainEventEnvelope.builder()
+            .topic("banking-events")
+            .type("funds.reserved.saga")
+            .key(stepEvent.getSagaId())
+            .payload(Map.of(
+                "sagaId", stepEvent.getSagaId(),
+                "stepId", stepEvent.getStepId(),
+                "completedAt", stepEvent.getCompletedAt()
+            ))
+            .timestamp(stepEvent.getCompletedAt())
+            .build());
+    }
+
+    private void handleTransferFundsCompleted(StepEventEnvelope stepEvent) {
+        // Publish business event for completed transfer
+        eventPublisher.publish(DomainEventEnvelope.builder()
+            .topic("banking-events")
+            .type("transfer.completed.saga")
+            .key(stepEvent.getSagaId())
+            .payload(Map.of(
+                "sagaId", stepEvent.getSagaId(),
+                "stepId", stepEvent.getStepId(),
+                "completedAt", stepEvent.getCompletedAt()
+            ))
+            .timestamp(stepEvent.getCompletedAt())
+            .build());
+    }
+
+    private void handleValidationCompleted(StepEventEnvelope stepEvent) {
+        // Log validation completion
+        log.debug("Account validation completed for saga: {}", stepEvent.getSagaId());
+    }
+
+    private void handleNotificationsCompleted(StepEventEnvelope stepEvent) {
+        // Log notification completion (may have failed but saga continued)
+        log.info("Notification step completed for saga: {}", stepEvent.getSagaId());
+    }
+}
+```
+
+### Integration Benefits
+
+#### Unified Event Processing
+
+The bridge allows you to handle both domain events and saga step events using the same infrastructure:
+
+```java
+@EventHandler
+@Component
+public class UnifiedEventProcessor {
+
+    // Handle regular domain events
+    @EventListener(topic = "banking-events", type = "account.created")
+    public void handleAccountCreated(AccountCreatedEvent event) {
+        log.info("Account created: {}", event.getAccountId());
+        // Process account creation
+        updateCustomerProfile(event);
+    }
+
+    // Handle saga step events using same infrastructure
+    @EventListener(topic = "banking-step-events", type = "step.completed")
+    public void handleSagaStepCompleted(StepEventEnvelope stepEvent) {
+        log.info("Saga step completed: {} in {}", stepEvent.getStepId(), stepEvent.getSagaName());
+        // Process step completion
+        updateSagaMetrics(stepEvent);
+    }
+
+    // Handle both domain and step events for analytics
+    @EventListener(topic = {"banking-events", "banking-step-events"})
+    public void handleAllBankingEvents(Object event) {
+        if (event instanceof AccountCreatedEvent) {
+            analyticsService.recordAccountCreation((AccountCreatedEvent) event);
+        } else if (event instanceof StepEventEnvelope) {
+            analyticsService.recordSagaStepExecution((StepEventEnvelope) event);
+        }
+    }
+
+    private void updateCustomerProfile(AccountCreatedEvent event) {
+        // Business logic for account creation
+    }
+
+    private void updateSagaMetrics(StepEventEnvelope stepEvent) {
+        // Record saga execution metrics
+        meterRegistry.counter("saga.steps.total",
+            "saga", stepEvent.getSagaName(),
+            "step", stepEvent.getStepId()
+        ).increment();
+    }
+}
+```
+
+#### Key Benefits
+
+- **Single Infrastructure**: Both domain and saga step events use the same messaging infrastructure
+- **Unified Configuration**: Same Kafka/RabbitMQ/SQS configuration for all events
+- **Consistent Patterns**: Same `@EventHandler` and `@EventListener` annotations
+- **Shared Resilience**: Circuit breakers and retries apply to step events
+- **Correlation Context**: Automatic correlation propagation for step events
+- **No Additional Setup**: Bridge auto-configured when both libraries are present
+
+---
+
+## Complete Banking Application Example
+
+### Application Structure
+
+```java
+@SpringBootApplication
+public class BankingApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(BankingApplication.class, args);
+        // All components auto-configured:
+        // ✅ CQRS Framework (CommandBus, QueryBus)
+        // ✅ Domain Events (Publisher, Adapters)
+        // ✅ Service Clients (REST, gRPC with Circuit Breakers)
+        // ✅ Distributed Tracing (Correlation Context)
+        // ✅ Step Event Bridge (lib-transactional-engine integration)
+    }
+}
+```
+
+### Configuration
+
+```yaml
+# application.yml - Complete banking service configuration
+spring:
+  application:
+    name: banking-service
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: banking-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+firefly:
+  cqrs:
+    enabled: true
+    validation:
+      enabled: true
+    caching:
+      enabled: true
+      redis:
+        enabled: true
+
+  events:
+    enabled: true
+    adapter: kafka
+    kafka:
+      topic: banking-domain-events
+
+  step-events:
+    enabled: true
+    topic: banking-step-events
+
+  circuit-breaker:
+    enabled: true
+    failure-rate-threshold: 50.0
+    minimum-number-of-calls: 10
+    sliding-window-size: 100
+    wait-duration-in-open-state: 60s
+
+  tracing:
+    enabled: true
+    correlation-header: X-Correlation-ID
+    trace-header: X-Trace-ID
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [correlationId=%X{correlationId:-}, traceId=%X{traceId:-}] - %msg%n"
+```
+
+### Complete Money Transfer Flow
+
+#### 1. Command Handler
+
+```java
+@CommandHandlerComponent
+public class TransferMoneyCommandHandler extends BaseCommandHandler<TransferMoneyCommand, TransferResult> {
+
+    private final AccountService accountService;
+    private final TransferService transferService;
+    private final DomainEventPublisher eventPublisher;
+
+    @Override
+    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+        return validateTransfer(command)
+            .flatMap(this::executeTransfer)
+            .flatMap(this::publishTransferEvent);
+    }
+
+    private Mono<TransferMoneyCommand> validateTransfer(TransferMoneyCommand command) {
+        return accountService.validateAccountExists(command.getFromAccountId())
+            .then(accountService.validateAccountExists(command.getToAccountId()))
+            .then(accountService.validateSufficientFunds(command.getFromAccountId(), command.getAmount()))
+            .thenReturn(command);
+    }
+
+    private Mono<TransferResult> executeTransfer(TransferMoneyCommand command) {
+        return transferService.processTransfer(TransferRequest.builder()
+            .fromAccountId(command.getFromAccountId())
+            .toAccountId(command.getToAccountId())
+            .amount(command.getAmount())
+            .reference(command.getReference())
+            .build());
+    }
+
+    private Mono<TransferResult> publishTransferEvent(TransferResult result) {
+        return eventPublisher.publish(DomainEventEnvelope.builder()
+            .topic("banking-events")
+            .type("transfer.completed")
+            .key(result.getTransactionId())
+            .payload(new TransferCompletedEvent(
+                result.getTransactionId(),
+                result.getFromAccountId(),
+                result.getToAccountId(),
+                result.getAmount(),
+                Instant.now()
+            ))
+            .build())
+            .thenReturn(result);
+    }
+}
+```
+
+#### 2. Query Handler
+
+```java
+@QueryHandlerComponent
+@Cacheable(cacheNames = "transfer-history", key = "#query.accountId")
+public class GetTransferHistoryQueryHandler extends BaseQueryHandler<GetTransferHistoryQuery, TransferHistoryResult> {
+
+    private final TransferRepository transferRepository;
+
+    @Override
+    protected Mono<TransferHistoryResult> doHandle(GetTransferHistoryQuery query) {
+        return transferRepository.findByAccountId(
+                query.getAccountId(),
+                query.getFromDate(),
+                query.getToDate(),
+                PageRequest.of(query.getPage(), query.getSize())
+            )
+            .collectList()
+            .map(transfers -> TransferHistoryResult.builder()
+                .accountId(query.getAccountId())
+                .transfers(transfers)
+                .totalCount(transfers.size())
+                .build());
+    }
+}
+```
+
+#### 3. Service Layer with Circuit Breaker
+
+```java
+@Service
+public class TransferService {
+    private final ServiceClient accountServiceClient;
+    private final ServiceClient notificationServiceClient;
+
+    public TransferService() {
+        this.accountServiceClient = ServiceClient.rest("account-service")
+            .baseUrl("http://account-service:8080")
+            .timeout(Duration.ofSeconds(30))
+            .build();
+
+        this.notificationServiceClient = ServiceClient.rest("notification-service")
+            .baseUrl("http://notification-service:8080")
+            .timeout(Duration.ofSeconds(15))
+            .build();
+    }
+
+    public Mono<TransferResult> processTransfer(TransferRequest request) {
+        return debitAccount(request.getFromAccountId(), request.getAmount())
+            .flatMap(debitResult -> creditAccount(request.getToAccountId(), request.getAmount())
+                .flatMap(creditResult -> createTransferRecord(request, debitResult, creditResult))
+                .flatMap(this::sendNotifications)
+                .onErrorResume(error -> compensateDebit(debitResult).then(Mono.error(error)))
+            );
+    }
+
+    private Mono<AccountOperationResult> debitAccount(String accountId, BigDecimal amount) {
+        return accountServiceClient.post("/accounts/{id}/debit", AccountOperationResult.class)
+            .withPathParam("id", accountId)
+            .withBody(new DebitRequest(amount))
+            .execute();
+    }
+
+    private Mono<AccountOperationResult> creditAccount(String accountId, BigDecimal amount) {
+        return accountServiceClient.post("/accounts/{id}/credit", AccountOperationResult.class)
+            .withPathParam("id", accountId)
+            .withBody(new CreditRequest(amount))
+            .execute();
+    }
+
+    private Mono<TransferResult> sendNotifications(TransferResult result) {
+        return notificationServiceClient.post("/notifications", Void.class)
+            .withBody(new TransferNotificationRequest(result))
+            .execute()
+            .thenReturn(result)
+            .onErrorResume(error -> {
+                log.warn("Failed to send transfer notification: {}", error.getMessage());
+                return Mono.just(result); // Non-critical failure
+            });
+    }
+}
+```
+
+#### 4. Event Handler
+
+```java
+@EventHandler
+@Component
+public class TransferEventHandler {
+
+    @EventListener(topic = "banking-events", type = "transfer.completed")
+    public Mono<Void> handleTransferCompleted(TransferCompletedEvent event) {
+        log.info("Transfer completed: {} from {} to {} amount {}",
+            event.getTransactionId(),
+            event.getFromAccountId(),
+            event.getToAccountId(),
+            event.getAmount());
+
+        return updateAccountStatements(event)
+            .then(updateAnalytics(event))
+            .then(checkForFraud(event));
+    }
+
+    private Mono<Void> updateAccountStatements(TransferCompletedEvent event) {
+        // Update account statements
+        return statementService.addTransferEntry(event);
+    }
+
+    private Mono<Void> updateAnalytics(TransferCompletedEvent event) {
+        // Update analytics
+        return analyticsService.recordTransfer(event);
+    }
+
+    private Mono<Void> checkForFraud(TransferCompletedEvent event) {
+        // Fraud detection
+        return fraudService.analyzeTransfer(event);
+    }
+}
+```
+
+#### 5. REST Controller
+
+```java
+@RestController
+@RequestMapping("/transfers")
+public class TransferController {
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
+
+    @PostMapping
+    public Mono<ResponseEntity<TransferResponse>> createTransfer(@RequestBody @Valid CreateTransferRequest request) {
+        TransferMoneyCommand command = TransferMoneyCommand.builder()
+            .fromAccountId(request.getFromAccountId())
+            .toAccountId(request.getToAccountId())
+            .amount(request.getAmount())
+            .reference(request.getReference())
+            .build();
+
+        return commandBus.execute(command)
+            .map(result -> ResponseEntity.ok(TransferResponse.builder()
+                .transactionId(result.getTransactionId())
+                .status("COMPLETED")
+                .timestamp(Instant.now())
+                .build()));
+    }
+
+    @GetMapping("/history/{accountId}")
+    public Mono<ResponseEntity<TransferHistoryResponse>> getTransferHistory(
+            @PathVariable String accountId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        GetTransferHistoryQuery query = GetTransferHistoryQuery.builder()
+            .accountId(accountId)
+            .page(page)
+            .size(size)
+            .build();
+
+        return queryBus.execute(query)
+            .map(result -> ResponseEntity.ok(TransferHistoryResponse.builder()
+                .transfers(result.getTransfers())
+                .totalCount(result.getTotalCount())
+                .build()));
+    }
+}
+```
+
+This complete example demonstrates how all components of the Firefly Common Domain Library work together to create a robust, scalable banking application with enterprise-grade patterns and zero-boilerplate development experience.
+
+---
+
 ## Summary
 
-The Firefly CQRS Framework provides:
+The Firefly Common Domain Library provides:
 
-- **🎯 Single Approach**: Only one way to create handlers - extend base classes with annotations
-- **🚀 Zero Boilerplate**: No type methods, caching methods, or validation setup needed
-- **⚡ Focus on Business Logic**: Write only the `doHandle()` method
-- **📊 Everything Automatic**: Validation, logging, metrics, caching, error handling
-- **🔧 Annotation-Driven**: All configuration through `@CommandHandlerComponent` and `@QueryHandlerComponent`
-- **✅ Production Ready**: Built-in resilience, monitoring, and best practices
+### 🎯 CQRS Framework
+- **Single Approach**: Only one way to create handlers - extend base classes with annotations
+- **Zero Boilerplate**: No type methods, caching methods, or validation setup needed
+- **Focus on Business Logic**: Write only the `doHandle()` method
+- **Everything Automatic**: Validation, logging, metrics, caching, error handling
+
+### 📡 Domain Events
+- **Multiple Adapters**: Kafka, RabbitMQ, SQS, Kinesis, ApplicationEvent support
+- **Auto-Configuration**: Automatic adapter selection and configuration
+- **Type Safety**: Full type safety for event payloads and handlers
+- **Correlation Context**: Automatic context propagation across services
+
+### 🌐 Service Clients
+- **Unified API**: Same interface for REST and gRPC clients
+- **Built-in Resilience**: Circuit breakers, timeouts, retries
+- **Auto-Configuration**: Zero-setup service client creation
+- **Reactive Support**: Full reactive programming support
+
+### 🛡️ Resilience Patterns
+- **Circuit Breakers**: Real state management with sliding window failure tracking
+- **Auto-Protection**: Automatic circuit breaker protection for service clients
+- **Monitoring**: Built-in metrics and state monitoring
+- **Fallback Support**: Easy fallback pattern implementation
+
+### 🔍 Distributed Tracing
+- **Automatic Propagation**: Context propagation across services and events
+- **MDC Integration**: Automatic logging context for all log statements
+- **Reactive Support**: Context propagation through Reactor Context
+- **Header Management**: Automatic header propagation in service calls
+
+### ⚙️ lib-transactional-engine Integration
+- **Bridge Pattern**: Step events from lib-transactional-engine published through domain events infrastructure
+- **No Saga Implementation**: This library only provides the bridge - use lib-transactional-engine for saga orchestration
+- **Unified Event Processing**: Same event handlers and infrastructure for domain and step events
+- **Auto-Configuration**: Bridge automatically configured when both libraries are present
+- **Rich Metadata**: Step events include execution metrics, attempts, and correlation data
+
+### 🔧 Auto-Configuration
+- **Zero Setup**: Everything auto-configured with sensible defaults
+- **Conditional Beans**: Smart bean creation based on available dependencies
+- **Property Driven**: Easy customization through application properties
+- **Production Ready**: Built-in resilience, monitoring, and best practices
+
+---

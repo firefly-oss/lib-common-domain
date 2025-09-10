@@ -368,10 +368,14 @@ This package structure provides:
 - ✅ **Clear separation** between web, interfaces, core, and infrastructure
 - ✅ **CQRS best practices** with zero-boilerplate handlers
 - ✅ **Jakarta validation** integration for automatic input validation
-- ✅ **Service client** patterns for external communication
+- ✅ **Service client** patterns for external communication (REST/gRPC with circuit breakers)
+- ✅ **Domain events** infrastructure for event-driven architecture
+- ✅ **Distributed tracing** with automatic correlation context propagation
+- ✅ **Resilience patterns** with circuit breakers and failure handling
+- ✅ **lib-transactional-engine** integration for saga step events
 - ✅ **Domain-driven design** principles for business logic organization
 - ✅ **Testable architecture** with clear boundaries and dependencies
 
-> **Remember**: The core-domain layer focuses on business logic and orchestration, not data persistence. Use service clients to communicate with data layer services.
+> **Remember**: The core-domain layer focuses on business logic and orchestration, not data persistence. Use service clients to communicate with data layer services. All infrastructure components (events, tracing, resilience) are auto-configured and ready to use.
 
 
