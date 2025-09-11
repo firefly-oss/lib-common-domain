@@ -6,12 +6,13 @@ Real working examples based on the actual codebase implementation, demonstrating
 
 1. [Quick Start](#quick-start)
 2. [CQRS Framework Examples](#cqrs-framework-examples)
-3. [Domain Events Examples](#domain-events-examples)
-4. [Service Client Examples](#service-client-examples)
-5. [Resilience Patterns Examples](#resilience-patterns-examples)
-6. [Distributed Tracing Examples](#distributed-tracing-examples)
-7. [lib-transactional-engine Integration Examples](#lib-transactional-engine-integration-examples)
-8. [Complete Banking Application Example](#complete-banking-application-example)
+3. [ExecutionContext Examples](#executioncontext-examples)
+4. [Domain Events Examples](#domain-events-examples)
+5. [Service Client Examples](#service-client-examples)
+6. [Resilience Patterns Examples](#resilience-patterns-examples)
+7. [Distributed Tracing Examples](#distributed-tracing-examples)
+8. [lib-transactional-engine Integration Examples](#lib-transactional-engine-integration-examples)
+9. [Complete Banking Application Example](#complete-banking-application-example)
 
 ## Quick Start
 
@@ -752,6 +753,268 @@ public class MyQueryHandler extends QueryHandler<MyQuery, MyResult> {
 **Redis Fallback (When Redis Unavailable):**
 ```
 2025-09-09 00:15:27.479 WARN  - Redis cache is configured but Redis auto-configuration did not activate. Falling back to local cache.
+```
+
+---
+
+## ExecutionContext Examples
+
+The ExecutionContext feature allows passing additional values to command and query handlers that are not part of the command/query itself. This is essential for multi-tenant applications, user authentication, feature flags, and request-specific metadata.
+
+### Basic ExecutionContext Usage
+
+#### Creating ExecutionContext
+
+```java
+// Minimal context
+ExecutionContext context = ExecutionContext.builder()
+    .withUserId("user-123")
+    .withTenantId("tenant-456")
+    .build();
+
+// Full context with all features
+ExecutionContext context = ExecutionContext.builder()
+    .withUserId("user-123")
+    .withTenantId("tenant-456")
+    .withOrganizationId("org-789")
+    .withSessionId("session-abc")
+    .withRequestId("request-def")
+    .withSource("mobile-app")
+    .withClientIp("192.168.1.100")
+    .withUserAgent("Mozilla/5.0")
+    .withFeatureFlag("premium-features", true)
+    .withFeatureFlag("enhanced-view", false)
+    .withProperty("priority", "HIGH")
+    .withProperty("channel", "MOBILE")
+    .withProperty("customData", 42)
+    .build();
+
+// Empty context
+ExecutionContext context = ExecutionContext.empty();
+```
+
+#### Using Context with Commands
+
+```java
+@Service
+public class AccountService {
+    private final CommandBus commandBus;
+
+    public Mono<AccountResult> createTenantAccount(CreateAccountRequest request, String userId, String tenantId) {
+        CreateAccountCommand command = new CreateAccountCommand(
+            request.getCustomerId(),
+            request.getAccountType(),
+            request.getInitialBalance()
+        );
+
+        ExecutionContext context = ExecutionContext.builder()
+            .withUserId(userId)
+            .withTenantId(tenantId)
+            .withFeatureFlag("premium-features", isPremiumTenant(tenantId))
+            .withProperty("source", "api")
+            .build();
+
+        return commandBus.send(command, context);
+    }
+}
+```
+
+#### Using Context with Queries
+
+```java
+@Service
+public class BalanceService {
+    private final QueryBus queryBus;
+
+    public Mono<AccountBalance> getTenantAccountBalance(String accountNumber, String userId, String tenantId) {
+        GetAccountBalanceQuery query = new GetAccountBalanceQuery(accountNumber, userId);
+
+        ExecutionContext context = ExecutionContext.builder()
+            .withUserId(userId)
+            .withTenantId(tenantId)
+            .withFeatureFlag("enhanced-view", hasEnhancedViewPermission(userId))
+            .build();
+
+        return queryBus.query(query, context);
+    }
+}
+```
+
+### Context-Aware Handlers
+
+#### ContextAwareCommandHandler
+
+For handlers that always require ExecutionContext:
+
+```java
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
+public class CreateTenantAccountHandler extends ContextAwareCommandHandler<CreateAccountCommand, AccountResult> {
+
+    private final AccountService accountService;
+    private final TenantConfigService tenantConfigService;
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        // Extract required context values
+        String tenantId = context.getTenantId();
+        String userId = context.getUserId();
+        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
+
+        // Validate required context
+        if (tenantId == null) {
+            return Mono.error(new IllegalArgumentException("Tenant ID is required"));
+        }
+
+        if (userId == null) {
+            return Mono.error(new IllegalArgumentException("User ID is required"));
+        }
+
+        // Business logic with context
+        return tenantConfigService.getTenantConfig(tenantId)
+            .flatMap(config -> accountService.createAccount(command, config, userId, premiumFeatures))
+            .map(account -> new AccountResult(
+                account.getAccountNumber(),
+                command.getCustomerId(),
+                tenantId,
+                command.getAccountType(),
+                account.getBalance(),
+                determineStatus(command, context),
+                premiumFeatures
+            ));
+    }
+
+    private String determineStatus(CreateAccountCommand command, ExecutionContext context) {
+        boolean autoApprove = context.getFeatureFlag("auto-approve", false);
+        String source = context.getSource();
+
+        if (autoApprove && "mobile-app".equals(source)) {
+            return "ACTIVE";
+        }
+
+        if (command.getInitialBalance().compareTo(new BigDecimal("10000")) > 0) {
+            return "PENDING_APPROVAL";
+        }
+
+        return "ACTIVE";
+    }
+}
+```
+
+#### ContextAwareQueryHandler
+
+For queries that always require ExecutionContext:
+
+```java
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
+public class GetTenantAccountBalanceHandler extends ContextAwareQueryHandler<GetAccountBalanceQuery, AccountBalance> {
+
+    private final AccountService accountService;
+    private final TenantConfigService tenantConfigService;
+
+    @Override
+    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query, ExecutionContext context) {
+        // Extract context values
+        String tenantId = context.getTenantId();
+        String userId = context.getUserId();
+        boolean enhancedView = context.getFeatureFlag("enhanced-view", false);
+        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
+
+        // Validate required context
+        if (tenantId == null) {
+            return Mono.error(new IllegalArgumentException("Tenant ID is required"));
+        }
+
+        // Business logic with context
+        return tenantConfigService.getTenantConfig(tenantId)
+            .flatMap(config -> accountService.getBalance(query, config, userId))
+            .map(balance -> enhanceBalanceWithContext(balance, context));
+    }
+
+    private AccountBalance enhanceBalanceWithContext(AccountBalance balance, ExecutionContext context) {
+        boolean enhancedView = context.getFeatureFlag("enhanced-view", false);
+        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
+        String source = context.getSource();
+
+        List<String> additionalInfo = new ArrayList<>();
+
+        if (enhancedView) {
+            additionalInfo.add("Enhanced view enabled");
+            additionalInfo.add("Last accessed by: " + context.getUserId());
+            additionalInfo.add("Access source: " + source);
+            additionalInfo.add("Tenant: " + context.getTenantId());
+        }
+
+        if ("mobile-app".equals(source)) {
+            additionalInfo.add("Mobile optimized data");
+        }
+
+        BigDecimal availableBalance = balance.getCurrentBalance();
+        if (premiumFeatures) {
+            availableBalance = availableBalance.multiply(new BigDecimal("1.2")); // 20% overdraft
+        }
+
+        return new AccountBalance(
+            balance.getAccountNumber(),
+            balance.getCurrentBalance(),
+            availableBalance,
+            balance.getCurrency(),
+            balance.getLastUpdated(),
+            enhancedView,
+            additionalInfo
+        );
+    }
+}
+```
+
+### Flexible Handlers
+
+Regular handlers can optionally use ExecutionContext by overriding the context-aware doHandle method:
+
+```java
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
+public class FlexibleAccountHandler extends CommandHandler<CreateAccountCommand, AccountResult> {
+
+    private final AccountService accountService;
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command) {
+        // Standard implementation without context
+        return accountService.createStandardAccount(command)
+            .map(account -> new AccountResult(
+                account.getAccountNumber(),
+                command.getCustomerId(),
+                null, // No tenant
+                command.getAccountType(),
+                account.getBalance(),
+                "ACTIVE",
+                false // No premium features
+            ));
+    }
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        // Enhanced implementation with context
+        String tenantId = context.getTenantId();
+        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
+
+        if (tenantId != null) {
+            // Tenant-aware processing
+            return accountService.createTenantAccount(command, tenantId, premiumFeatures)
+                .map(account -> new AccountResult(
+                    account.getAccountNumber(),
+                    command.getCustomerId(),
+                    tenantId,
+                    command.getAccountType(),
+                    account.getBalance(),
+                    determineStatus(command, context),
+                    premiumFeatures
+                ));
+        } else {
+            // Fall back to standard processing
+            return doHandle(command);
+        }
+    }
+}
 ```
 
 ---

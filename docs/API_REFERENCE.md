@@ -5,11 +5,12 @@ Complete API reference for the Firefly Common Domain Library.
 ## Table of Contents
 
 1. [CQRS Framework](#cqrs-framework)
-2. [Domain Events](#domain-events)
-3. [Service Client Framework](#service-client-framework)
-4. [Resilience Patterns](#resilience-patterns)
-5. [Distributed Tracing](#distributed-tracing)
-6. [lib-transactional-engine Integration](#lib-transactional-engine-integration)
+2. [ExecutionContext](#executioncontext)
+3. [Domain Events](#domain-events)
+4. [Service Client Framework](#service-client-framework)
+5. [Resilience Patterns](#resilience-patterns)
+6. [Distributed Tracing](#distributed-tracing)
+7. [lib-transactional-engine Integration](#lib-transactional-engine-integration)
 
 ## CQRS Framework - Consolidated Zero-Boilerplate Implementation
 
@@ -563,6 +564,230 @@ public class NewHandler extends CommandHandler<MyCommand, MyResult> {
         // Only business logic - everything else automatic!
     }
 }
+```
+
+---
+
+## ExecutionContext
+
+The ExecutionContext provides a way to pass additional values to command and query handlers that are not part of the command/query itself. This is essential for multi-tenant applications, user authentication, feature flags, and request-specific metadata.
+
+### Core Interface
+
+#### ExecutionContext
+
+```java
+public interface ExecutionContext {
+    // User and tenant context
+    String getUserId();
+    String getTenantId();
+    String getOrganizationId();
+    String getSessionId();
+    String getRequestId();
+
+    // Request metadata
+    String getSource();
+    String getClientIp();
+    String getUserAgent();
+    Instant getCreatedAt();
+
+    // Feature flags
+    boolean getFeatureFlag(String flagName, boolean defaultValue);
+    Map<String, Boolean> getFeatureFlags();
+    boolean hasFeatureFlags();
+
+    // Custom properties
+    Optional<Object> getProperty(String key);
+    <T> Optional<T> getProperty(String key, Class<T> type);
+    Map<String, Object> getProperties();
+    boolean hasProperties();
+
+    // Factory methods
+    static Builder builder();
+    static ExecutionContext empty();
+}
+```
+
+#### ExecutionContext.Builder
+
+```java
+public interface Builder {
+    Builder withUserId(String userId);
+    Builder withTenantId(String tenantId);
+    Builder withOrganizationId(String organizationId);
+    Builder withSessionId(String sessionId);
+    Builder withRequestId(String requestId);
+    Builder withSource(String source);
+    Builder withClientIp(String clientIp);
+    Builder withUserAgent(String userAgent);
+    Builder withFeatureFlag(String flagName, boolean value);
+    Builder withProperty(String key, Object value);
+    ExecutionContext build();
+}
+```
+
+### Enhanced Bus Interfaces
+
+#### CommandBus with ExecutionContext
+
+```java
+public interface CommandBus {
+    // Standard method
+    <R> Mono<R> send(Command<R> command);
+
+    // Enhanced method with ExecutionContext
+    <R> Mono<R> send(Command<R> command, ExecutionContext context);
+}
+```
+
+#### QueryBus with ExecutionContext
+
+```java
+public interface QueryBus {
+    // Standard method
+    <R> Mono<R> query(Query<R> query);
+
+    // Enhanced method with ExecutionContext
+    <R> Mono<R> query(Query<R> query, ExecutionContext context);
+}
+```
+
+### Enhanced Handler Base Classes
+
+#### CommandHandler with ExecutionContext Support
+
+```java
+public abstract class CommandHandler<C extends Command<R>, R> {
+    // Standard handle method
+    public final Mono<R> handle(C command);
+
+    // Enhanced handle method with ExecutionContext
+    public final Mono<R> handle(C command, ExecutionContext context);
+
+    // Standard doHandle method (must be implemented)
+    protected abstract Mono<R> doHandle(C command);
+
+    // Optional doHandle method with ExecutionContext
+    protected Mono<R> doHandle(C command, ExecutionContext context) {
+        return doHandle(command); // Default implementation ignores context
+    }
+}
+```
+
+#### QueryHandler with ExecutionContext Support
+
+```java
+public abstract class QueryHandler<Q extends Query<R>, R> {
+    // Standard handle method
+    public final Mono<R> handle(Q query);
+
+    // Enhanced handle method with ExecutionContext
+    public final Mono<R> handle(Q query, ExecutionContext context);
+
+    // Standard doHandle method (must be implemented)
+    protected abstract Mono<R> doHandle(Q query);
+
+    // Optional doHandle method with ExecutionContext
+    protected Mono<R> doHandle(Q query, ExecutionContext context) {
+        return doHandle(query); // Default implementation ignores context
+    }
+}
+```
+
+### Context-Aware Handler Classes
+
+#### ContextAwareCommandHandler
+
+For handlers that always require ExecutionContext:
+
+```java
+public abstract class ContextAwareCommandHandler<C extends Command<R>, R>
+    extends CommandHandler<C, R> {
+
+    // Standard doHandle throws UnsupportedOperationException
+    @Override
+    protected final Mono<R> doHandle(C command) {
+        throw new UnsupportedOperationException(
+            "ContextAwareCommandHandler requires ExecutionContext. " +
+            "Use CommandBus.send(command, context) instead"
+        );
+    }
+
+    // Must implement this method with ExecutionContext
+    @Override
+    protected abstract Mono<R> doHandle(C command, ExecutionContext context);
+}
+```
+
+#### ContextAwareQueryHandler
+
+For handlers that always require ExecutionContext:
+
+```java
+public abstract class ContextAwareQueryHandler<Q extends Query<R>, R>
+    extends QueryHandler<Q, R> {
+
+    // Standard doHandle throws UnsupportedOperationException
+    @Override
+    protected final Mono<R> doHandle(Q query) {
+        throw new UnsupportedOperationException(
+            "ContextAwareQueryHandler requires ExecutionContext. " +
+            "Use QueryBus.query(query, context) instead"
+        );
+    }
+
+    // Must implement this method with ExecutionContext
+    @Override
+    protected abstract Mono<R> doHandle(Q query, ExecutionContext context);
+}
+```
+
+### Usage Patterns
+
+#### Creating ExecutionContext
+
+```java
+// Minimal context
+ExecutionContext context = ExecutionContext.builder()
+    .withUserId("user-123")
+    .withTenantId("tenant-456")
+    .build();
+
+// Full context
+ExecutionContext context = ExecutionContext.builder()
+    .withUserId("user-123")
+    .withTenantId("tenant-456")
+    .withOrganizationId("org-789")
+    .withSessionId("session-abc")
+    .withRequestId("request-def")
+    .withSource("mobile-app")
+    .withClientIp("192.168.1.100")
+    .withUserAgent("Mozilla/5.0")
+    .withFeatureFlag("premium-features", true)
+    .withFeatureFlag("enhanced-view", false)
+    .withProperty("priority", "HIGH")
+    .withProperty("channel", "MOBILE")
+    .withProperty("customData", 42)
+    .build();
+
+// Empty context
+ExecutionContext context = ExecutionContext.empty();
+```
+
+#### Using with Commands
+
+```java
+// Send command with context
+commandBus.send(transferCommand, context)
+    .subscribe(result -> log.info("Transfer completed: {}", result));
+```
+
+#### Using with Queries
+
+```java
+// Query with context
+queryBus.query(balanceQuery, context)
+    .subscribe(balance -> log.info("Balance: {}", balance));
 ```
 
 ---

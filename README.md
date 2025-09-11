@@ -683,6 +683,79 @@ queryBus.query(query)
     .subscribe();
 ```
 
+### 5. ExecutionContext for Additional Values
+
+Pass additional context values that aren't part of the command/query itself:
+
+```java
+// Create execution context with additional values
+ExecutionContext context = ExecutionContext.builder()
+    .withUserId("user-123")
+    .withTenantId("tenant-456")
+    .withOrganizationId("org-789")
+    .withFeatureFlag("premium-features", true)
+    .withFeatureFlag("enhanced-view", false)
+    .withProperty("priority", "HIGH")
+    .withProperty("source", "mobile-app")
+    .build();
+
+// Send command with context
+commandBus.send(transferCommand, context)
+    .subscribe(result -> log.info("Transfer completed: {}", result));
+
+// Query with context
+queryBus.query(balanceQuery, context)
+    .subscribe(balance -> log.info("Balance: {}", balance));
+```
+
+#### Context-Aware Handlers
+
+For handlers that always need context, use `ContextAwareCommandHandler` or `ContextAwareQueryHandler`:
+
+```java
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
+public class CreateTenantAccountHandler extends ContextAwareCommandHandler<CreateAccountCommand, AccountResult> {
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        String tenantId = context.getTenantId();
+        String userId = context.getUserId();
+        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
+
+        if (tenantId == null) {
+            return Mono.error(new IllegalArgumentException("Tenant ID is required"));
+        }
+
+        return createAccountWithTenantContext(command, tenantId, userId, premiumFeatures);
+    }
+}
+```
+
+#### Flexible Handlers
+
+Regular handlers can optionally use context by overriding the context-aware doHandle method:
+
+```java
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
+public class FlexibleAccountHandler extends CommandHandler<CreateAccountCommand, AccountResult> {
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command) {
+        // Standard implementation without context
+        return createStandardAccount(command);
+    }
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        // Enhanced implementation with context
+        String tenantId = context.getTenantId();
+        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
+
+        return createAccountWithContext(command, tenantId, premiumFeatures);
+    }
+}
+```
+
 ## 📚 Documentation
 
 | Document | Description |
