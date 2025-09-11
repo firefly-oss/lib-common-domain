@@ -15,11 +15,187 @@ The architecture emphasizes **zero-boilerplate development**, **automatic config
 
 ## 🎯 Core Philosophy
 
-### The Single Best Way Approach
+The Firefly Common Domain Library embodies a **radical simplification philosophy** that prioritizes developer productivity, maintainability, and enterprise-grade reliability. Our design principles are rooted in the belief that **complexity should be hidden, not eliminated** - the framework handles the intricate details so developers can focus on what matters most: **business value creation**.
+
+### 🎯 The Single Best Way Approach
+
+**"There should be one-- and preferably only one --obvious way to do it."** - *The Zen of Python*
+
+We deliberately provide **exactly one way** to accomplish each task, eliminating decision paralysis and reducing cognitive load:
+
 - **ONE way** to create command handlers: `@CommandHandlerComponent` + extend `CommandHandler<Command, Result>`
 - **ONE way** to create query handlers: `@QueryHandlerComponent` + extend `QueryHandler<Query, Result>`
-- **ZERO boilerplate**: No manual type detection, validation setup, or metrics configuration
-- **FOCUS on business logic**: Write only the `doHandle()` method - everything else is automatic
+- **ONE way** to handle validation: Jakarta Bean Validation annotations + optional custom validation
+- **ONE way** to configure behavior: Declarative annotations with sensible defaults
+
+**Why This Matters:**
+- **Eliminates Analysis Paralysis**: No time wasted choosing between multiple approaches
+- **Reduces Onboarding Time**: New team members learn one pattern that works everywhere
+- **Improves Code Consistency**: All handlers follow identical patterns across the codebase
+- **Simplifies Maintenance**: Uniform structure makes debugging and refactoring predictable
+
+### 🚀 Zero-Boilerplate Philosophy
+
+**"The best code is no code at all."** - *Jeff Atwood*
+
+We believe that **boilerplate code is a form of technical debt** that should be eliminated through intelligent automation:
+
+#### What You DON'T Write Anymore:
+```java
+// ❌ ELIMINATED - No more type detection boilerplate
+public Class<CreateAccountCommand> getCommandType() { return CreateAccountCommand.class; }
+public Class<AccountResult> getResultType() { return AccountResult.class; }
+
+// ❌ ELIMINATED - No more validation setup
+public Mono<ValidationResult> validate(CreateAccountCommand command) { /* validation logic */ }
+
+// ❌ ELIMINATED - No more metrics configuration
+public void recordMetrics(String commandType, Duration duration, boolean success) { /* metrics */ }
+
+// ❌ ELIMINATED - No more caching boilerplate
+public boolean supportsCaching() { return true; }
+public Duration getCacheTtl() { return Duration.ofMinutes(15); }
+public String getCacheKey(GetAccountQuery query) { return "account:" + query.getAccountId(); }
+```
+
+#### What You ONLY Write Now:
+```java
+// ✅ FOCUS - Only business logic matters
+@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
+public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, AccountResult> {
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command) {
+        // Pure business logic - everything else is automatic!
+        return accountService.createAccount(command)
+            .flatMap(this::publishAccountCreatedEvent);
+    }
+}
+```
+
+**The Mathematics of Productivity:**
+- **Traditional Approach**: 80% boilerplate + 20% business logic = **Low Value Density**
+- **Firefly Approach**: 0% boilerplate + 100% business logic = **Maximum Value Density**
+
+### 🧠 Cognitive Load Reduction
+
+**"The most important property of a program is whether it accomplishes the intention of its user."** - *C.A.R. Hoare*
+
+We optimize for **human cognitive capacity**, not just machine performance:
+
+#### Automatic Type Detection
+```java
+// ✅ INTELLIGENT - Framework automatically detects types from generics
+public class TransferHandler extends CommandHandler<TransferCommand, TransferResult> {
+    // Framework knows: Command = TransferCommand, Result = TransferResult
+    // No manual type specification needed - ever!
+}
+```
+
+#### Declarative Configuration
+```java
+// ✅ SELF-DOCUMENTING - Configuration intent is crystal clear
+@CommandHandlerComponent(
+    timeout = 30000,    // "This operation should complete within 30 seconds"
+    retries = 3,        // "Retry up to 3 times on failure"
+    metrics = true      // "Track performance metrics for this handler"
+)
+```
+
+#### Intelligent Defaults
+```java
+// ✅ SENSIBLE DEFAULTS - Production-ready out of the box
+@QueryHandlerComponent  // Automatically gets: caching=false, timeout=15s, metrics=true
+```
+
+### 🏗️ Enterprise-Grade Reliability by Default
+
+**"Make it work, make it right, make it fast."** - *Kent Beck*
+
+Every framework component is designed with **production reliability** as the baseline, not an afterthought:
+
+#### Built-in Resilience Patterns
+- **Circuit Breakers**: Automatic failure detection and recovery
+- **Retry Logic**: Configurable retry strategies with exponential backoff
+- **Timeout Management**: Prevents resource exhaustion from hanging operations
+- **Bulkhead Isolation**: Handler failures don't cascade to other components
+
+#### Comprehensive Observability
+- **Automatic Metrics**: Success/failure rates, latency percentiles, throughput
+- **Distributed Tracing**: End-to-end request correlation across service boundaries
+- **Structured Logging**: Contextual information for debugging and monitoring
+- **Health Checks**: Real-time system health and dependency status
+
+#### Production-Ready Defaults
+```yaml
+# ✅ PRODUCTION-READY - No configuration needed for basic production deployment
+firefly:
+  cqrs:
+    enabled: true                    # Framework active
+    command:
+      timeout: 30s                   # Reasonable default timeout
+      metrics-enabled: true          # Observability enabled
+      tracing-enabled: true          # Distributed tracing active
+    query:
+      timeout: 15s                   # Faster timeout for read operations
+      caching-enabled: true          # Performance optimization enabled
+      cache-ttl: 15m                 # Balanced cache duration
+```
+
+### 🔄 Evolutionary Architecture Principles
+
+**"The only constant is change."** - *Heraclitus*
+
+The framework is designed to **evolve gracefully** with changing requirements:
+
+#### Backward Compatibility Guarantee
+- **Existing handlers continue working** when new features are added
+- **Gradual migration paths** for adopting new capabilities
+- **Deprecation warnings** provide clear upgrade guidance
+
+#### Extensibility Without Modification
+- **Hook points** for custom behavior without framework changes
+- **Plugin architecture** for adding new capabilities
+- **Context-aware processing** enables feature flags and A/B testing
+
+#### Future-Proof Design
+- **Reactive foundations** support high-concurrency workloads
+- **Cloud-native patterns** enable containerized deployments
+- **Event-driven architecture** supports microservices evolution
+
+### 🎯 Developer Experience Excellence
+
+**"Developer experience is user experience for developers."** - *Kelsey Hightower*
+
+Every design decision prioritizes the **daily experience** of developers using the framework:
+
+#### Immediate Feedback Loops
+- **Compile-time type safety** catches errors before runtime
+- **Detailed error messages** with troubleshooting guidance
+- **IDE integration** with auto-completion and validation
+
+#### Minimal Learning Curve
+- **Familiar patterns** based on Spring Boot conventions
+- **Progressive disclosure** - simple cases are simple, complex cases are possible
+- **Comprehensive documentation** with real-world examples
+
+#### Debugging Excellence
+- **Enhanced stack traces** with business context
+- **Correlation IDs** for tracing requests across services
+- **Structured logging** for efficient log analysis
+
+### 🌟 The Firefly Advantage
+
+This philosophy creates a **multiplicative effect** on team productivity:
+
+1. **Faster Development**: Less code to write means faster feature delivery
+2. **Fewer Bugs**: Less code means fewer places for bugs to hide
+3. **Easier Maintenance**: Consistent patterns make changes predictable
+4. **Better Performance**: Framework optimizations benefit all handlers automatically
+5. **Improved Reliability**: Built-in resilience patterns prevent common failure modes
+6. **Enhanced Observability**: Automatic metrics and tracing provide operational insights
+
+**The Result**: Teams can focus on **solving business problems** instead of **fighting infrastructure complexity**.
 
 ## 🏛️ Complete Platform Architecture
 
@@ -63,53 +239,104 @@ The architecture emphasizes **zero-boilerplate development**, **automatic config
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Component Integration Flow
+### Component Integration Flow with ExecutionContext
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                        Request Processing Flow                                              │
+│                          Complete Request Processing Flow with ExecutionContext                             │
 ├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                                             │
-│  HTTP Request                                                                                               │
+│  1. HTTP Request + Headers (Authorization, X-Tenant-ID, X-User-ID, Feature-Flags)                           │
 │       │                                                                                                     │
 │       ▼                                                                                                     │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐                   │
-│  │ Correlation     │───▶│ CQRS Framework  │───▶│ Business Logic  │───▶│ Domain Events   │                   │
-│  │ Context         │    │ Command/Query   │    │ Processing      │    │ Publishing      │                   │
-│  │ (Trace/Corr ID) │    │ Bus             │    │                 │    │                 │                   │
-│  └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘                   │
-│       │                          │                       │                       │                          │
-│       │                          │                       │                       ▼                          │
-│       │                          │                       │              ┌─────────────────┐                 │
-│       │                          │                       │              │ Messaging       │                 │
-│       │                          │                       │              │ Infrastructure  │                 │
-│       │                          │                       │              │ (Kafka/RabbitMQ)│                 │
-│       │                          │                       │              └─────────────────┘                 │
+│  ┌─────────────────┐                                                                                        │
+│  │  @RestController│  ← Web Layer (Controllers)                                                             │
+│  │  - Extract      │    • Parse HTTP headers                                                                │
+│  │    Headers      │    • Validate request format                                                           │
+│  │  - Map to DTO   │    • Map to request DTOs                                                               │
+│  │  - Call Service │    • Delegate to service layer                                                         │
+│  └─────────────────┘                                                                                        │
+│       │                                                                                                     │
+│       ▼                                                                                                     │
+│  ┌─────────────────┐                                                                                        │
+│  │  @Service       │  ← Service Layer (Business Orchestration)                                              │
+│  │  - Build        │    • Build ExecutionContext from headers                                               │
+│  │    ExecutionCtx │    • Create commands/queries                                                           │
+│  │  - Create       │    • Orchestrate business workflows                                                    │
+│  │    Commands     │    • Handle cross-cutting concerns                                                     │
+│  │  - Call CQRS    │                                                                                        │
+│  └─────────────────┘                                                                                        │
+│       │                                                                                                     │
+│       ▼                                                                                                     │
+│  ┌─────────────────┐    ┌─────────────────┐                                                                 │
+│  │ ExecutionContext│───▶│ CQRS Framework  │  ← Domain Layer (Core Business Logic)                           │
+│  │ Builder         │    │ CommandBus/     │    • Process commands with context                              │
+│  │ - User/Tenant   │    │ QueryBus        │    • Execute business rules                                     │
+│  │ - Features      │    │ + Context       │    • Validate business constraints                              │
+│  │ - Session       │    │                 │    • Apply context-aware logic                                  │
+│  │ - Custom Props  │    │                 │                                                                 │
+│  └─────────────────┘    └─────────────────┘                                                                 │
+│       │                          │                                                                          │
+│       │                          ▼                                                                          │
+│       │                 ┌─────────────────┐    ┌─────────────────┐                                          │
+│       │                 │ CommandHandler/ │───▶│ Context-Aware   │                                          │
+│       │                 │ QueryHandler    │    │ Business Logic  │                                          │
+│       │                 │ - Type Detection│    │ - Tenant Logic  │                                          │
+│       │                 │ - Validation    │    │ - Feature Flags │                                          │
+│       │                 │ - Metrics       │    │ - User Perms    │                                          │
+│       │                 │ - Caching       │    │ - Custom Rules  │                                          │
+│       │                 └─────────────────┘    └─────────────────┘                                          │
+│       │                          │                       │                                                  │
+│       │                          │                       ▼                                                  │
+│       │                          │              ┌─────────────────┐    ┌─────────────────┐                  │
+│       │                          │              │ Domain Events   │───▶│ Messaging       │                  │
+│       │                          │              │ with Context    │    │ Infrastructure  │                  │
+│       │                          │              │ - Event Metadata│    │ (Kafka/RabbitMQ)│                  │
+│       │                          │              │ - Correlation   │    │ + Context       │                  │
+│       │                          │              │ - User Context  │    │   Headers       │                  │
+│       │                          │              └─────────────────┘    └─────────────────┘                  │
 │       │                          │                       │                                                  │
 │       │                          │                       ▼                                                  │
 │       │                          │              ┌─────────────────┐                                         │
-│       │                          │              │ Service Client  │                                         │
-│       │                          │              │ Framework       │                                         │
-│       │                          │              │ (REST/gRPC)     │                                         │
+│       │                          │              │ Service Client  │  ← Integration Layer                    │
+│       │                          │              │ Framework       │    • Call downstream services           │
+│       │                          │              │ (REST/gRPC)     │    • Propagate context headers          │
+│       │                          │              │ + Context       │    • Apply circuit breaker patterns     │
+│       │                          │              │   Propagation   │    • Handle resilience concerns         │
 │       │                          │              └─────────────────┘                                         │
 │       │                          │                       │                                                  │
 │       │                          │                       ▼                                                  │
 │       │                          │              ┌─────────────────┐                                         │
 │       │                          │              │ Circuit Breaker │                                         │
 │       │                          │              │ Protection      │                                         │
+│       │                          │              │ - Failure Det.  │                                         │
+│       │                          │              │ - Auto Recovery │                                         │
 │       │                          │              └─────────────────┘                                         │
 │       │                          │                       │                                                  │
 │       │                          ▼                       ▼                                                  │
 │       │                 ┌─────────────────┐    ┌─────────────────┐                                          │
-│       │                 │ Validation      │    │ Downstream      │                                          │
-│       │                 │ Metrics         │    │ Service Call    │                                          │
-│       │                 │ Caching         │    │                 │                                          │
-│       │                 └─────────────────┘    └─────────────────┘                                          │
+│       │                 │ Context-Aware   │    │ Downstream      │                                          │
+│       │                 │ Processing      │    │ Service Call    │                                          │
+│       │                 │ - Validation    │    │ with Context    │                                          │
+│       │                 │ - Metrics       │    │ Headers         │                                          │
+│       │                 │ - Caching       │    │ - X-User-ID     │                                          │
+│       │                 │ - Tracing       │    │ - X-Tenant-ID   │                                          │
+│       │                 └─────────────────┘    │ - Correlation   │                                          │
+│       │                                        └─────────────────┘                                          │
+│       ▼                                                 │                                                   │
+│  ┌─────────────────┐    ┌─────────────────┐            │                                                    │
+│  │ Service Layer   │◄───│ Domain Result   │◄───────────┘                                                    │
+│  │ Response        │    │ + Context Info  │                                                                 │
+│  │ - Map to DTO    │    │ - Business Data │                                                                 │
+│  │ - Add Headers   │    │ - Metadata      │                                                                 │
+│  └─────────────────┘    └─────────────────┘                                                                 │
 │       │                                                                                                     │
 │       ▼                                                                                                     │
 │  ┌─────────────────┐                                                                                        │
-│  │ Response with   │                                                                                        │
-│  │ Trace Headers   │                                                                                        │
+│  │ HTTP Response   │  ← Response to Client                                                                  │
+│  │ + Trace Headers │    • Include correlation headers                                                       │
+│  │ + Context Info  │    • Add performance metrics                                                           │
+│  │ + Business Data │    • Return business results                                                           │
 │  └─────────────────┘                                                                                        │
 │                                                                                                             │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -118,7 +345,175 @@ The architecture emphasizes **zero-boilerplate development**, **automatic config
 
 ## 🔧 Core Components Deep Dive
 
-### 1. Command Processing Pipeline
+### 1. ExecutionContext Framework
+
+The ExecutionContext framework provides a powerful mechanism for passing additional context values to command and query handlers that are not part of the command/query itself. This is essential for multi-tenant applications, user authentication, feature flags, and request-specific metadata.
+
+#### ExecutionContext Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           ExecutionContext Framework                            │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  Application Layer                                                              │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐              │
+│  │ CommandBus      │    │ QueryBus        │    │ ExecutionContext│              │
+│  │ .send(cmd, ctx) │    │ .query(qry,ctx) │    │ Builder         │              │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘              │
+│           │                       │                       │                     │
+│           └───────────────────────┼───────────────────────┘                     │
+│                                   ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │                    Context-Aware Processing Pipeline                        ││
+│  │  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌───────────┐  ││
+│  │  │ Context         │ │ Handler         │ │ Flexible        │ │ Context   │  ││
+│  │  │ Validation      │ │ Resolution      │ │ vs Required     │ │ Logging   │  ││
+│  │  │                 │ │                 │ │ Context         │ │           │  ││
+│  │  └─────────────────┘ └─────────────────┘ └─────────────────┘ └───────────┘  ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+│                                   │                                             │
+│                                   ▼                                             │
+│  Handler Layer                                                                  │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐                │
+│  │ Flexible    │ │ Context-    │ │ Optional    │ │ Required    │                │
+│  │ Handler     │ │ Aware       │ │ Context     │ │ Context     │                │
+│  │ (Optional)  │ │ Handler     │ │ Support     │ │ Validation  │                │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘                │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### ExecutionContext Interface
+
+```java
+public interface ExecutionContext {
+    // User and tenant context
+    String getUserId();
+    String getTenantId();
+    String getOrganizationId();
+
+    // Session and request context
+    String getSessionId();
+    String getRequestId();
+    String getSource();
+    String getClientIp();
+    String getUserAgent();
+
+    // Feature flags
+    boolean getFeatureFlag(String flagName, boolean defaultValue);
+    Map<String, Boolean> getFeatureFlags();
+
+    // Custom properties
+    <T> T getProperty(String key, Class<T> type);
+    <T> T getProperty(String key, Class<T> type, T defaultValue);
+    Map<String, Object> getProperties();
+
+    // Metadata
+    Instant getCreatedAt();
+    boolean isEmpty();
+
+    // Builder pattern
+    static Builder builder() { return new DefaultExecutionContext.Builder(); }
+    static ExecutionContext empty() { return DefaultExecutionContext.EMPTY; }
+}
+```
+
+#### Context-Aware Handler Patterns
+
+**1. Flexible Handlers (Optional Context)**
+```java
+@CommandHandlerComponent
+public class FlexibleAccountHandler extends CommandHandler<CreateAccountCommand, AccountResult> {
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command) {
+        // Standard implementation without context
+        return createStandardAccount(command);
+    }
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        // Enhanced implementation with context
+        String tenantId = context.getTenantId();
+        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
+        return createAccountWithContext(command, tenantId, premiumFeatures);
+    }
+}
+```
+
+**2. Context-Aware Handlers (Required Context)**
+```java
+@CommandHandlerComponent
+public class TenantAccountHandler extends ContextAwareCommandHandler<CreateAccountCommand, AccountResult> {
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        // Context is always provided and validated
+        String tenantId = context.getTenantId();
+        if (tenantId == null) {
+            return Mono.error(new IllegalArgumentException("Tenant ID is required"));
+        }
+
+        return createTenantAccount(command, tenantId);
+    }
+}
+```
+
+#### ExecutionContext Builder Pattern
+
+```java
+// Comprehensive context creation
+ExecutionContext context = ExecutionContext.builder()
+    .withUserId("user-123")
+    .withTenantId("tenant-456")
+    .withOrganizationId("org-789")
+    .withSessionId("session-abc")
+    .withRequestId("request-def")
+    .withSource("mobile-app")
+    .withClientIp("192.168.1.100")
+    .withUserAgent("Mozilla/5.0")
+    .withFeatureFlag("premium-features", true)
+    .withFeatureFlag("enhanced-view", false)
+    .withProperty("priority", "HIGH")
+    .withProperty("channel", "MOBILE")
+    .withProperty("customData", 42)
+    .build();
+
+// Minimal context
+ExecutionContext context = ExecutionContext.builder()
+    .withUserId("user-123")
+    .withTenantId("tenant-456")
+    .build();
+```
+
+#### Context Integration with CQRS Pipeline
+
+The ExecutionContext seamlessly integrates with the existing CQRS pipeline:
+
+```java
+// Command processing with context
+public <R> Mono<R> send(Command<R> command, ExecutionContext context) {
+    return findHandler(command)
+        .flatMap(handler -> {
+            // Enhanced logging with context
+            logCommandStartWithContext(command, context);
+
+            // Context-aware handler resolution
+            if (handler instanceof ContextAwareCommandHandler) {
+                return ((ContextAwareCommandHandler<Command<R>, R>) handler).handle(command, context);
+            } else {
+                // Try context-aware method first, fallback to standard
+                return tryContextAwareHandle(handler, command, context)
+                    .switchIfEmpty(handler.handle(command));
+            }
+        })
+        .doOnSuccess(result -> logCommandSuccessWithContext(command, context, result))
+        .doOnError(error -> logCommandErrorWithContext(command, context, error));
+}
+```
+
+### 2. Command Processing Pipeline
 
 #### Command Interface
 ```java
@@ -134,7 +529,8 @@ public interface Command<R> {
 }
 ```
 
-#### Command Handler Base Class
+#### Command Handler Base Class with ExecutionContext Support
+
 ```java
 public abstract class CommandHandler<C extends Command<R>, R> {
 
@@ -149,40 +545,92 @@ public abstract class CommandHandler<C extends Command<R>, R> {
 
     // Main processing pipeline with built-in features
     public final Mono<R> handle(C command) {
+        return handleInternal(command, null);
+    }
+
+    // Context-aware processing pipeline
+    public final Mono<R> handle(C command, ExecutionContext context) {
+        return handleInternal(command, context);
+    }
+
+    private Mono<R> handleInternal(C command, ExecutionContext context) {
         Instant startTime = Instant.now();
         String commandId = command.getCommandId();
         String commandTypeName = commandType.getSimpleName();
 
         return Mono.fromCallable(() -> {
-                log.debug("Starting command processing: {} [{}]", commandTypeName, commandId);
+                if (context != null) {
+                    log.debug("Starting command processing with context: {} [{}] - Context: {}",
+                             commandTypeName, commandId, context);
+                } else {
+                    log.debug("Starting command processing: {} [{}]", commandTypeName, commandId);
+                }
                 return command;
             })
-            .flatMap(this::preProcess)      // Hook for custom pre-processing
-            .flatMap(this::doHandle)        // Your business logic here
-            .flatMap(result -> postProcess(command, result))  // Hook for post-processing
+            .flatMap(cmd -> preProcess(cmd, context))      // Hook for custom pre-processing
+            .flatMap(cmd -> {
+                // Try context-aware doHandle first, fallback to standard
+                if (context != null) {
+                    try {
+                        return doHandle(cmd, context);
+                    } catch (UnsupportedOperationException e) {
+                        // Fallback to standard doHandle if context-aware not implemented
+                        return doHandle(cmd);
+                    }
+                } else {
+                    return doHandle(cmd);
+                }
+            })
+            .flatMap(result -> postProcess(command, result, context))  // Hook for post-processing
             .doOnSuccess(result -> {
                 Duration duration = Duration.between(startTime, Instant.now());
                 log.info("Command processed successfully: {} [{}] in {}ms",
                     commandTypeName, commandId, duration.toMillis());
-                onSuccess(command, result, duration);
+                onSuccess(command, result, duration, context);
             })
             .doOnError(error -> {
                 Duration duration = Duration.between(startTime, Instant.now());
                 log.error("Command processing failed: {} [{}] in {}ms - {}",
                     commandTypeName, commandId, duration.toMillis(), error.getMessage());
-                onError(command, error, duration);
+                onError(command, error, duration, context);
             })
             .onErrorMap(this::mapError);
     }
 
-    // The ONLY method you need to implement
+    // The ONLY method you need to implement (standard)
     protected abstract Mono<R> doHandle(C command);
 
-    // Extensibility hooks
-    protected Mono<C> preProcess(C command) { return Mono.just(command); }
-    protected Mono<R> postProcess(C command, R result) { return Mono.just(result); }
+    // Optional context-aware implementation
+    protected Mono<R> doHandle(C command, ExecutionContext context) {
+        // Default implementation ignores context and delegates to standard doHandle
+        return doHandle(command);
+    }
+
+    // Extensibility hooks with context support
+    protected Mono<C> preProcess(C command, ExecutionContext context) {
+        return preProcess(command);
+    }
+    protected Mono<C> preProcess(C command) {
+        return Mono.just(command);
+    }
+
+    protected Mono<R> postProcess(C command, R result, ExecutionContext context) {
+        return postProcess(command, result);
+    }
+    protected Mono<R> postProcess(C command, R result) {
+        return Mono.just(result);
+    }
+
+    protected void onSuccess(C command, R result, Duration duration, ExecutionContext context) {
+        onSuccess(command, result, duration);
+    }
     protected void onSuccess(C command, R result, Duration duration) { }
+
+    protected void onError(C command, Throwable error, Duration duration, ExecutionContext context) {
+        onError(command, error, duration);
+    }
     protected void onError(C command, Throwable error, Duration duration) { }
+
     protected Throwable mapError(Throwable error) { return error; }
 
     // Automatic type detection - no need to override
@@ -261,32 +709,81 @@ public class CommandMetricsService {
 }
 ```
 
-#### DefaultCommandBus (Orchestrator)
-**Responsibility**: Clean orchestration of the processing pipeline
+#### DefaultCommandBus (Orchestrator) with ExecutionContext Support
+**Responsibility**: Clean orchestration of the processing pipeline with context awareness
 ```java
 @Component
 public class DefaultCommandBus implements CommandBus {
-    
+
+    // Standard command processing
     public <R> Mono<R> send(Command<R> command) {
+        return sendInternal(command, null);
+    }
+
+    // Context-aware command processing
+    public <R> Mono<R> send(Command<R> command, ExecutionContext context) {
+        return sendInternal(command, context);
+    }
+
+    private <R> Mono<R> sendInternal(Command<R> command, ExecutionContext context) {
+        Instant startTime = Instant.now();
+
         // Step 1: Find handler
         CommandHandler<Command<R>, R> handler = handlerRegistry.findHandler(command.getClass())
             .orElseThrow(() -> CommandHandlerNotFoundException.forCommand(command, availableHandlers));
-        
+
         // Step 2: Set correlation context
         if (command.getCorrelationId() != null) {
             correlationContext.setCorrelationId(command.getCorrelationId());
         }
-        
-        // Step 3: Validate command
+
+        // Step 3: Enhanced logging with context
+        if (context != null) {
+            log.info("CQRS Command Processing Started with Context - Type: {}, ID: {}, Context: {}",
+                    command.getClass().getSimpleName(), command.getCommandId(), context);
+        }
+
+        // Step 4: Validate command
         return validationService.validateCommand(command)
             .then(Mono.defer(() -> {
-                // Step 4: Execute handler
-                return handler.handle(command);
+                // Step 5: Execute handler with context awareness
+                if (context != null) {
+                    return executeWithMetrics(command, context, handler, startTime);
+                } else {
+                    return executeWithMetrics(command, handler, startTime);
+                }
             }))
-            // Step 5: Record metrics and handle completion
-            .doOnSuccess(result -> metricsService.recordCommandSuccess(command, processingTime))
-            .doOnError(error -> metricsService.recordCommandFailure(command, error, processingTime))
             .doFinally(signalType -> correlationContext.clear());
+    }
+
+    private <R> Mono<R> executeWithMetrics(Command<R> command, ExecutionContext context,
+                                          CommandHandler<Command<R>, R> handler, Instant startTime) {
+        return handler.handle(command, context)
+            .doOnSuccess(result -> {
+                Duration processingTime = Duration.between(startTime, Instant.now());
+                metricsService.recordCommandSuccess(command, processingTime);
+                log.info("CQRS Command Processing Completed with Context - Type: {}, ID: {}, Result: Success",
+                        command.getClass().getSimpleName(), command.getCommandId());
+            })
+            .doOnError(error -> {
+                Duration processingTime = Duration.between(startTime, Instant.now());
+                metricsService.recordCommandFailure(command, error, processingTime);
+                log.error("CQRS Command Processing Failed with Context - Type: {}, ID: {}, Error: {}",
+                         command.getClass().getSimpleName(), command.getCommandId(), error.getMessage());
+            });
+    }
+
+    private <R> Mono<R> executeWithMetrics(Command<R> command, CommandHandler<Command<R>, R> handler,
+                                          Instant startTime) {
+        return handler.handle(command)
+            .doOnSuccess(result -> {
+                Duration processingTime = Duration.between(startTime, Instant.now());
+                metricsService.recordCommandSuccess(command, processingTime);
+            })
+            .doOnError(error -> {
+                Duration processingTime = Duration.between(startTime, Instant.now());
+                metricsService.recordCommandFailure(command, error, processingTime);
+            });
     }
 }
 ```
@@ -347,32 +844,69 @@ public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, T
 
 ## 🔄 Complete Processing Flow
 
-### Command Processing Sequence
+### Command Processing Sequence with ExecutionContext Support
+
+#### Standard Command Processing
 ```
 1. Client Code
    ↓ commandBus.send(command)
-   
+
 2. DefaultCommandBus.send()
    ↓ Find handler via CommandHandlerRegistry
-   
+
 3. Set Correlation Context
    ↓ correlationContext.setCorrelationId()
-   
+
 4. CommandValidationService.validateCommand()
    ↓ Phase 1: Jakarta Bean Validation (@NotNull, @NotBlank, etc.)
    ↓ Phase 2: Custom Business Validation (command.validate())
-   
+
 5. CommandHandler.handle()
    ↓ preProcess() hook
    ↓ doHandle() - YOUR BUSINESS LOGIC
    ↓ postProcess() hook
-   
+
 6. CommandMetricsService
    ↓ Record success/failure metrics
    ↓ Record processing time
    ↓ Record per-command-type metrics
-   
+
 7. Return Result
+   ↓ Clean up correlation context
+```
+
+#### Context-Aware Command Processing
+```
+1. Client Code
+   ↓ commandBus.send(command, executionContext)
+
+2. DefaultCommandBus.send(command, context)
+   ↓ Find handler via CommandHandlerRegistry
+   ↓ Enhanced logging with context information
+
+3. Set Correlation Context
+   ↓ correlationContext.setCorrelationId()
+
+4. CommandValidationService.validateCommand()
+   ↓ Phase 1: Jakarta Bean Validation (@NotNull, @NotBlank, etc.)
+   ↓ Phase 2: Custom Business Validation (command.validate())
+
+5. Context-Aware Handler Resolution
+   ↓ Check if handler supports ExecutionContext
+   ↓ Route to appropriate doHandle method
+
+6. CommandHandler.handle(command, context)
+   ↓ preProcess(command, context) hook
+   ↓ doHandle(command, context) - YOUR BUSINESS LOGIC WITH CONTEXT
+   ↓ postProcess(command, result, context) hook
+
+7. CommandMetricsService
+   ↓ Record success/failure metrics with context
+   ↓ Record processing time
+   ↓ Record per-command-type metrics
+   ↓ Enhanced logging with context details
+
+8. Return Result
    ↓ Clean up correlation context
 ```
 
@@ -461,20 +995,27 @@ firefly:
 - **Built-in Validation**: Jakarta annotations work automatically
 - **Comprehensive Metrics**: Success/failure/timing tracked automatically
 - **Enhanced Error Handling**: Detailed context and troubleshooting
+- **ExecutionContext Support**: Pass additional context values seamlessly
+- **Flexible Context Usage**: Optional or required context patterns
+- **Multi-Tenant Ready**: Built-in tenant isolation and context awareness
 
 ### For Operations
 - **Production Ready**: Built-in resilience and monitoring
-- **Observability**: Automatic logging, metrics, and tracing
+- **Observability**: Automatic logging, metrics, and tracing with context
 - **Configuration Driven**: Extensive configuration options
-- **Cache Support**: Local and Redis caching for queries
+- **Cache Support**: Local and Redis caching for queries with context-aware keys
 - **Flexible Deployment**: Works with any Spring Boot application
+- **Context Logging**: Enhanced debugging with execution context details
+- **Feature Flag Integration**: Runtime behavior modification through context
 
 ### For Architecture
 - **Clean Separation**: Commands vs Queries with clear boundaries
-- **Testable**: Each service can be tested independently
+- **Testable**: Each service can be tested independently with or without context
 - **Maintainable**: Single responsibility principle throughout
-- **Extensible**: Hook points for custom behavior
+- **Extensible**: Hook points for custom behavior with context support
 - **Standards Compliant**: Jakarta validation, Micrometer metrics, Spring patterns
+- **Context-Aware Design**: Supports multi-tenant, user-specific, and feature-flagged operations
+- **Backward Compatible**: Existing handlers work unchanged while supporting new context features
 
 ## 🔍 Advanced Features Deep Dive
 
@@ -733,7 +1274,7 @@ public class CommandMetricsService {
 
 ### Query Processing Pipeline
 
-#### Query Handler Base Class
+#### Query Handler Base Class with ExecutionContext Support
 ```java
 @Component
 public abstract class QueryHandler<Q extends Query<R>, R> {
@@ -745,20 +1286,71 @@ public abstract class QueryHandler<Q extends Query<R>, R> {
 
     // Main processing pipeline with caching
     public final Mono<R> handle(Q query) {
-        return Mono.fromCallable(() -> query)
-            .flatMap(this::checkCache)          // Check cache first
-            .switchIfEmpty(
-                Mono.defer(() ->
-                    this.doHandle(query)        // Your business logic
-                        .flatMap(result -> cacheResult(query, result))  // Cache result
-                )
-            )
-            .doOnSuccess(result -> onSuccess(query, result, duration))
-            .doOnError(error -> onError(query, error, duration));
+        return handleInternal(query, null);
     }
 
-    // The ONLY method you need to implement
+    // Context-aware processing pipeline
+    public final Mono<R> handle(Q query, ExecutionContext context) {
+        return handleInternal(query, context);
+    }
+
+    private Mono<R> handleInternal(Q query, ExecutionContext context) {
+        return Mono.fromCallable(() -> query)
+            .flatMap(q -> checkCache(q, context))          // Context-aware cache check
+            .switchIfEmpty(
+                Mono.defer(() -> {
+                    // Try context-aware doHandle first, fallback to standard
+                    Mono<R> result;
+                    if (context != null) {
+                        try {
+                            result = this.doHandle(q, context);
+                        } catch (UnsupportedOperationException e) {
+                            result = this.doHandle(q);
+                        }
+                    } else {
+                        result = this.doHandle(q);
+                    }
+                    return result.flatMap(r -> cacheResult(q, r, context));  // Context-aware caching
+                })
+            )
+            .doOnSuccess(result -> onSuccess(query, result, duration, context))
+            .doOnError(error -> onError(query, error, duration, context));
+    }
+
+    // The ONLY method you need to implement (standard)
     protected abstract Mono<R> doHandle(Q query);
+
+    // Optional context-aware implementation
+    protected Mono<R> doHandle(Q query, ExecutionContext context) {
+        // Default implementation ignores context and delegates to standard doHandle
+        return doHandle(query);
+    }
+
+    // Context-aware caching hooks
+    protected Mono<R> checkCache(Q query, ExecutionContext context) {
+        return checkCache(query);
+    }
+    protected Mono<R> checkCache(Q query) {
+        return Mono.empty(); // Default: no caching
+    }
+
+    protected Mono<R> cacheResult(Q query, R result, ExecutionContext context) {
+        return cacheResult(query, result);
+    }
+    protected Mono<R> cacheResult(Q query, R result) {
+        return Mono.just(result); // Default: no caching
+    }
+
+    // Context-aware lifecycle hooks
+    protected void onSuccess(Q query, R result, Duration duration, ExecutionContext context) {
+        onSuccess(query, result, duration);
+    }
+    protected void onSuccess(Q query, R result, Duration duration) { }
+
+    protected void onError(Q query, Throwable error, Duration duration, ExecutionContext context) {
+        onError(query, error, duration);
+    }
+    protected void onError(Q query, Throwable error, Duration duration) { }
 }
 ```
 
@@ -784,7 +1376,9 @@ public @interface QueryHandlerComponent {
 }
 ```
 
-#### Real Query Handler Example
+#### Real Query Handler Examples with ExecutionContext
+
+**Standard Query Handler (Optional Context)**
 ```java
 @QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
 public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
@@ -793,15 +1387,57 @@ public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuer
 
     @Override
     protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
-        // ONLY business logic - caching, validation, metrics handled automatically!
+        // Standard implementation without context
         return accountService.getAccountBalance(query.getAccountId())
             .map(this::mapToAccountBalance);
     }
 
+    @Override
+    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query, ExecutionContext context) {
+        // Enhanced implementation with context
+        String tenantId = context.getTenantId();
+        boolean enhancedView = context.getFeatureFlag("enhanced-view", false);
+
+        return accountService.getTenantAccountBalance(query.getAccountId(), tenantId, enhancedView)
+            .map(balance -> enhancedView ? mapToEnhancedBalance(balance) : mapToAccountBalance(balance));
+    }
+
     // No caching setup needed - handled by annotation
-    // No cache key generation needed - automatic from query
+    // No cache key generation needed - automatic from query + context
     // No metrics setup needed - handled by annotation
     // No validation setup needed - handled by framework
+}
+```
+
+**Context-Aware Query Handler (Required Context)**
+```java
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
+public class GetTenantAccountBalanceHandler extends ContextAwareQueryHandler<GetAccountBalanceQuery, AccountBalance> {
+
+    private final ServiceClient accountService;
+
+    @Override
+    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query, ExecutionContext context) {
+        // Context is always provided and validated
+        String tenantId = context.getTenantId();
+        String userId = context.getUserId();
+
+        if (tenantId == null) {
+            return Mono.error(new IllegalArgumentException("Tenant ID is required"));
+        }
+
+        return accountService.getTenantAccountBalance(query.getAccountId(), tenantId)
+            .flatMap(balance -> validateUserAccess(balance, userId))
+            .map(this::mapToAccountBalance);
+    }
+
+    private Mono<AccountBalance> validateUserAccess(AccountBalance balance, String userId) {
+        // Tenant-specific access validation
+        return accountService.validateUserAccess(balance.getAccountId(), userId)
+            .filter(hasAccess -> hasAccess)
+            .switchIfEmpty(Mono.error(new AccessDeniedException("User does not have access to this account")))
+            .thenReturn(balance);
+    }
 }
 ```
 
@@ -1059,9 +1695,11 @@ public class BadCommand implements Command<String> {
 }
 ```
 
-### Handler Design Patterns
+### Handler Design Patterns with ExecutionContext
+
+#### Flexible Handler Pattern (Recommended)
 ```java
-// ✅ GOOD - Single responsibility, clear dependencies
+// ✅ EXCELLENT - Supports both standard and context-aware processing
 @CommandHandlerComponent(timeout = 30000, retries = 3)
 public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, AccountResult> {
 
@@ -1070,16 +1708,79 @@ public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, A
 
     @Override
     protected Mono<AccountResult> doHandle(CreateAccountCommand command) {
+        // Standard implementation for backward compatibility
         return accountService.createAccount(command)
             .flatMap(account -> publishAccountCreatedEvent(account)
+                .thenReturn(AccountResult.from(account)));
+    }
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        // Enhanced implementation with context
+        String tenantId = context.getTenantId();
+        String userId = context.getUserId();
+        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
+
+        return accountService.createTenantAccount(command, tenantId, premiumFeatures)
+            .flatMap(account -> publishEnhancedAccountCreatedEvent(account, userId, context)
                 .thenReturn(AccountResult.from(account)));
     }
 
     private Mono<Void> publishAccountCreatedEvent(Account account) {
         return eventPublisher.publish(AccountCreatedEvent.from(account));
     }
-}
 
+    private Mono<Void> publishEnhancedAccountCreatedEvent(Account account, String userId, ExecutionContext context) {
+        AccountCreatedEvent event = AccountCreatedEvent.builder()
+            .account(account)
+            .createdBy(userId)
+            .tenantId(context.getTenantId())
+            .source(context.getSource())
+            .build();
+        return eventPublisher.publish(event);
+    }
+}
+```
+
+#### Context-Aware Handler Pattern (For Context-Required Operations)
+```java
+// ✅ GOOD - Enforces context requirement for multi-tenant operations
+@CommandHandlerComponent(timeout = 30000, retries = 3)
+public class CreateTenantAccountHandler extends ContextAwareCommandHandler<CreateAccountCommand, AccountResult> {
+
+    private final TenantAccountService tenantAccountService;
+    private final DomainEventPublisher eventPublisher;
+
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        // Context is guaranteed to be present
+        String tenantId = context.getTenantId();
+        String userId = context.getUserId();
+
+        if (tenantId == null) {
+            return Mono.error(new IllegalArgumentException("Tenant ID is required for tenant account creation"));
+        }
+
+        return tenantAccountService.createAccountForTenant(command, tenantId, userId)
+            .flatMap(account -> publishTenantAccountCreatedEvent(account, context)
+                .thenReturn(AccountResult.from(account)));
+    }
+
+    private Mono<Void> publishTenantAccountCreatedEvent(Account account, ExecutionContext context) {
+        TenantAccountCreatedEvent event = TenantAccountCreatedEvent.builder()
+            .account(account)
+            .tenantId(context.getTenantId())
+            .createdBy(context.getUserId())
+            .organizationId(context.getOrganizationId())
+            .source(context.getSource())
+            .build();
+        return eventPublisher.publish(event);
+    }
+}
+```
+
+#### Anti-Patterns to Avoid
+```java
 // ❌ BAD - Multiple responsibilities, complex logic
 public class BadHandler extends CommandHandler<SomeCommand, String> {
     @Override
@@ -1089,6 +1790,17 @@ public class BadHandler extends CommandHandler<SomeCommand, String> {
         // No clear separation of concerns
     }
 }
+
+// ❌ BAD - Ignoring ExecutionContext when it should be used
+@CommandHandlerComponent
+public class IgnoresContextHandler extends CommandHandler<CreateAccountCommand, AccountResult> {
+    @Override
+    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+        // Ignores valuable context information
+        return doHandle(command); // Just delegates to standard method
+    }
+}
+```
 ```
 
 ### Error Handling Patterns
