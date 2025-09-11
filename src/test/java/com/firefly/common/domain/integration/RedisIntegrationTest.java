@@ -28,11 +28,11 @@ import lombok.NoArgsConstructor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -50,14 +50,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration test for Redis cache using Testcontainers.
  */
 @SpringBootTest(
-    classes = RedisIntegrationTest.TestApplication.class,
+    classes = RedisIntegrationTest.TestConfiguration.class,
     properties = {
         "management.metrics.enable.jvm=false",
         "management.metrics.enable.system=false",
         "management.metrics.enable.process=false",
         "management.metrics.enable.http=false",
         "management.metrics.enable.logback=false",
-        "management.metrics.enable.tomcat=false"
+        "management.metrics.enable.tomcat=false",
+        "firefly.cqrs.enabled=true",
+        "firefly.cqrs.query.cache.type=REDIS",
+        "firefly.cqrs.query.cache.redis.enabled=true"
     }
 )
 @Testcontainers
@@ -79,11 +82,13 @@ class RedisIntegrationTest {
         registry.add("firefly.cqrs.query.cache.redis.key-prefix", () -> "test:");
     }
 
-    @SpringBootApplication
-    static class TestApplication {
-        public static void main(String[] args) {
-            SpringApplication.run(TestApplication.class, args);
-        }
+    @Configuration
+    @Import({
+        com.firefly.common.domain.config.RedisCacheAutoConfiguration.class,
+        com.firefly.common.domain.config.CqrsAutoConfiguration.class,
+        com.firefly.common.domain.config.CqrsActuatorAutoConfiguration.class
+    })
+    static class TestConfiguration {
 
         @Bean
         public CorrelationContext correlationContext() {

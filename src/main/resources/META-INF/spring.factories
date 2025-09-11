@@ -1,4 +1,0 @@
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-com.firefly.common.domain.config.JsonLoggingAutoConfiguration,\
-com.firefly.common.domain.config.DomainEventsAutoConfiguration,\
-com.firefly.common.domain.config.DomainEventsActuatorAutoConfiguration

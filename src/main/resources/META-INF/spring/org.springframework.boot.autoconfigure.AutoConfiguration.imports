@@ -5,3 +5,5 @@ com.firefly.common.domain.config.DomainEventsActuatorAutoConfiguration
 com.firefly.common.domain.config.CqrsAutoConfiguration
 com.firefly.common.domain.config.RedisCacheAutoConfiguration
 com.firefly.common.domain.config.ServiceClientAutoConfiguration
+org.springframework.boot.autoconfigure.EnableAutoConfiguration
+com.firefly.common.domain.config.CqrsActuatorAutoConfiguration
