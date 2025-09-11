@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.cqrs.command;
 
+import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import reactor.core.publisher.Mono;
 
 /**
@@ -73,6 +74,40 @@ public interface CommandBus {
      * @throws IllegalStateException if no handler is registered for the command type
      */
     <R> Mono<R> send(Command<R> command);
+
+    /**
+     * Sends a command for processing with additional execution context.
+     *
+     * <p>This method allows passing additional context values that are not part of the command
+     * itself but are needed for processing. The execution context can include:
+     * <ul>
+     *   <li>User authentication and authorization information</li>
+     *   <li>Tenant or organization context for multi-tenant applications</li>
+     *   <li>Feature flags and configuration</li>
+     *   <li>Request-specific metadata</li>
+     * </ul>
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * ExecutionContext context = ExecutionContext.builder()
+     *     .withUserId("user-123")
+     *     .withTenantId("tenant-456")
+     *     .withFeatureFlag("new-feature", true)
+     *     .build();
+     *
+     * commandBus.send(createAccountCommand, context)
+     *     .subscribe(result -> log.info("Account created: {}", result));
+     * }</pre>
+     *
+     * @param command the command to process, must not be null
+     * @param context the execution context with additional values
+     * @param <R> the result type returned by the command handler
+     * @return a Mono containing the result of command processing
+     * @throws IllegalArgumentException if command is null
+     * @throws ValidationException if command validation fails
+     * @throws IllegalStateException if no handler is found for the command type
+     */
+    <R> Mono<R> send(Command<R> command, ExecutionContext context);
 
     /**
      * Registers a command handler with the bus.

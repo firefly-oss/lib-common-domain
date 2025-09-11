@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.cqrs.query;
 
+import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import com.firefly.common.domain.util.GenericTypeResolver;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -130,6 +131,52 @@ public abstract class QueryHandler<Q extends Query<R>, R> {
     }
 
     /**
+     * Handles the given query asynchronously with execution context.
+     *
+     * <p>This method provides the same complete query processing pipeline as the standard
+     * handle method, but also passes the execution context to the doHandle method for
+     * handlers that need additional context values.
+     *
+     * <p>The execution context can contain:
+     * <ul>
+     *   <li>User authentication and authorization information</li>
+     *   <li>Tenant or organization context for multi-tenant applications</li>
+     *   <li>Feature flags and configuration</li>
+     *   <li>Request-specific metadata</li>
+     * </ul>
+     *
+     * @param query the query to handle, guaranteed to be non-null and validated
+     * @param context the execution context with additional values
+     * @return a Mono containing the result of query processing
+     */
+    public final Mono<R> handle(Q query, ExecutionContext context) {
+        Instant startTime = Instant.now();
+        String queryId = query.getQueryId();
+        String queryTypeName = queryType.getSimpleName();
+
+        return Mono.fromCallable(() -> {
+                log.debug("Starting query processing with context: {} [{}]", queryTypeName, queryId);
+                return query;
+            })
+            .flatMap(this::preProcess)
+            .flatMap(q -> doHandle(q, context))
+            .flatMap(result -> postProcess(query, result))
+            .doOnSuccess(result -> {
+                Duration duration = Duration.between(startTime, Instant.now());
+                log.debug("Query processed successfully with context: {} [{}] in {}ms",
+                    queryTypeName, queryId, duration.toMillis());
+                onSuccess(query, result, duration);
+            })
+            .doOnError(error -> {
+                Duration duration = Duration.between(startTime, Instant.now());
+                log.error("Query processing failed with context: {} [{}] in {}ms - {}",
+                    queryTypeName, queryId, duration.toMillis(), error.getMessage());
+                onError(query, error, duration);
+            })
+            .onErrorMap(this::mapError);
+    }
+
+    /**
      * Implement this method with your business logic only.
      *
      * <p><strong>What you get for free:</strong>
@@ -153,6 +200,40 @@ public abstract class QueryHandler<Q extends Query<R>, R> {
      * @return a Mono containing the business result
      */
     protected abstract Mono<R> doHandle(Q query);
+
+    /**
+     * Implement this method when you need access to execution context.
+     *
+     * <p>This method is called when the query is processed with an ExecutionContext.
+     * The default implementation simply calls the standard doHandle method, ignoring
+     * the context. Override this method if you need access to context values like:
+     * <ul>
+     *   <li>User ID and authentication information</li>
+     *   <li>Tenant or organization context</li>
+     *   <li>Feature flags and configuration</li>
+     *   <li>Request-specific metadata</li>
+     * </ul>
+     *
+     * <p><strong>Example implementation:</strong>
+     * <pre>{@code
+     * @Override
+     * protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query, ExecutionContext context) {
+     *     String userId = context.getUserId();
+     *     String tenantId = context.getTenantId();
+     *     boolean enhancedView = context.getFeatureFlag("enhanced-view", false);
+     *
+     *     return getAccountBalanceWithContext(query, userId, tenantId, enhancedView);
+     * }
+     * }</pre>
+     *
+     * @param query the validated query to process
+     * @param context the execution context with additional values
+     * @return a Mono containing the business result
+     */
+    protected Mono<R> doHandle(Q query, ExecutionContext context) {
+        // Default implementation ignores context and calls standard doHandle
+        return doHandle(query);
+    }
 
     /**
      * Pre-processing hook called before query handling.

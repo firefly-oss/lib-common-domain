@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.cqrs.command;
 
+import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -165,6 +166,75 @@ public class DefaultCommandBus implements CommandBus {
                                 } else {
                                     metricsService.recordCommandFailure(command, error, processingTime);
                                     log.error("CQRS Command Processing Failed - Type: {}, ID: {}, Duration: {}ms, Error: {}",
+                                        commandType, command.getCommandId(), processingTime.toMillis(),
+                                        error.getClass().getSimpleName(), error);
+                                }
+                            })
+                            .doFinally(signalType -> correlationContext.clear());
+                });
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R> Mono<R> send(Command<R> command, ExecutionContext context) {
+        Instant startTime = Instant.now();
+        String commandType = command.getClass().getSimpleName();
+
+        log.info("CQRS Command Processing Started with Context - Type: {}, ID: {}, CorrelationId: {}, Context: {}",
+            commandType, command.getCommandId(), command.getCorrelationId(), context);
+
+        // Step 1: Find handler
+        return Mono.fromCallable(() -> {
+                    CommandHandler<Command<R>, R> handler = (CommandHandler<Command<R>, R>)
+                        handlerRegistry.findHandler((Class<Command<R>>) command.getClass())
+                            .orElseThrow(() -> CommandHandlerNotFoundException.forCommand(
+                                command,
+                                handlerRegistry.getRegisteredCommandTypes().stream()
+                                    .map(Class::getSimpleName)
+                                    .toList()
+                            ));
+
+                    log.debug("CQRS Command Handler Found - Type: {}, Handler: {}",
+                        commandType, handler.getClass().getSimpleName());
+                    return handler;
+                })
+                .flatMap(handler -> {
+                    // Step 2: Set correlation context
+                    if (command.getCorrelationId() != null) {
+                        correlationContext.setCorrelationId(command.getCorrelationId());
+                    }
+
+                    // Step 3: Validate command
+                    return validationService.validateCommand(command)
+                            .then(Mono.defer(() -> {
+                                // Step 4: Execute handler with context
+                                try {
+                                    return handler.handle(command, context);
+                                } catch (Exception e) {
+                                    return Mono.error(CommandProcessingException.forCommandFailure(
+                                        command, handler, Duration.between(startTime, Instant.now()), e
+                                    ));
+                                }
+                            }))
+                            // Step 5: Record metrics and handle completion
+                            .doOnSuccess(result -> {
+                                Duration processingTime = Duration.between(startTime, Instant.now());
+                                log.info("CQRS Command Processing Completed with Context - Type: {}, ID: {}, Duration: {}ms",
+                                    commandType, command.getCommandId(), processingTime.toMillis());
+
+                                metricsService.recordCommandSuccess(command, processingTime);
+                            })
+                            .doOnError(error -> {
+                                Duration processingTime = Duration.between(startTime, Instant.now());
+
+                                // Handle validation failures specifically
+                                if (error instanceof com.firefly.common.domain.validation.ValidationException) {
+                                    metricsService.recordValidationFailure(command, "Combined");
+                                    log.warn("CQRS Command Validation Failed with Context - Type: {}, ID: {}, Duration: {}ms",
+                                        commandType, command.getCommandId(), processingTime.toMillis());
+                                } else {
+                                    metricsService.recordCommandFailure(command, error, processingTime);
+                                    log.error("CQRS Command Processing Failed with Context - Type: {}, ID: {}, Duration: {}ms, Error: {}",
                                         commandType, command.getCommandId(), processingTime.toMillis(),
                                         error.getClass().getSimpleName(), error);
                                 }

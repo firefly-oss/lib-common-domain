@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.cqrs.command;
 
+import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import com.firefly.common.domain.util.GenericTypeResolver;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -138,6 +139,52 @@ public abstract class CommandHandler<C extends Command<R>, R> {
     }
 
     /**
+     * Handles the given command asynchronously with execution context.
+     *
+     * <p>This method provides the same complete command processing pipeline as the standard
+     * handle method, but also passes the execution context to the doHandle method for
+     * handlers that need additional context values.
+     *
+     * <p>The execution context can contain:
+     * <ul>
+     *   <li>User authentication and authorization information</li>
+     *   <li>Tenant or organization context for multi-tenant applications</li>
+     *   <li>Feature flags and configuration</li>
+     *   <li>Request-specific metadata</li>
+     * </ul>
+     *
+     * @param command the command to handle, guaranteed to be non-null and validated
+     * @param context the execution context with additional values
+     * @return a Mono containing the result of command processing
+     */
+    public final Mono<R> handle(C command, ExecutionContext context) {
+        Instant startTime = Instant.now();
+        String commandId = command.getCommandId();
+        String commandTypeName = commandType.getSimpleName();
+
+        return Mono.fromCallable(() -> {
+                log.debug("Starting command processing with context: {} [{}]", commandTypeName, commandId);
+                return command;
+            })
+            .flatMap(this::preProcess)
+            .flatMap(cmd -> doHandle(cmd, context))
+            .flatMap(result -> postProcess(command, result))
+            .doOnSuccess(result -> {
+                Duration duration = Duration.between(startTime, Instant.now());
+                log.info("Command processed successfully with context: {} [{}] in {}ms",
+                    commandTypeName, commandId, duration.toMillis());
+                onSuccess(command, result, duration);
+            })
+            .doOnError(error -> {
+                Duration duration = Duration.between(startTime, Instant.now());
+                log.error("Command processing failed with context: {} [{}] in {}ms - {}",
+                    commandTypeName, commandId, duration.toMillis(), error.getMessage());
+                onError(command, error, duration);
+            })
+            .onErrorMap(this::mapError);
+    }
+
+    /**
      * Implement this method with your business logic only.
      *
      * <p><strong>What you get for free:</strong>
@@ -161,6 +208,40 @@ public abstract class CommandHandler<C extends Command<R>, R> {
      * @return a Mono containing the business result
      */
     protected abstract Mono<R> doHandle(C command);
+
+    /**
+     * Implement this method when you need access to execution context.
+     *
+     * <p>This method is called when the command is processed with an ExecutionContext.
+     * The default implementation simply calls the standard doHandle method, ignoring
+     * the context. Override this method if you need access to context values like:
+     * <ul>
+     *   <li>User ID and authentication information</li>
+     *   <li>Tenant or organization context</li>
+     *   <li>Feature flags and configuration</li>
+     *   <li>Request-specific metadata</li>
+     * </ul>
+     *
+     * <p><strong>Example implementation:</strong>
+     * <pre>{@code
+     * @Override
+     * protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
+     *     String userId = context.getUserId();
+     *     String tenantId = context.getTenantId();
+     *     boolean newFeatureEnabled = context.getFeatureFlag("new-feature", false);
+     *
+     *     return createAccountWithContext(command, userId, tenantId, newFeatureEnabled);
+     * }
+     * }</pre>
+     *
+     * @param command the validated command to process
+     * @param context the execution context with additional values
+     * @return a Mono containing the business result
+     */
+    protected Mono<R> doHandle(C command, ExecutionContext context) {
+        // Default implementation ignores context and calls standard doHandle
+        return doHandle(command);
+    }
 
     /**
      * Pre-processing hook called before command handling.

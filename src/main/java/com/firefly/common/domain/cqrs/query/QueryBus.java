@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.cqrs.query;
 
+import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import reactor.core.publisher.Mono;
 
 /**
@@ -28,12 +29,43 @@ public interface QueryBus {
     /**
      * Executes a query and returns the result.
      * Results may be cached based on query and handler configuration.
-     * 
+     *
      * @param query the query to execute
      * @param <R> the result type
      * @return a Mono containing the result of query execution
      */
     <R> Mono<R> query(Query<R> query);
+
+    /**
+     * Executes a query with additional execution context.
+     *
+     * <p>This method allows passing additional context values that are not part of the query
+     * itself but are needed for processing. The execution context can include:
+     * <ul>
+     *   <li>User authentication and authorization information</li>
+     *   <li>Tenant or organization context for multi-tenant applications</li>
+     *   <li>Feature flags and configuration</li>
+     *   <li>Request-specific metadata</li>
+     * </ul>
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * ExecutionContext context = ExecutionContext.builder()
+     *     .withUserId("user-123")
+     *     .withTenantId("tenant-456")
+     *     .withFeatureFlag("enhanced-view", true)
+     *     .build();
+     *
+     * queryBus.query(getAccountBalanceQuery, context)
+     *     .subscribe(balance -> log.info("Balance retrieved: {}", balance));
+     * }</pre>
+     *
+     * @param query the query to execute
+     * @param context the execution context with additional values
+     * @param <R> the result type
+     * @return a Mono containing the result of query execution
+     */
+    <R> Mono<R> query(Query<R> query, ExecutionContext context);
 
     /**
      * Registers a query handler with the bus.
