@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Test class for ExecutionContext functionality.
@@ -130,11 +131,14 @@ class ExecutionContextTest {
             .withFeatureFlag("flag", true)
             .build();
 
-        // When - try to modify returned collections
-        context.getProperties().clear(); // Should not affect the context
-        context.getFeatureFlags().clear(); // Should not affect the context
+        // When & Then - try to modify returned collections should throw exception
+        assertThatThrownBy(() -> context.getProperties().clear())
+            .isInstanceOf(UnsupportedOperationException.class);
 
-        // Then - context should remain unchanged
+        assertThatThrownBy(() -> context.getFeatureFlags().clear())
+            .isInstanceOf(UnsupportedOperationException.class);
+
+        // And - context should remain unchanged
         assertThat(context.getProperty("test")).isEqualTo(Optional.of("value"));
         assertThat(context.getFeatureFlag("flag", false)).isTrue();
         assertThat(context.hasProperties()).isTrue();
