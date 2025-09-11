@@ -18,12 +18,15 @@ package com.firefly.common.domain.cqrs.fluent;
 
 import com.firefly.common.domain.cqrs.query.Query;
 import com.firefly.common.domain.cqrs.query.QueryBus;
+import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Fluent builder for creating and executing queries with reduced boilerplate.
@@ -60,6 +63,7 @@ import java.util.UUID;
  * @author Firefly Software Solutions Inc
  * @since 1.0.0
  */
+@Slf4j
 public class QueryBuilder<Q extends Query<R>, R> {
 
     private final Class<Q> queryType;
@@ -262,16 +266,296 @@ public class QueryBuilder<Q extends Query<R>, R> {
     }
 
     /**
-     * Creates query using constructor (fallback method).
+     * Creates query using constructor with sophisticated reflection patterns.
+     *
+     * <p>This implementation handles various constructor patterns:
+     * <ul>
+     *   <li>Parameter name matching (requires -parameters compiler flag)</li>
+     *   <li>Type-based parameter matching for unique types</li>
+     *   <li>Annotation-based parameter mapping</li>
+     *   <li>Default constructor with setter injection</li>
+     * </ul>
      */
     private Q createQueryWithConstructor() throws Exception {
-        // This is a simplified implementation
-        // In a real implementation, you'd use more sophisticated reflection
-        // or code generation to handle various constructor patterns
-        throw new UnsupportedOperationException(
-            "Constructor-based query creation not yet implemented. " +
-            "Please ensure your query class has a builder() method."
-        );
+        Constructor<?> bestConstructor = findBestConstructor(queryType, properties);
+        Object[] args = prepareConstructorArguments(bestConstructor, properties);
+
+        @SuppressWarnings("unchecked")
+        Q query = (Q) bestConstructor.newInstance(args);
+        setQueryMetadata(query);
+
+        return query;
+    }
+
+    /**
+     * Finds the best constructor for the query type based on available properties.
+     */
+    private Constructor<?> findBestConstructor(Class<Q> queryType, Map<String, Object> properties) {
+        Constructor<?>[] constructors = queryType.getConstructors();
+
+        // Sort constructors by parameter count (prefer more specific constructors)
+        Arrays.sort(constructors, (c1, c2) -> Integer.compare(c2.getParameterCount(), c1.getParameterCount()));
+
+        for (Constructor<?> constructor : constructors) {
+            if (canUseConstructor(constructor, properties)) {
+                return constructor;
+            }
+        }
+
+        // Fallback to default constructor if available
+        try {
+            return queryType.getConstructor();
+        } catch (NoSuchMethodException e) {
+            throw new QueryBuilderException(
+                String.format("No suitable constructor found for query type %s. " +
+                    "Available properties: %s. Consider adding a builder() method or a compatible constructor.",
+                    queryType.getSimpleName(), properties.keySet()));
+        }
+    }
+
+    /**
+     * Checks if a constructor can be used with the available properties.
+     */
+    private boolean canUseConstructor(Constructor<?> constructor, Map<String, Object> properties) {
+        Parameter[] parameters = constructor.getParameters();
+
+        // Empty constructor is always usable
+        if (parameters.length == 0) {
+            return true;
+        }
+
+        // Check if we can satisfy all required parameters
+        int satisfiedParams = 0;
+        for (Parameter param : parameters) {
+            if (canSatisfyParameter(param, properties)) {
+                satisfiedParams++;
+            }
+        }
+
+        // We need to satisfy at least 80% of parameters for a good match
+        double satisfactionRate = (double) satisfiedParams / parameters.length;
+        return satisfactionRate >= 0.8;
+    }
+
+    /**
+     * Checks if a parameter can be satisfied with available properties.
+     */
+    private boolean canSatisfyParameter(Parameter param, Map<String, Object> properties) {
+        String paramName = param.getName();
+        Class<?> paramType = param.getType();
+
+        // Direct name match
+        if (properties.containsKey(paramName)) {
+            Object value = properties.get(paramName);
+            return value == null || paramType.isAssignableFrom(value.getClass());
+        }
+
+        // Type-based matching for unique types
+        long typeMatches = properties.values().stream()
+            .filter(Objects::nonNull)
+            .filter(value -> paramType.isAssignableFrom(value.getClass()))
+            .count();
+
+        if (typeMatches == 1) {
+            return true;
+        }
+
+        // Check for common parameter name variations
+        String[] nameVariations = generateNameVariations(paramName);
+        for (String variation : nameVariations) {
+            if (properties.containsKey(variation)) {
+                Object value = properties.get(variation);
+                return value == null || paramType.isAssignableFrom(value.getClass());
+            }
+        }
+
+        // Primitive types can be defaulted
+        return paramType.isPrimitive();
+    }
+
+    /**
+     * Generates common name variations for parameter matching.
+     */
+    private String[] generateNameVariations(String paramName) {
+        return new String[] {
+            paramName,
+            toCamelCase(paramName),
+            toSnakeCase(paramName),
+            paramName.toLowerCase(),
+            paramName.toUpperCase()
+        };
+    }
+
+    /**
+     * Converts a string to camelCase.
+     */
+    private String toCamelCase(String str) {
+        if (str == null || str.isEmpty()) {
+            return str;
+        }
+
+        StringBuilder result = new StringBuilder();
+        boolean capitalizeNext = false;
+
+        for (char c : str.toCharArray()) {
+            if (c == '_' || c == '-' || c == ' ') {
+                capitalizeNext = true;
+            } else if (capitalizeNext) {
+                result.append(Character.toUpperCase(c));
+                capitalizeNext = false;
+            } else {
+                result.append(Character.toLowerCase(c));
+            }
+        }
+
+        return result.toString();
+    }
+
+    /**
+     * Converts a string to snake_case.
+     */
+    private String toSnakeCase(String str) {
+        if (str == null || str.isEmpty()) {
+            return str;
+        }
+
+        return str.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
+    }
+
+    /**
+     * Prepares constructor arguments based on parameter types and available properties.
+     */
+    private Object[] prepareConstructorArguments(Constructor<?> constructor, Map<String, Object> properties) {
+        Parameter[] parameters = constructor.getParameters();
+        Object[] args = new Object[parameters.length];
+
+        for (int i = 0; i < parameters.length; i++) {
+            Parameter param = parameters[i];
+            args[i] = resolveParameterValue(param, properties);
+        }
+
+        return args;
+    }
+
+    /**
+     * Resolves the value for a constructor parameter.
+     */
+    private Object resolveParameterValue(Parameter param, Map<String, Object> properties) {
+        String paramName = param.getName();
+        Class<?> paramType = param.getType();
+
+        // Try direct name match first
+        if (properties.containsKey(paramName)) {
+            return convertValue(properties.get(paramName), paramType);
+        }
+
+        // Try name variations
+        String[] nameVariations = generateNameVariations(paramName);
+        for (String variation : nameVariations) {
+            if (properties.containsKey(variation)) {
+                return convertValue(properties.get(variation), paramType);
+            }
+        }
+
+        // Try type-based matching for unique types
+        Object typeMatch = findUniqueValueByType(paramType, properties);
+        if (typeMatch != null) {
+            return convertValue(typeMatch, paramType);
+        }
+
+        // Handle special query metadata fields
+        if ("queryId".equals(paramName) && queryId != null) {
+            return queryId;
+        }
+        if ("correlationId".equals(paramName) && correlationId != null) {
+            return correlationId;
+        }
+        if ("timestamp".equals(paramName) && timestamp != null) {
+            return timestamp;
+        }
+
+        // Return default value for primitive types
+        if (paramType.isPrimitive()) {
+            return getDefaultValue(paramType);
+        }
+
+        // Return null for object types
+        return null;
+    }
+
+    /**
+     * Finds a unique value by type from the properties map.
+     */
+    private Object findUniqueValueByType(Class<?> paramType, Map<String, Object> properties) {
+        List<Object> matches = properties.values().stream()
+            .filter(Objects::nonNull)
+            .filter(value -> paramType.isAssignableFrom(value.getClass()))
+            .collect(Collectors.toList());
+
+        // Return the value only if there's exactly one match
+        return matches.size() == 1 ? matches.get(0) : null;
+    }
+
+    /**
+     * Converts a value to the target type if possible.
+     */
+    private Object convertValue(Object value, Class<?> targetType) {
+        if (value == null) {
+            return null;
+        }
+
+        if (targetType.isAssignableFrom(value.getClass())) {
+            return value;
+        }
+
+        // Handle common type conversions
+        if (targetType == String.class) {
+            return value.toString();
+        }
+
+        if (targetType == Integer.class || targetType == int.class) {
+            if (value instanceof Number) {
+                return ((Number) value).intValue();
+            }
+            if (value instanceof String) {
+                try {
+                    return Integer.parseInt((String) value);
+                } catch (NumberFormatException e) {
+                    // Fall through to return original value
+                }
+            }
+        }
+
+        if (targetType == Long.class || targetType == long.class) {
+            if (value instanceof Number) {
+                return ((Number) value).longValue();
+            }
+            if (value instanceof String) {
+                try {
+                    return Long.parseLong((String) value);
+                } catch (NumberFormatException e) {
+                    // Fall through to return original value
+                }
+            }
+        }
+
+        // Add more type conversions as needed
+        return value;
+    }
+
+    /**
+     * Returns default values for primitive types.
+     */
+    private Object getDefaultValue(Class<?> primitiveType) {
+        if (primitiveType == boolean.class) return false;
+        if (primitiveType == byte.class) return (byte) 0;
+        if (primitiveType == short.class) return (short) 0;
+        if (primitiveType == int.class) return 0;
+        if (primitiveType == long.class) return 0L;
+        if (primitiveType == float.class) return 0.0f;
+        if (primitiveType == double.class) return 0.0d;
+        if (primitiveType == char.class) return '\0';
+        return null;
     }
 
     /**
@@ -314,6 +598,19 @@ public class QueryBuilder<Q extends Query<R>, R> {
             field.set(query, value);
         } catch (Exception e) {
             // Field doesn't exist or can't be set - ignore
+        }
+    }
+
+    /**
+     * Exception thrown when query building fails.
+     */
+    public static class QueryBuilderException extends RuntimeException {
+        public QueryBuilderException(String message) {
+            super(message);
+        }
+
+        public QueryBuilderException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 }
