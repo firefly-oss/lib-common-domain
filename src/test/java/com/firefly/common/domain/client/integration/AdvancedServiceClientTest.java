@@ -64,7 +64,13 @@ class AdvancedServiceClientTest {
         metricsCollector = new MetricsInterceptor.InMemoryMetricsCollector();
         
         resilienceManager = new AdvancedResilienceManager(
-            new AdvancedResilienceManager.SystemLoadSheddingStrategy(0.8, 0.9)
+            new AdvancedResilienceManager.SystemLoadSheddingStrategy(
+                0.8,    // maxCpuUsage
+                0.9,    // maxMemoryUsage
+                0.95,   // maxThreadPoolUtilization
+                10000,  // maxResponseTimeMs (10 seconds - very high for testing)
+                10000   // maxRequestsPerSecond (very high for testing)
+            )
         );
     }
 
@@ -124,6 +130,17 @@ class AdvancedServiceClientTest {
     @Test
     @DisplayName("Should apply bulkhead isolation for high-volume banking operations")
     void shouldApplyBulkheadIsolationForHighVolumeBankingOperations() {
+        // Given: Create a resilience manager without load shedding for this test
+        AdvancedResilienceManager testResilienceManager = new AdvancedResilienceManager(
+            new AdvancedResilienceManager.SystemLoadSheddingStrategy(
+                1.0,    // maxCpuUsage - 100% (disabled)
+                1.0,    // maxMemoryUsage - 100% (disabled)
+                1.0,    // maxThreadPoolUtilization - 100% (disabled)
+                Integer.MAX_VALUE,  // maxResponseTimeMs (disabled)
+                Integer.MAX_VALUE   // maxRequestsPerSecond (disabled)
+            )
+        );
+
         // Given: Resilience configuration for banking operations
         AdvancedResilienceManager.ResilienceConfig config = new AdvancedResilienceManager.ResilienceConfig(
             2, // Max 2 concurrent calls
@@ -154,15 +171,20 @@ class AdvancedServiceClientTest {
         });
 
         // Execute 5 operations concurrently (should be limited to 2 by bulkhead)
-        Mono<String> resilientOperation = resilienceManager.applyResilience("payment-service", operation, config);
-        
+        // Use test-specific resilience manager without load shedding
+        Mono<String> resilientOperation1 = testResilienceManager.applyResilience("bulkhead-test-service", operation, config);
+        Mono<String> resilientOperation2 = testResilienceManager.applyResilience("bulkhead-test-service", operation, config);
+        Mono<String> resilientOperation3 = testResilienceManager.applyResilience("bulkhead-test-service", operation, config);
+        Mono<String> resilientOperation4 = testResilienceManager.applyResilience("bulkhead-test-service", operation, config);
+        Mono<String> resilientOperation5 = testResilienceManager.applyResilience("bulkhead-test-service", operation, config);
+
         StepVerifier.create(
             Mono.when(
-                resilientOperation,
-                resilientOperation,
-                resilientOperation,
-                resilientOperation,
-                resilientOperation
+                resilientOperation1,
+                resilientOperation2,
+                resilientOperation3,
+                resilientOperation4,
+                resilientOperation5
             )
         )
         .expectComplete()

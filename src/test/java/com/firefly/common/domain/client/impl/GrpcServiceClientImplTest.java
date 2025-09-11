@@ -158,22 +158,57 @@ class GrpcServiceClientImplTest {
     }
 
     @Test
-    void testUnsupportedHttpOperations() {
-        // Verify that HTTP operations are not supported
-        StepVerifier.create(grpcClient.get("/test", String.class).execute())
-            .expectError(UnsupportedOperationException.class)
+    void testHttpToGrpcMethodMapping() {
+        // Create a fresh client to avoid circuit breaker interference
+        CircuitBreakerConfig config = CircuitBreakerConfig.builder()
+            .failureRateThreshold(50.0)
+            .minimumNumberOfCalls(10) // Higher threshold to avoid opening
+            .slidingWindowSize(20)
+            .waitDurationInOpenState(Duration.ofMillis(100))
+            .permittedNumberOfCallsInHalfOpenState(1)
+            .callTimeout(Duration.ofSeconds(1))
+            .build();
+        CircuitBreakerManager freshCircuitBreakerManager = new CircuitBreakerManager(config);
+
+        GrpcServiceClientImpl<Object> freshClient = new GrpcServiceClientImpl<>(
+            "fresh-test-service",
+            Object.class,
+            "localhost:9090",
+            Duration.ofSeconds(1),
+            mockChannel,
+            mockStub,
+            freshCircuitBreakerManager
+        );
+
+        // Verify that HTTP operations are mapped to gRPC method calls
+        // Since the test stub doesn't have the expected methods, we expect meaningful error messages
+
+        StepVerifier.create(freshClient.get("/test", String.class).execute())
+            .expectErrorMatches(throwable ->
+                throwable instanceof RuntimeException &&
+                throwable.getMessage().contains("No gRPC method found") &&
+                throwable.getMessage().contains("getTest"))
             .verify();
 
-        StepVerifier.create(grpcClient.post("/test", String.class).execute())
-            .expectError(UnsupportedOperationException.class)
+        StepVerifier.create(freshClient.post("/users", String.class).execute())
+            .expectErrorMatches(throwable ->
+                throwable instanceof RuntimeException &&
+                throwable.getMessage().contains("No gRPC method found") &&
+                throwable.getMessage().contains("createUsers"))
             .verify();
 
-        StepVerifier.create(grpcClient.put("/test", String.class).execute())
-            .expectError(UnsupportedOperationException.class)
+        StepVerifier.create(freshClient.put("/users/123", String.class).execute())
+            .expectErrorMatches(throwable ->
+                throwable instanceof RuntimeException &&
+                throwable.getMessage().contains("No gRPC method found") &&
+                throwable.getMessage().contains("updateUsers"))
             .verify();
 
-        StepVerifier.create(grpcClient.delete("/test", String.class).execute())
-            .expectError(UnsupportedOperationException.class)
+        StepVerifier.create(freshClient.delete("/users/123", String.class).execute())
+            .expectErrorMatches(throwable ->
+                throwable instanceof RuntimeException &&
+                throwable.getMessage().contains("No gRPC method found") &&
+                throwable.getMessage().contains("deleteUsers"))
             .verify();
     }
 

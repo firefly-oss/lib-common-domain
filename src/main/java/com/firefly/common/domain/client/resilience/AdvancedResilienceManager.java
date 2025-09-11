@@ -22,11 +22,16 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
+import java.lang.management.*;
 import java.time.Duration;
+import java.util.concurrent.ForkJoinPool;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Advanced resilience manager providing bulkhead isolation, rate limiting, and adaptive patterns.
@@ -283,24 +288,315 @@ public class AdvancedResilienceManager {
     }
 
     /**
-     * Simple load shedding strategy based on system load.
+     * Intelligent load shedding strategy based on comprehensive system monitoring.
+     *
+     * <p>This implementation monitors multiple system metrics and applies intelligent
+     * load shedding decisions based on:
+     * <ul>
+     *   <li>CPU usage with moving average</li>
+     *   <li>Memory usage (heap and non-heap)</li>
+     *   <li>Thread pool utilization</li>
+     *   <li>GC pressure indicators</li>
+     *   <li>Service-specific request rates</li>
+     *   <li>Response time degradation</li>
+     * </ul>
      */
     public static class SystemLoadSheddingStrategy implements LoadSheddingStrategy {
         private final double maxCpuUsage;
         private final double maxMemoryUsage;
+        private final double maxThreadPoolUtilization;
+        private final long maxResponseTimeMs;
+        private final int maxRequestsPerSecond;
 
-        public SystemLoadSheddingStrategy(double maxCpuUsage, double maxMemoryUsage) {
+        // System monitoring components
+        private final OperatingSystemMXBean osBean;
+        private final MemoryMXBean memoryBean;
+        private final ThreadMXBean threadBean;
+        private final List<GarbageCollectorMXBean> gcBeans;
+
+        // Moving averages for CPU monitoring
+        private final AtomicReference<Double> cpuMovingAverage = new AtomicReference<>(0.0);
+        private final AtomicLong lastCpuCheck = new AtomicLong(System.currentTimeMillis());
+
+        // Service-specific metrics
+        private final Map<String, ServiceLoadMetrics> serviceMetrics = new ConcurrentHashMap<>();
+
+        public SystemLoadSheddingStrategy(double maxCpuUsage, double maxMemoryUsage,
+                                        double maxThreadPoolUtilization, long maxResponseTimeMs,
+                                        int maxRequestsPerSecond) {
             this.maxCpuUsage = maxCpuUsage;
             this.maxMemoryUsage = maxMemoryUsage;
+            this.maxThreadPoolUtilization = maxThreadPoolUtilization;
+            this.maxResponseTimeMs = maxResponseTimeMs;
+            this.maxRequestsPerSecond = maxRequestsPerSecond;
+
+            // Initialize system monitoring beans
+            this.osBean = ManagementFactory.getOperatingSystemMXBean();
+            this.memoryBean = ManagementFactory.getMemoryMXBean();
+            this.threadBean = ManagementFactory.getThreadMXBean();
+            this.gcBeans = ManagementFactory.getGarbageCollectorMXBeans();
+        }
+
+        public SystemLoadSheddingStrategy(double maxCpuUsage, double maxMemoryUsage) {
+            this(maxCpuUsage, maxMemoryUsage, 0.9, 5000, 1000);
         }
 
         @Override
         public boolean shouldShedLoad(String serviceName) {
-            // Simple implementation - in practice, you'd use proper system monitoring
-            Runtime runtime = Runtime.getRuntime();
-            double memoryUsage = (double) (runtime.totalMemory() - runtime.freeMemory()) / runtime.maxMemory();
-            
-            return memoryUsage > maxMemoryUsage;
+            try {
+                // Get or create service metrics
+                ServiceLoadMetrics metrics = serviceMetrics.computeIfAbsent(serviceName,
+                    k -> new ServiceLoadMetrics());
+
+                // Update current request metrics
+                metrics.recordRequest();
+
+                // Check multiple load indicators
+                boolean cpuOverloaded = isCpuOverloaded();
+                boolean memoryOverloaded = isMemoryOverloaded();
+                boolean threadPoolOverloaded = isThreadPoolOverloaded();
+                boolean gcPressureHigh = isGcPressureHigh();
+                boolean serviceOverloaded = isServiceOverloaded(metrics);
+
+                // Apply intelligent decision logic
+                boolean shouldShed = cpuOverloaded || memoryOverloaded || threadPoolOverloaded ||
+                                   gcPressureHigh || serviceOverloaded;
+
+                if (shouldShed) {
+                    log.warn("Load shedding activated for service '{}' - CPU: {}, Memory: {}, ThreadPool: {}, GC: {}, Service: {}",
+                        serviceName, cpuOverloaded, memoryOverloaded, threadPoolOverloaded,
+                        gcPressureHigh, serviceOverloaded);
+                }
+
+                return shouldShed;
+
+            } catch (Exception e) {
+                log.warn("Error in load shedding calculation for service '{}': {}", serviceName, e.getMessage());
+                // Fail safe - don't shed load if we can't determine system state
+                return false;
+            }
+        }
+
+        /**
+         * Checks if CPU usage is above threshold using moving average.
+         */
+        private boolean isCpuOverloaded() {
+            try {
+                double currentCpu = -1;
+
+                // Try to get CPU load from platform-specific MXBean
+                if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
+                    com.sun.management.OperatingSystemMXBean sunOsBean =
+                        (com.sun.management.OperatingSystemMXBean) osBean;
+                    currentCpu = sunOsBean.getProcessCpuLoad();
+                    if (currentCpu < 0) {
+                        // Process CPU load not available, use system CPU load
+                        currentCpu = sunOsBean.getSystemCpuLoad();
+                    }
+                }
+
+                // Fallback: estimate CPU usage from available processors and thread activity
+                if (currentCpu < 0) {
+                    int availableProcessors = Runtime.getRuntime().availableProcessors();
+                    int activeThreads = threadBean.getThreadCount();
+                    // Rough estimation: if we have more threads than 2x processors, assume high CPU
+                    currentCpu = Math.min(1.0, (double) activeThreads / (availableProcessors * 2));
+                }
+
+                if (currentCpu >= 0) {
+                    // Update moving average (exponential smoothing)
+                    double alpha = 0.3; // Smoothing factor
+                    double previousAverage = cpuMovingAverage.get();
+                    double newAverage = alpha * currentCpu + (1 - alpha) * previousAverage;
+                    cpuMovingAverage.set(newAverage);
+
+                    return newAverage > maxCpuUsage;
+                }
+
+                return false;
+            } catch (Exception e) {
+                log.debug("Error checking CPU load: {}", e.getMessage());
+                return false;
+            }
+        }
+
+        /**
+         * Checks if memory usage is above threshold.
+         */
+        private boolean isMemoryOverloaded() {
+            try {
+                MemoryUsage heapUsage = memoryBean.getHeapMemoryUsage();
+                MemoryUsage nonHeapUsage = memoryBean.getNonHeapMemoryUsage();
+
+                double heapUtilization = (double) heapUsage.getUsed() / heapUsage.getMax();
+                double nonHeapUtilization = (double) nonHeapUsage.getUsed() / nonHeapUsage.getMax();
+
+                return heapUtilization > maxMemoryUsage || nonHeapUtilization > 0.95;
+            } catch (Exception e) {
+                log.debug("Error checking memory usage: {}", e.getMessage());
+                return false;
+            }
+        }
+
+        /**
+         * Checks if thread pools are overloaded.
+         */
+        private boolean isThreadPoolOverloaded() {
+            try {
+                // Check common ForkJoinPool utilization
+                ForkJoinPool commonPool = ForkJoinPool.commonPool();
+                if (commonPool != null) {
+                    int activeThreads = commonPool.getActiveThreadCount();
+                    int parallelism = commonPool.getParallelism();
+                    double utilization = (double) activeThreads / parallelism;
+
+                    if (utilization > maxThreadPoolUtilization) {
+                        return true;
+                    }
+                }
+
+                // Check total thread count vs available processors
+                int totalThreads = threadBean.getThreadCount();
+                int availableProcessors = Runtime.getRuntime().availableProcessors();
+                double threadRatio = (double) totalThreads / (availableProcessors * 10); // Allow 10x threads per core
+
+                return threadRatio > 1.0;
+            } catch (Exception e) {
+                log.debug("Error checking thread pool utilization: {}", e.getMessage());
+                return false;
+            }
+        }
+
+        /**
+         * Checks if GC pressure is high.
+         */
+        private boolean isGcPressureHigh() {
+            try {
+                long totalGcTime = 0;
+                long totalCollections = 0;
+
+                for (GarbageCollectorMXBean gcBean : gcBeans) {
+                    totalGcTime += gcBean.getCollectionTime();
+                    totalCollections += gcBean.getCollectionCount();
+                }
+
+                // If GC is taking more than 10% of total time, consider it high pressure
+                long uptime = ManagementFactory.getRuntimeMXBean().getUptime();
+                double gcTimeRatio = (double) totalGcTime / uptime;
+
+                return gcTimeRatio > 0.1 || totalCollections > 1000;
+            } catch (Exception e) {
+                log.debug("Error checking GC pressure: {}", e.getMessage());
+                return false;
+            }
+        }
+
+        /**
+         * Checks if specific service is overloaded.
+         */
+        private boolean isServiceOverloaded(ServiceLoadMetrics metrics) {
+            try {
+                // Check request rate
+                double currentRequestRate = metrics.getCurrentRequestRate();
+                if (currentRequestRate > maxRequestsPerSecond) {
+                    return true;
+                }
+
+                // Check average response time
+                double avgResponseTime = metrics.getAverageResponseTime();
+                if (avgResponseTime > maxResponseTimeMs) {
+                    return true;
+                }
+
+                // Check error rate
+                double errorRate = metrics.getErrorRate();
+                if (errorRate > 0.5) { // 50% error rate threshold
+                    return true;
+                }
+
+                return false;
+            } catch (Exception e) {
+                log.debug("Error checking service load metrics: {}", e.getMessage());
+                return false;
+            }
+        }
+
+        /**
+         * Records response time for a service.
+         */
+        public void recordResponseTime(String serviceName, long responseTimeMs, boolean success) {
+            ServiceLoadMetrics metrics = serviceMetrics.computeIfAbsent(serviceName,
+                k -> new ServiceLoadMetrics());
+            metrics.recordResponse(responseTimeMs, success);
+        }
+
+        /**
+         * Gets current load metrics for a service.
+         */
+        public ServiceLoadMetrics getServiceMetrics(String serviceName) {
+            return serviceMetrics.get(serviceName);
+        }
+    }
+
+    /**
+     * Service-specific load metrics for intelligent load shedding.
+     */
+    public static class ServiceLoadMetrics {
+        private final AtomicLong requestCount = new AtomicLong(0);
+        private final AtomicLong errorCount = new AtomicLong(0);
+        private final AtomicLong totalResponseTime = new AtomicLong(0);
+        private final AtomicLong responseCount = new AtomicLong(0);
+        private final AtomicLong lastRequestTime = new AtomicLong(System.currentTimeMillis());
+        private final AtomicLong windowStartTime = new AtomicLong(System.currentTimeMillis());
+
+        private static final long WINDOW_SIZE_MS = 60000; // 1 minute window
+
+        public void recordRequest() {
+            requestCount.incrementAndGet();
+            lastRequestTime.set(System.currentTimeMillis());
+        }
+
+        public void recordResponse(long responseTimeMs, boolean success) {
+            responseCount.incrementAndGet();
+            totalResponseTime.addAndGet(responseTimeMs);
+
+            if (!success) {
+                errorCount.incrementAndGet();
+            }
+        }
+
+        public double getCurrentRequestRate() {
+            long now = System.currentTimeMillis();
+            long windowStart = windowStartTime.get();
+            long windowDuration = now - windowStart;
+
+            if (windowDuration >= WINDOW_SIZE_MS) {
+                // Reset window
+                windowStartTime.set(now);
+                long currentRequests = requestCount.getAndSet(0);
+                return (double) currentRequests / (windowDuration / 1000.0); // requests per second
+            }
+
+            // Prevent division by very small numbers that would produce unrealistic rates
+            // Use minimum 1 second window to get meaningful rate calculations
+            double effectiveWindowSeconds = Math.max(windowDuration / 1000.0, 1.0);
+            return (double) requestCount.get() / effectiveWindowSeconds;
+        }
+
+        public double getAverageResponseTime() {
+            long responses = responseCount.get();
+            if (responses == 0) {
+                return 0.0;
+            }
+            return (double) totalResponseTime.get() / responses;
+        }
+
+        public double getErrorRate() {
+            long responses = responseCount.get();
+            if (responses == 0) {
+                return 0.0;
+            }
+            return (double) errorCount.get() / responses;
         }
     }
 
