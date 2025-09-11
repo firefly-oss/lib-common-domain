@@ -23,11 +23,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics,prometheus,cqrs
   endpoint:
     health:
       show-details: always
       show-components: always
+    cqrs:
+      enabled: true
   health:
     # Domain Events health indicators (automatically configured)
     domainEventsApplicationEvent:
@@ -39,6 +41,9 @@ management:
     domainEventsSqs:
       enabled: true
     domainEventsKinesis:
+      enabled: true
+    # CQRS health indicator (automatically configured)
+    cqrs:
       enabled: true
   metrics:
     export:
@@ -249,8 +254,9 @@ GET /actuator/health
 
 # Specific health indicators
 GET /actuator/health/threadPool
-GET /actuator/health/httpClient  
+GET /actuator/health/httpClient
 GET /actuator/health/cache
+GET /actuator/health/cqrs
 ```
 
 ### Metrics Endpoints
@@ -265,6 +271,106 @@ GET /actuator/metrics
 GET /actuator/metrics/jvm.memory.heap.used
 GET /actuator/metrics/http_client_requests_total
 GET /actuator/metrics/application.startup.duration.total
+
+# CQRS-specific metrics
+GET /actuator/metrics/firefly.cqrs.command.processed
+GET /actuator/metrics/firefly.cqrs.command.failed
+GET /actuator/metrics/firefly.cqrs.command.processing.time
+GET /actuator/metrics/firefly.cqrs.query.processed
+GET /actuator/metrics/firefly.cqrs.query.processing.time
+```
+
+### CQRS Metrics Endpoint
+
+Access comprehensive CQRS framework metrics:
+
+```bash
+# Complete CQRS metrics overview
+GET /actuator/cqrs
+
+# Command processing metrics
+GET /actuator/cqrs/commands
+
+# Query processing metrics
+GET /actuator/cqrs/queries
+
+# Handler registry information
+GET /actuator/cqrs/handlers
+
+# CQRS framework health status
+GET /actuator/cqrs/health
+```
+
+Example CQRS metrics response:
+
+```json
+{
+  "framework": {
+    "version": "2025-08",
+    "uptime": "PT2H30M15S",
+    "startup_time": "2025-09-11T09:15:00Z",
+    "metrics_enabled": true,
+    "command_metrics_enabled": true
+  },
+  "commands": {
+    "total_processed": 1250,
+    "total_failed": 15,
+    "total_validation_failed": 5,
+    "success_rate": 98.8,
+    "failure_rate": 1.2,
+    "avg_processing_time_ms": 45.2,
+    "max_processing_time_ms": 1250.0,
+    "by_type": {
+      "CreateAccountCommand": {
+        "processed": 450,
+        "failed": 2,
+        "avg_processing_time_ms": 35.8
+      },
+      "TransferFundsCommand": {
+        "processed": 800,
+        "failed": 13,
+        "avg_processing_time_ms": 52.1
+      }
+    }
+  },
+  "queries": {
+    "total_processed": 3420,
+    "avg_processing_time_ms": 12.8,
+    "max_processing_time_ms": 450.0,
+    "cache": {
+      "hits": 2890,
+      "misses": 530,
+      "hit_rate": 84.5
+    }
+  },
+  "handlers": {
+    "command_handlers": {
+      "count": 12,
+      "registered_types": [
+        "CreateAccountCommand",
+        "TransferFundsCommand",
+        "CloseAccountCommand"
+      ]
+    },
+    "query_handlers": {
+      "count": 8,
+      "registered_types": [
+        "GetAccountBalanceQuery",
+        "GetTransactionHistoryQuery"
+      ]
+    }
+  },
+  "health": {
+    "status": "HEALTHY",
+    "components": {
+      "command_bus": "UP",
+      "query_bus": "UP",
+      "command_handler_registry": "UP",
+      "meter_registry": "UP",
+      "command_metrics_service": "UP"
+    }
+  }
+}
 ```
 
 ## Integration with Monitoring Systems
