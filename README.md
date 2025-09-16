@@ -61,32 +61,148 @@ This library serves as the foundational architecture framework for the **Core-Do
 - **Jakarta Validation Integration**: Automatic validation using @NotBlank, @NotNull, @Min, @Max annotations - no manual validation code
 - **Built-in Features**: Automatic logging, **metrics by default**, error handling, correlation context, and performance monitoring
 - **Smart Caching**: Intelligent query result caching with configurable TTL, automatic cache key generation, and Redis support
-- **Builder Pattern Support**: Clean command/query creation using @Builder annotation with Lombok
+- **Advanced Features**: Batch processing, event sourcing support, multi-tenancy, performance monitoring, and testing utilities
+- **Context-Aware Processing**: ExecutionContext support for tenant-aware operations and feature flags
 - **Reactive Processing**: Built on Project Reactor for non-blocking, asynchronous operations
 - **Focus on Business Logic**: Just implement `doHandle()` - everything else is handled automatically
 
+#### 🏗️ **CQRS Architecture Components**
+
+**Core Processing Pipeline:**
+- **CommandBus** (`DefaultCommandBus`): Routes commands to handlers with validation, authorization, and metrics
+- **QueryBus** (`DefaultQueryBus`): Routes queries to handlers with caching, authorization, and performance tracking
+- **CommandHandlerRegistry**: Automatic discovery and registration of command handlers
+- **ValidationService**: Jakarta Bean Validation integration with custom validation support
+- **AuthorizationService**: Multi-layered authorization with lib-common-auth integration
+- **MetricsService**: Comprehensive metrics collection for commands and queries
+
+**Handler Lifecycle:**
+1. **Discovery**: Auto-discovery of handlers via `@CommandHandlerComponent`/`@QueryHandlerComponent`
+2. **Registration**: Type-safe registration with automatic generic type resolution
+3. **Validation**: Jakarta Bean Validation + custom validation rules
+4. **Authorization**: lib-common-auth + custom authorization logic
+5. **Execution**: Business logic in `doHandle()` method
+6. **Post-Processing**: Metrics collection, caching (queries), event publishing
+
 ### 🔐 Authorization System (Zero-Trust Banking)
-- **lib-common-auth Integration**: Seamless integration with existing authentication infrastructure
+- **lib-common-auth Integration**: Seamless integration with existing authentication infrastructure via `LibCommonAuthIntegration`
 - **Zero-Trust Architecture**: All operations denied by default with explicit authorization required
-- **Four Authorization Patterns**: Standard + Custom, Custom Override, Custom Only, Both Must Pass
-- **Configurable Security**: Environment-based configuration for different deployment scenarios
+- **Multi-Layer Authorization**: lib-common-auth + custom authorization with configurable combination patterns
+- **Authorization Patterns**: Standard + Custom, Custom Override, Custom Only, Both Must Pass
+- **Context-Aware Security**: ExecutionContext support for tenant-aware and user-specific authorization
 - **Banking-Grade Security**: Resource ownership validation, fraud detection, compliance checks
-- **Performance Optimized**: Optional caching, async processing, and timeout controls
+- **Performance Optimized**: Reactive authorization pipeline with async processing and detailed error reporting
+
+#### 🏗️ **Authorization Architecture**
+
+**Core Components:**
+- **AuthorizationService**: Central authorization orchestrator with multi-layer support
+- **LibCommonAuthIntegration**: Bridge to lib-common-auth system with annotation detection
+- **AuthorizationResult**: Comprehensive result object with detailed error information
+- **AuthorizationError**: Structured error reporting with resource, message, and error codes
+- **ExecutionContext**: Context-aware authorization with tenant, user, and feature flag support
+
+**Authorization Flow:**
+1. **lib-common-auth Check**: Automatic detection and processing of lib-common-auth annotations
+2. **Custom Authorization**: Command/query-specific authorization via `authorize()` method
+3. **Context Integration**: ExecutionContext-aware authorization for multi-tenant scenarios
+4. **Result Combination**: Intelligent combination of authorization results based on configuration
+5. **Error Aggregation**: Detailed error reporting with resource-specific failure information
+
+**Authorization Patterns:**
+```java
+// lib-common-auth + Custom (default)
+@CommandHandlerComponent
+public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
+    @Override
+    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+        // Both lib-common-auth annotations and custom authorize() method are checked
+        return processTransfer(command);
+    }
+}
+
+// Custom authorization with context
+public class GetAccountBalanceQuery implements Query<AccountBalance> {
+    @Override
+    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
+        String userId = context.getUserId();
+        String tenantId = context.getTenantId();
+
+        // Custom business logic for account ownership validation
+        return validateAccountOwnership(accountNumber, userId, tenantId);
+    }
+}
+```
 
 ### 🌐 ServiceClient Framework (Redesigned)
-- **Unified API**: Single interface for REST and gRPC clients
-- **Fluent Request Builder**: Intuitive method chaining for all operations
-- **Advanced Resilience**: Bulkhead isolation, rate limiting, adaptive timeouts
-- **Health Monitoring**: Automatic service health detection and recovery
-- **Interceptor Framework**: Request/response interceptors for cross-cutting concerns
-- **Production Ready**: Banking-optimized with comprehensive monitoring
+- **Unified API**: Single `ServiceClient` interface for REST, gRPC, and SDK clients
+- **Fluent Request Builder**: Intuitive `RequestBuilder<R>` with method chaining for all operations
+- **Protocol Implementations**: `RestServiceClientImpl`, `GrpcServiceClientImpl` with protocol-specific optimizations
+- **Builder Pattern**: `RestClientBuilder`, `GrpcClientBuilder` for simplified client creation
+- **Advanced Resilience**: `CircuitBreakerManager`, retry templates, adaptive timeouts, and bulkhead isolation
+- **Health Monitoring**: Automatic service health detection, recovery, and health indicators
+- **Interceptor Framework**: Request/response interceptors for cross-cutting concerns (logging, metrics, security)
+- **Environment Configuration**: Development, testing, and production-optimized defaults
+- **Production Ready**: Banking-optimized with comprehensive monitoring and observability
+
+#### 🏗️ **ServiceClient Architecture**
+
+**Core Components:**
+- **ServiceClient Interface**: Unified API for all client types with fluent request builders
+- **RestServiceClientImpl**: WebClient-based implementation with reactive streams
+- **GrpcServiceClientImpl**: gRPC implementation with Protocol Buffer optimization
+- **RequestBuilder**: Fluent API for building requests with path params, query params, headers, and body
+- **CircuitBreakerManager**: Advanced circuit breaker with sliding window and health monitoring
+- **ServiceClientProperties**: Comprehensive configuration with environment-specific defaults
+
+**Client Creation Patterns:**
+```java
+// REST Client
+ServiceClient restClient = ServiceClient.rest("account-service")
+    .baseUrl("http://account-service:8080")
+    .timeout(Duration.ofSeconds(30))
+    .maxConnections(100)
+    .defaultHeader("Content-Type", "application/json")
+    .build();
+
+// gRPC Client
+ServiceClient grpcClient = ServiceClient.grpc("payment-service", PaymentServiceStub.class)
+    .address("payment-service:9090")
+    .timeout(Duration.ofSeconds(45))
+    .useTransportSecurity()
+    .stubFactory(channel -> PaymentServiceGrpc.newStub(channel))
+    .build();
+```
 
 ### 📡 Multi-Messaging Domain Events
-- **Adapter Pattern**: Support for Kafka, RabbitMQ, AWS SQS, Kinesis, and in-process events
-- **Auto-Detection**: Intelligent adapter selection based on available infrastructure
-- **Event Sourcing Ready**: Built-in support for event-driven architectures
-- **Correlation Tracking**: Distributed tracing across service boundaries
-- **Event Envelope**: Standardized event structure with headers and metadata
+- **Adapter Pattern**: Support for Kafka, RabbitMQ, AWS SQS, Kinesis, ApplicationEvent, and NOOP adapters
+- **Auto-Detection**: Intelligent adapter selection based on available infrastructure (priority: Kafka → RabbitMQ → Kinesis → SQS → ApplicationEvent)
+- **Event Sourcing Ready**: Built-in support for event-driven architectures with `DomainEventEnvelope`
+- **Correlation Tracking**: Distributed tracing across service boundaries with correlation context
+- **Event Envelope**: Standardized event structure with topic, type, key, payload, headers, and metadata
+- **Resilient Publishing**: Retry templates, circuit breakers, and error handling for reliable event delivery
+- **Inbound Processing**: Automatic event consumption and republishing as Spring ApplicationEvents
+
+#### 🏗️ **Domain Events Architecture**
+
+**Core Components:**
+- **DomainEventEnvelope**: Standardized event wrapper with topic, type, key, payload, headers, and metadata
+- **DomainEventPublisher**: Interface for publishing events with adapter-specific implementations
+- **Adapter Implementations**:
+  - `KafkaDomainEventPublisher`: Apache Kafka integration with producer configuration
+  - `RabbitMqDomainEventPublisher`: RabbitMQ integration with exchange/routing key support
+  - `SqsAsyncClientDomainEventPublisher`: AWS SQS integration with async client
+  - `KinesisDomainEventPublisher`: AWS Kinesis integration for streaming events
+  - `ApplicationEventDomainEventPublisher`: In-process Spring ApplicationEvent publishing
+  - `NoopDomainEventPublisher`: No-op implementation for testing/disabled scenarios
+
+**Event Processing Pipeline:**
+1. **Event Creation**: Build `DomainEventEnvelope` with business payload and metadata
+2. **Adapter Selection**: Auto-detection or explicit configuration of messaging adapter
+3. **Publishing**: Resilient publishing with retry logic and circuit breaker protection
+4. **Transport**: Message delivery via configured messaging infrastructure
+5. **Consumption**: Inbound subscribers convert messages back to `DomainSpringEvent`
+6. **Processing**: Spring ApplicationEvent listeners handle domain events
 
 ### 🔄 lib-transactional-engine Integration
 - **Manual Integration Pattern**: Flexible integration allowing developers to wire lib-transactional-engine with CQRS framework manually
@@ -95,12 +211,52 @@ This library serves as the foundational architecture framework for the **Core-Do
 - **Unified Event Handling**: Single event processing pipeline for both domain and step events
 - **Developer Control**: No native integration - developers maintain full control over saga orchestration patterns
 
+### 🛡️ Resilience Patterns
+- **Circuit Breaker**: `CircuitBreakerManager` with sliding window failure detection and automatic recovery
+- **Retry Logic**: Configurable retry templates with exponential backoff and jitter
+- **Timeout Management**: Adaptive timeouts with circuit breaker integration
+- **Bulkhead Isolation**: Resource isolation to prevent cascade failures
+- **Health Monitoring**: Continuous health checks with automatic service discovery
+
+#### 🏗️ **Resilience Architecture**
+- **CircuitBreakerManager**: Advanced circuit breaker with configurable failure thresholds
+- **SlidingWindow**: Time-based and count-based sliding window for failure rate calculation
+- **CircuitBreakerMetrics**: Comprehensive metrics for circuit breaker state and performance
+- **DomainEventsRetryConfig**: Specialized retry configuration for event publishing
+
+### 📊 Validation Framework
+- **Jakarta Bean Validation**: Automatic validation using standard annotations (@NotNull, @NotBlank, @Min, @Max)
+- **AutoValidationProcessor**: Seamless integration with CQRS command/query processing
+- **Custom Validation**: Support for custom validation rules and business logic validation
+- **Validation Results**: Structured validation error reporting with field-level details
+- **Performance Optimized**: Validation caching and lazy initialization for optimal performance
+
+#### 🏗️ **Validation Architecture**
+- **AutoValidationProcessor**: Central validation orchestrator with Jakarta Bean Validation integration
+- **ValidationResult**: Comprehensive validation result with detailed error information
+- **ValidationError**: Structured error reporting with field, message, and error code
+- **ValidationUtils**: Utility methods for common validation patterns
+
 ### 🔍 Enhanced Observability
 - **Metrics by Default**: Auto-configured MeterRegistry with CQRS command/query metrics (no manual setup required)
 - **Comprehensive Metrics**: JVM, HTTP client, thread pool, and application startup metrics
 - **Health Indicators**: Thread pool, cache, and external service health monitoring
 - **Distributed Tracing**: Correlation context propagation across all operations
 - **Step Event Monitoring**: Detailed saga execution tracking and performance metrics
+
+#### 🏗️ **Observability Architecture**
+- **CorrelationContext**: Distributed tracing context with automatic propagation
+- **CommandMetricsService**: Comprehensive metrics collection for command processing
+- **QueryMetricsService**: Performance metrics for query processing and caching
+- **ActuatorEndpoints**: Custom Spring Boot Actuator endpoints for CQRS and domain events
+- **HealthIndicators**: Service health monitoring with automatic failure detection
+
+### 📈 Spring Boot Actuator Extensions
+- **CQRS Endpoints**: Custom actuator endpoints for command/query handler monitoring
+- **Domain Events Endpoints**: Event publisher and subscriber health and metrics
+- **ServiceClient Endpoints**: Client health, circuit breaker status, and performance metrics
+- **Cache Endpoints**: Cache statistics, hit rates, and configuration details
+- **Authorization Endpoints**: Authorization service health and performance metrics
 
 ## 💡 Core Concepts
 
@@ -122,71 +278,87 @@ Understanding these fundamental patterns is essential for effectively using this
 - **Auditability**: All state changes are explicit commands with full traceability
 - **Scalability**: Read replicas can be optimized for specific query patterns
 
-**Enhanced Example with Zero Boilerplate:**
+**Real Implementation Example from Test Suite:**
 ```java
 import jakarta.validation.constraints.*;
 import lombok.Builder;
 import lombok.Data;
 import com.firefly.common.domain.cqrs.annotations.CommandHandlerComponent;
 
-// Command with Jakarta validation - no boilerplate!
+// Real command with Jakarta validation - no boilerplate!
 @Data
 @Builder
-public class TransferMoneyCommand implements Command<TransferResult> {
-    @NotBlank(message = "Source account is required")
-    private final String fromAccount;
+public class CreateAccountCommand implements Command<AccountCreatedResult> {
+    @NotBlank(message = "Customer ID is required")
+    private final String customerId;
 
-    @NotBlank(message = "Destination account is required")
-    private final String toAccount;
+    @NotBlank(message = "Account type is required")
+    private final String accountType;
 
     @NotNull
-    @Min(value = 1, message = "Amount must be greater than zero")
-    @Max(value = 1000000, message = "Amount cannot exceed $1,000,000")
-    private final BigDecimal amount;
-
-    @NotBlank(message = "Description is required")
-    private final String description;
-
-    private final String correlationId;
+    @Min(value = 0, message = "Initial balance cannot be negative")
+    private final BigDecimal initialBalance;
 
     // No validate() method needed - Jakarta validation handles annotations automatically!
-    // Framework automatically validates @NotBlank, @NotNull, @Min, @Max annotations
+    // Framework automatically validates @NotBlank, @NotNull, @Min annotations
 }
 
-// Zero-boilerplate command handler - THE ONLY WAY to create handlers!
+// Real command handler from test suite - THE ONLY WAY to create handlers!
 @CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
-public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
-
-    private final ServiceClient accountServiceClient;
-    private final DomainEventPublisher eventPublisher;
+public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, AccountCreatedResult> {
 
     @Override
-    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+    protected Mono<AccountCreatedResult> doHandle(CreateAccountCommand command) {
         // Only business logic - validation, logging, metrics handled automatically!
-        return executeTransfer(command)
-            .flatMap(this::publishTransferEvent);
+        String accountNumber = "ACC-" + System.currentTimeMillis();
+        AccountCreatedResult result = new AccountCreatedResult(
+            accountNumber,
+            command.getCustomerId(),
+            command.getAccountType(),
+            command.getInitialBalance(),
+            "ACTIVE"
+        );
+        return Mono.just(result);
     }
 
     // No getCommandType() needed - automatically detected from generics!
-    // Built-in logging, metrics, error handling, correlation context - all automatic!
+    // Built-in features: validation, logging, metrics, error handling
+}
 
-    private Mono<TransferResult> executeTransfer(TransferMoneyCommand command) {
-        return accountServiceClient.post("/transfers", TransferResult.class)
-            .withBody(command)
-            .execute();
+// Real query with caching from test suite
+@Data
+@Builder
+public class GetAccountBalanceQuery implements Query<AccountBalance> {
+    @NotBlank(message = "Account number is required")
+    private final String accountNumber;
+
+    @NotBlank(message = "Customer ID is required")
+    private final String customerId;
+
+    // No getCacheKey() method needed - automatic generation based on fields!
+}
+
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
+public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
+
+    @Override
+    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
+        // Only business logic - validation, caching, metrics handled automatically!
+        AccountBalance balance = new AccountBalance(
+            query.getAccountNumber(),
+            new BigDecimal("2500.00"),
+            new BigDecimal("2300.00"),
+            "USD",
+            LocalDateTime.now()
+        );
+        return Mono.just(balance);
     }
 
-    private Mono<TransferResult> publishTransferEvent(TransferResult result) {
-        DomainEventEnvelope event = DomainEventEnvelope.builder()
-            .topic("banking.transfers")
-            .type("transfer.completed")
-            .key(result.getTransferId())
-            .payload(result)
-            .timestamp(Instant.now())
-            .build();
-
-        return eventPublisher.publish(event).thenReturn(result);
-    }
+    // ✅ NO BOILERPLATE NEEDED:
+    // - No getQueryType() - automatically detected from generics!
+    // - No supportsCaching() - handled by @QueryHandlerComponent annotation
+    // - No getCacheTtlSeconds() - handled by @QueryHandlerComponent annotation
+    // - Built-in features: caching, logging, metrics, error handling
 }
 
 // Simple command execution using builder pattern
@@ -331,33 +503,85 @@ The following components are automatically configured when the library is on the
 
 ```yaml
 firefly:
-  # CQRS Framework
+  # CQRS Framework Configuration
   cqrs:
-    enabled: true
+    enabled: true                    # Enable CQRS framework (default: true)
     command:
-      timeout: 30s
-      metrics-enabled: true
+      timeout: 30s                  # Command timeout (default: 30s)
+      metrics-enabled: true         # Enable command metrics (default: true)
+      tracing-enabled: true         # Enable command tracing (default: true)
     query:
-      caching-enabled: true
-      cache-ttl: 15m
-      timeout: 15s
+      timeout: 15s                  # Query timeout (default: 15s)
+      caching-enabled: true         # Enable query caching (default: true)
+      cache-ttl: 15m               # Default cache TTL (default: 15m)
+      metrics-enabled: true         # Enable query metrics (default: true)
+      tracing-enabled: true         # Enable query tracing (default: true)
       cache:
-        type: LOCAL  # LOCAL (default) or REDIS
+        type: LOCAL                 # Cache type: LOCAL or REDIS (default: LOCAL)
         redis:
-          enabled: false  # Enable Redis cache (disabled by default)
+          enabled: false            # Enable Redis cache (default: false)
+          host: localhost           # Redis host (default: localhost)
+          port: 6379               # Redis port (default: 6379)
+          database: 0              # Redis database (default: 0)
+          timeout: 2s              # Connection timeout (default: 2s)
+          key-prefix: "firefly:cqrs:"  # Cache key prefix (default: "firefly:cqrs:")
+          statistics: true          # Enable cache statistics (default: true)
 
-  # Domain Events (auto-detects available messaging infrastructure)
+  # Domain Events Configuration
   events:
-    enabled: true
-    adapter: auto  # AUTO, KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT, NOOP
+    enabled: true                   # Enable domain events (default: true)
+    adapter: AUTO                   # Adapter: AUTO, KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT, NOOP
+    kafka:
+      bootstrap-servers: localhost:9092
+      topic: banking-events
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    rabbit:
+      exchange: banking-events
+      routing-key: "${type}"
+    sqs:
+      queue-name: banking-events-queue
+      region: us-east-1
+    kinesis:
+      stream-name: banking-events-stream
+      partition-key: "${key}"
+      region: us-east-1
+
+  # ServiceClient Framework Configuration
+  service-client:
+    enabled: true                   # Enable ServiceClient framework (default: true)
+    default-timeout: 30s           # Global default timeout (default: 30s)
+    environment: DEVELOPMENT       # Environment: DEVELOPMENT, TESTING, PRODUCTION
+    rest:
+      max-connections: 100         # Connection pool size (default: 100)
+      response-timeout: 30s        # Response timeout (default: 30s)
+      connect-timeout: 10s         # Connect timeout (default: 10s)
+      max-idle-time: 5m           # Max idle time (default: 5m)
+    grpc:
+      keep-alive-time: 5m         # Keep alive time (default: 5m)
+      keep-alive-timeout: 30s     # Keep alive timeout (default: 30s)
+      call-timeout: 30s           # Call timeout (default: 30s)
+    circuit-breaker:
+      failure-rate-threshold: 50   # Failure rate threshold % (default: 50)
+      slow-call-rate-threshold: 50 # Slow call rate threshold % (default: 50)
+      slow-call-duration-threshold: 60s  # Slow call duration (default: 60s)
+      sliding-window-size: 100     # Sliding window size (default: 100)
+    retry:
+      max-attempts: 3             # Max retry attempts (default: 3)
+      wait-duration: 500ms        # Wait duration between retries (default: 500ms)
 
   # lib-transactional-engine Integration
   stepevents:
-    enabled: true
+    enabled: true                   # Enable step events bridge (default: true)
 
-  # ServiceClient Framework
-  service-client:
-    enabled: true
+# Authorization Configuration
+  authorization:
+    enabled: true                   # Enable authorization (default: true)
+    lib-common-auth:
+      enabled: true                # Enable lib-common-auth integration (default: true)
+    cache:
+      enabled: false              # Enable authorization caching (default: false)
+      ttl: 5m                     # Cache TTL (default: 5m)
 
 # Domain topic for step events (optional, defaults to "domain-events")
 domain:
@@ -666,18 +890,11 @@ public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuer
             .execute();
     }
 
-    // No getQueryType() needed - automatically detected from generics!
-    // Built-in features: caching, logging, metrics, error handling
-
-    @Override
-    public boolean supportsCaching() {
-        return true; // Enable caching for this query
-    }
-
-    @Override
-    public Long getCacheTtlSeconds() {
-        return 300L; // Cache for 5 minutes
-    }
+    // ✅ NO BOILERPLATE NEEDED:
+    // - No getQueryType() - automatically detected from generics!
+    // - No supportsCaching() - handled by @QueryHandlerComponent annotation
+    // - No getCacheTtlSeconds() - handled by @QueryHandlerComponent annotation
+    // - Built-in features: caching, logging, metrics, error handling
 }
 
 // Simple query execution using builder pattern
@@ -1035,27 +1252,21 @@ public class MoneyTransferHandler extends CommandHandler<TransferMoneyCommand, T
 ### Account Balance Query with Caching
 
 ```java
-@Component
-public class GetAccountBalanceHandler implements QueryHandler<GetAccountBalanceQuery, AccountBalance> {
+@QueryHandlerComponent(cacheable = true, cacheTtl = 300)
+public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
 
     private final ServiceClient accountServiceClient;
 
     @Override
-    public Mono<AccountBalance> handle(GetAccountBalanceQuery query) {
+    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
         return accountServiceClient.get("/accounts/{id}/balance", AccountBalance.class)
             .withPathParam("id", query.getAccountNumber())
             .execute();
     }
 
-    @Override
-    public boolean supportsCaching() {
-        return true;
-    }
-
-    @Override
-    public Long getCacheTtlSeconds() {
-        return 300L; // 5 minutes
-    }
+    // ✅ NO BOILERPLATE NEEDED:
+    // - Caching enabled and TTL configured via annotation
+    // - No supportsCaching() or getCacheTtlSeconds() methods needed
 }
 ```
 
