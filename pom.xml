@@ -29,13 +29,6 @@
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
-        <!-- Authentication & Security -->
-        <dependency>
-            <groupId>com.firefly</groupId>
-            <artifactId>lib-common-auth</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
-        </dependency>
-
         <!-- Jakarta Validation -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -170,7 +163,12 @@
             <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
-
+        <!-- lib-common-auth for authentication and authorization -->
+        <dependency>
+            <groupId>com.firefly</groupId>
+            <artifactId>lib-common-auth</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
 
         <!-- All messaging dependencies included (Application Events work by default, others require additional setup) -->
         <dependency>

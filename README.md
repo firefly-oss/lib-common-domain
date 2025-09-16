@@ -17,6 +17,7 @@ A powerful Spring Boot library that enables domain-driven design (DDD) with reac
   - [Reactive Programming](#reactive-programming)
 - [📦 Quick Start](#-quick-start)
 - [🎯 CQRS Framework Usage](#-cqrs-framework-usage)
+- [🔐 Authorization System](#-authorization-system)
 - [🌐 ServiceClient Framework](#-serviceclient-framework)
 - [📡 Domain Events](#-domain-events)
 - [🔄 CQRS + Saga Integration](#-cqrs--saga-integration)
@@ -63,6 +64,14 @@ This library serves as the foundational architecture framework for the **Core-Do
 - **Builder Pattern Support**: Clean command/query creation using @Builder annotation with Lombok
 - **Reactive Processing**: Built on Project Reactor for non-blocking, asynchronous operations
 - **Focus on Business Logic**: Just implement `doHandle()` - everything else is handled automatically
+
+### 🔐 Authorization System (Zero-Trust Banking)
+- **lib-common-auth Integration**: Seamless integration with existing authentication infrastructure
+- **Zero-Trust Architecture**: All operations denied by default with explicit authorization required
+- **Four Authorization Patterns**: Standard + Custom, Custom Override, Custom Only, Both Must Pass
+- **Configurable Security**: Environment-based configuration for different deployment scenarios
+- **Banking-Grade Security**: Resource ownership validation, fraud detection, compliance checks
+- **Performance Optimized**: Optional caching, async processing, and timeout controls
 
 ### 🌐 ServiceClient Framework (Redesigned)
 - **Unified API**: Single interface for REST and gRPC clients
@@ -756,14 +765,219 @@ public class FlexibleAccountHandler extends CommandHandler<CreateAccountCommand,
 }
 ```
 
+## 🔐 Authorization System
+
+The Firefly Common Domain Library includes a comprehensive authorization system designed for zero-trust banking applications. It seamlessly integrates with lib-common-auth while providing flexible custom authorization capabilities.
+
+### Key Features
+
+- **🔗 Seamless Integration**: Automatic detection and integration with lib-common-auth
+- **🛡️ Zero-Trust Architecture**: All operations denied by default with explicit authorization required
+- **⚙️ Configurable Security**: Environment-based configuration for different deployment scenarios
+- **🏦 Banking-Grade Security**: Resource ownership validation, fraud detection, compliance checks
+- **🚀 Performance Optimized**: Optional caching, async processing, and timeout controls
+- **📊 Comprehensive Monitoring**: Detailed metrics and logging for audit and compliance
+
+### Quick Start
+
+Enable authorization in your application:
+
+```yaml
+firefly:
+  cqrs:
+    authorization:
+      enabled: true
+      lib-common-auth:
+        enabled: true
+      custom:
+        enabled: true
+```
+
+### Implementation Example
+
+```java
+@RequiresRole("CUSTOMER")
+@RequiresScope("accounts.transfer")
+@CustomAuthorization(description = "Transfer limits validation")
+public class TransferMoneyCommand implements Command<TransferResult> {
+
+    @Override
+    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
+        // Custom business logic validation
+        return validateTransferLimits(amount, context.getUserId());
+    }
+}
+```
+
+> 📖 **For complete documentation**, see [Authorization System Guide](docs/AUTHORIZATION.md) which covers:
+> - All four authorization patterns with examples
+> - Complete configuration reference
+> - Integration patterns with lib-common-auth
+> - Banking-specific use cases and best practices
+> - Monitoring and troubleshooting
+
+```yaml
+      # Performance settings
+      performance:
+        cache-enabled: false
+        cache-ttl-seconds: 300
+        async-enabled: false
+```
+
+### Environment Variables
+
+All configuration can be overridden using environment variables:
+
+```bash
+# Disable authorization completely
+FIREFLY_CQRS_AUTHORIZATION_ENABLED=false
+
+# Disable lib-common-auth integration
+FIREFLY_CQRS_AUTHORIZATION_LIB_COMMON_AUTH_ENABLED=false
+
+# Enable verbose logging
+FIREFLY_CQRS_AUTHORIZATION_LOGGING_LOG_SUCCESSFUL=true
+FIREFLY_CQRS_AUTHORIZATION_LOGGING_LEVEL=DEBUG
+```
+
+### Usage Examples
+
+#### Basic Command Authorization
+
+```java
+@CommandHandlerComponent
+public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
+
+    @Override
+    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
+        // Business logic here - authorization is handled automatically
+        return processTransfer(command);
+    }
+}
+
+// Command with custom authorization
+public class TransferMoneyCommand implements Command<TransferResult> {
+
+    @Override
+    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
+        String userId = context.getUserId();
+
+        // Verify account ownership
+        return accountService.verifyOwnership(sourceAccountId, userId)
+            .flatMap(ownsSource -> {
+                if (!ownsSource) {
+                    return Mono.just(AuthorizationResult.failure("sourceAccount",
+                        "Source account does not belong to user"));
+                }
+
+                // Check transfer limits
+                return transferLimitService.checkLimit(userId, amount)
+                    .map(withinLimit -> withinLimit ?
+                        AuthorizationResult.success() :
+                        AuthorizationResult.failure("amount", "Transfer exceeds daily limit"));
+            });
+    }
+}
+```
+
+#### Advanced Authorization with Annotations
+
+```java
+// Override lib-common-auth decisions
+@CustomAuthorization(overrideLibCommonAuth = true)
+public class EmergencyTransferCommand implements Command<TransferResult> {
+
+    @Override
+    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
+        // Emergency transfers bypass normal limits but require special approval
+        return emergencyApprovalService.checkApproval(context.getUserId())
+            .map(approved -> approved ?
+                AuthorizationResult.success() :
+                AuthorizationResult.failure("approval", "Emergency transfer not approved"));
+    }
+}
+
+// Require both lib-common-auth and custom authorization
+@CustomAuthorization(requiresBothToPass = true)
+public class HighValueTransferCommand implements Command<TransferResult> {
+
+    @Override
+    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
+        // Additional checks for high-value transfers
+        return fraudDetectionService.checkTransaction(this, context)
+            .map(safe -> safe ?
+                AuthorizationResult.success() :
+                AuthorizationResult.failure("fraud", "Transaction flagged as suspicious"));
+    }
+}
+```
+
+#### Profile-Based Configuration
+
+```yaml
+---
+# Development profile - verbose logging, no caching
+spring:
+  config:
+    activate:
+      on-profile: development
+
+firefly:
+  cqrs:
+    authorization:
+      logging:
+        log-successful: true
+        level: "DEBUG"
+      performance:
+        cache-enabled: false
+
+---
+# Production profile - optimized for performance
+spring:
+  config:
+    activate:
+      on-profile: production
+
+firefly:
+  cqrs:
+    authorization:
+      lib-common-auth:
+        fail-fast: true
+      custom:
+        allow-override: false
+        timeout-ms: 3000
+      logging:
+        log-successful: false
+        level: "WARN"
+      performance:
+        cache-enabled: true
+        cache-ttl-seconds: 600
+
+---
+# Testing profile - authorization disabled
+spring:
+  config:
+    activate:
+      on-profile: test
+
+firefly:
+  cqrs:
+    authorization:
+      enabled: false
+```
+
+
+
 ## 📚 Documentation
 
 | Document | Description |
 |----------|-------------|
 | [API Reference](docs/API_REFERENCE.md) | Complete API reference with method signatures |
 | [Architecture Guide](docs/ARCHITECTURE.md) | Architecture patterns and design principles |
+| [Authorization System](docs/AUTHORIZATION.md) | Comprehensive authorization system guide with configuration, patterns, and examples |
 | [Package Structure](docs/PACKAGE_STRUCTURE.md) | Package organization for library and microservices |
 | [Examples](docs/EXAMPLES.md) | Real working examples and best practices |
+| [Observability](docs/OBSERVABILITY.md) | Monitoring, metrics, and observability configuration |
 
 ## 🏦 Banking Domain Examples
 
@@ -1179,12 +1393,48 @@ This integration provides a powerful foundation for building complex, distribute
 - **Project Reactor** - Reactive programming foundation for non-blocking, asynchronous operations
 - **Resilience4j** - Circuit breakers, retry mechanisms, and fault tolerance patterns
 - **Micrometer** - Metrics collection and observability with Prometheus integration
+- **lib-common-auth** - Integrated authentication and authorization framework (included dependency)
 - **Spring Security** - Authentication, authorization, and security context propagation
 - **Multiple Messaging** - Kafka, RabbitMQ, AWS SQS/Kinesis support with auto-detection
 - **lib-transactional-engine** - Saga orchestration and distributed transaction management (manual integration)
 - **Jackson** - JSON serialization/deserialization with reactive streaming support
 - **Redis Cache** - Optional distributed caching support for CQRS queries (disabled by default, requires explicit enablement)
 - **Local Cache** - High-performance in-memory caching using ConcurrentMapCacheManager (default)
+
+## 📊 Metrics and Monitoring
+
+The library provides comprehensive metrics for production monitoring:
+
+### Authorization Metrics
+
+- `firefly.authorization.attempts` - Total authorization attempts
+- `firefly.authorization.successes` - Successful authorizations
+- `firefly.authorization.failures` - Failed authorizations
+- `firefly.authorization.duration` - Authorization timing
+- `firefly.authorization.cache.hits` - Cache hit rate
+- `firefly.authorization.active_requests` - Active authorization requests
+
+### CQRS Metrics
+
+- `firefly.cqrs.command.executions` - Command execution count
+- `firefly.cqrs.query.executions` - Query execution count
+- `firefly.cqrs.command.duration` - Command processing time
+- `firefly.cqrs.query.duration` - Query processing time
+- `firefly.cqrs.validation.failures` - Validation failure count
+
+### Configuration
+
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+```
 
 ## 📄 License
 
