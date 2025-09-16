@@ -1,5 +1,6 @@
 package com.firefly.common.domain.cqrs.query;
 
+import com.firefly.common.domain.config.TestAuthorizationProperties;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import com.firefly.common.domain.validation.AutoValidationProcessor;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +11,7 @@ import org.springframework.context.ApplicationContext;
 import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 import static org.mockito.Mockito.mock;
 
@@ -36,7 +38,9 @@ class QueryBusTest {
         AutoValidationProcessor validationProcessor = new AutoValidationProcessor(null);
         cacheManager = new ConcurrentMapCacheManager();
         
-        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor, cacheManager, null);
+        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor,
+                                      new com.firefly.common.domain.authorization.AuthorizationService(TestAuthorizationProperties.createDefault(), Optional.empty()),
+                                      cacheManager, null);
         
         // Register handlers manually for testing - using the external classes with @QueryHandlerComponent
         ((DefaultQueryBus) queryBus).registerHandler(new GetAccountBalanceHandler());

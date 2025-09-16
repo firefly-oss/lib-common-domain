@@ -1,5 +1,6 @@
 package com.firefly.common.domain.cqrs.command;
 
+import com.firefly.common.domain.config.TestAuthorizationProperties;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import com.firefly.common.domain.validation.AutoValidationProcessor;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -10,6 +11,7 @@ import org.springframework.context.ApplicationContext;
 import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -42,7 +44,9 @@ class CommandBusTest {
         CommandValidationService validationService = new CommandValidationService(validationProcessor);
         CommandMetricsService metricsService = new CommandMetricsService(meterRegistry);
 
-        commandBus = new DefaultCommandBus(handlerRegistry, validationService, metricsService, correlationContext);
+        commandBus = new DefaultCommandBus(handlerRegistry, validationService,
+                                           new com.firefly.common.domain.authorization.AuthorizationService(TestAuthorizationProperties.createDefault(), Optional.empty()),
+                                           metricsService, correlationContext);
 
         // Register handlers manually for testing - using the external classes with @CommandHandlerComponent
         ((DefaultCommandBus) commandBus).registerHandler(new CreateAccountHandler());

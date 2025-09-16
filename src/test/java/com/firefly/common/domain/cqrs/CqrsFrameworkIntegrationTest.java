@@ -1,5 +1,6 @@
 package com.firefly.common.domain.cqrs;
 
+import com.firefly.common.domain.config.TestAuthorizationProperties;
 import com.firefly.common.domain.cqrs.command.*;
 import com.firefly.common.domain.cqrs.query.*;
 import com.firefly.common.domain.tracing.CorrelationContext;
@@ -19,6 +20,7 @@ import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -57,8 +59,12 @@ class CqrsFrameworkIntegrationTest {
         CommandValidationService validationService = new CommandValidationService(validationProcessor);
         CommandMetricsService metricsService = new CommandMetricsService(meterRegistry);
 
-        commandBus = new DefaultCommandBus(handlerRegistry, validationService, metricsService, correlationContext);
-        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor, cacheManager, meterRegistry);
+        commandBus = new DefaultCommandBus(handlerRegistry, validationService,
+                                           new com.firefly.common.domain.authorization.AuthorizationService(TestAuthorizationProperties.createDefault(), Optional.empty()),
+                                           metricsService, correlationContext);
+        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor,
+                                      new com.firefly.common.domain.authorization.AuthorizationService(TestAuthorizationProperties.createDefault(), Optional.empty()),
+                                      cacheManager, meterRegistry);
         
         // Register handlers manually with explicit type specification
         ((DefaultCommandBus) commandBus).registerHandler(new TestCreateAccountHandler());

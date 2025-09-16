@@ -1,5 +1,6 @@
 package com.firefly.common.domain.cqrs.context;
 
+import com.firefly.common.domain.config.TestAuthorizationProperties;
 import com.firefly.common.domain.cqrs.command.CommandBus;
 import com.firefly.common.domain.cqrs.command.CommandHandler;
 import com.firefly.common.domain.cqrs.command.DefaultCommandBus;
@@ -19,6 +20,7 @@ import reactor.test.StepVerifier;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -43,7 +45,9 @@ class ExecutionContextIntegrationTest {
         commandBus = mock(DefaultCommandBus.class);
         
         // Set up query bus
-        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor, cacheManager, meterRegistry);
+        queryBus = new DefaultQueryBus(applicationContext, correlationContext, validationProcessor,
+                                      new com.firefly.common.domain.authorization.AuthorizationService(TestAuthorizationProperties.createDefault(), Optional.empty()),
+                                      cacheManager, meterRegistry);
         
         // Register handlers manually for testing - use a simple QueryHandler instead of ContextAwareQueryHandler
         // to avoid generic type resolution issues in tests
