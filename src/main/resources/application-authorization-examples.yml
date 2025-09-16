@@ -1,0 +1,219 @@
+# Example configuration for Firefly CQRS Authorization System
+# This file demonstrates all available configuration options for the authorization system
+
+# ============================================================================
+# COMPLETE AUTHORIZATION CONFIGURATION EXAMPLE
+# ============================================================================
+
+firefly:
+  cqrs:
+    authorization:
+      # Global authorization toggle - when false, all authorization is skipped
+      enabled: true
+      
+      # lib-common-auth integration configuration
+      lib-common-auth:
+        # Enable/disable lib-common-auth integration
+        enabled: true
+        
+        # Whether to fail fast when lib-common-auth authorization fails
+        # true: custom authorization is not executed if lib-common-auth fails
+        # false: custom authorization can override lib-common-auth failures
+        fail-fast: false
+        
+        # Whether to require both lib-common-auth and custom authorization to pass by default
+        # This can be overridden per command/query using @CustomAuthorization annotation
+        require-both: false
+      
+      # Custom authorization logic configuration
+      custom:
+        # Enable/disable custom authorization logic
+        enabled: true
+        
+        # Whether custom authorization can override lib-common-auth decisions by default
+        # This can be overridden per command/query using @CustomAuthorization annotation
+        allow-override: true
+        
+        # Default timeout for custom authorization logic in milliseconds
+        timeout-ms: 5000
+      
+      # Authorization logging configuration
+      logging:
+        # Enable/disable authorization logging
+        enabled: true
+        
+        # Whether to log successful authorization attempts
+        # When false, only failures and errors are logged
+        log-successful: false
+        
+        # Whether to log authorization performance metrics
+        log-performance: true
+        
+        # Log level for authorization events (DEBUG, INFO, WARN, ERROR)
+        level: "INFO"
+      
+      # Performance and caching configuration
+      performance:
+        # Enable/disable authorization result caching
+        cache-enabled: false
+        
+        # Cache TTL for authorization results in seconds
+        cache-ttl-seconds: 300  # 5 minutes
+        
+        # Maximum number of authorization results to cache
+        cache-max-size: 1000
+        
+        # Enable async authorization for non-critical operations
+        async-enabled: false
+
+# ============================================================================
+# ENVIRONMENT-SPECIFIC CONFIGURATIONS
+# ============================================================================
+
+---
+# Development profile - more verbose logging, no caching
+spring:
+  config:
+    activate:
+      on-profile: development
+
+firefly:
+  cqrs:
+    authorization:
+      enabled: true
+      lib-common-auth:
+        enabled: true
+        fail-fast: false
+      custom:
+        enabled: true
+        allow-override: true
+        timeout-ms: 10000  # Longer timeout for debugging
+      logging:
+        enabled: true
+        log-successful: true  # Log everything in dev
+        log-performance: true
+        level: "DEBUG"
+      performance:
+        cache-enabled: false  # No caching in dev
+        async-enabled: false
+
+---
+# Production profile - optimized for performance
+spring:
+  config:
+    activate:
+      on-profile: production
+
+firefly:
+  cqrs:
+    authorization:
+      enabled: true
+      lib-common-auth:
+        enabled: true
+        fail-fast: true  # Fail fast in production
+      custom:
+        enabled: true
+        allow-override: false  # Stricter in production
+        timeout-ms: 3000  # Shorter timeout
+      logging:
+        enabled: true
+        log-successful: false  # Only log failures
+        log-performance: false
+        level: "WARN"
+      performance:
+        cache-enabled: true  # Enable caching
+        cache-ttl-seconds: 600  # 10 minutes
+        cache-max-size: 5000
+        async-enabled: true
+
+---
+# Testing profile - authorization disabled for unit tests
+spring:
+  config:
+    activate:
+      on-profile: test
+
+firefly:
+  cqrs:
+    authorization:
+      enabled: false  # Disable authorization in tests
+
+---
+# Security-focused profile - maximum security
+spring:
+  config:
+    activate:
+      on-profile: security
+
+firefly:
+  cqrs:
+    authorization:
+      enabled: true
+      lib-common-auth:
+        enabled: true
+        fail-fast: true
+        require-both: true  # Both must pass
+      custom:
+        enabled: true
+        allow-override: false  # No overrides allowed
+        timeout-ms: 2000  # Very short timeout
+      logging:
+        enabled: true
+        log-successful: true  # Log everything for audit
+        log-performance: true
+        level: "INFO"
+      performance:
+        cache-enabled: false  # No caching for security
+        async-enabled: false
+
+---
+# Custom-only profile - only custom authorization, no lib-common-auth
+spring:
+  config:
+    activate:
+      on-profile: custom-auth-only
+
+firefly:
+  cqrs:
+    authorization:
+      enabled: true
+      lib-common-auth:
+        enabled: false  # Disable lib-common-auth
+      custom:
+        enabled: true
+        timeout-ms: 5000
+      logging:
+        enabled: true
+        log-successful: false
+        log-performance: true
+        level: "INFO"
+      performance:
+        cache-enabled: true
+        cache-ttl-seconds: 300
+        cache-max-size: 1000
+
+---
+# lib-common-auth only profile - no custom authorization
+spring:
+  config:
+    activate:
+      on-profile: lib-auth-only
+
+firefly:
+  cqrs:
+    authorization:
+      enabled: true
+      lib-common-auth:
+        enabled: true
+        fail-fast: true
+      custom:
+        enabled: false  # Disable custom authorization
+      logging:
+        enabled: true
+        log-successful: false
+        log-performance: true
+        level: "INFO"
+      performance:
+        cache-enabled: true
+        cache-ttl-seconds: 300
+        cache-max-size: 1000
