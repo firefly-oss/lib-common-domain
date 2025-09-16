@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.cqrs.query;
 
+import com.firefly.common.domain.authorization.AuthorizationService;
 import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import com.firefly.common.domain.validation.AutoValidationProcessor;
@@ -25,6 +26,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -47,6 +50,7 @@ public class DefaultQueryBus implements QueryBus {
     private final ApplicationContext applicationContext;
     private final CorrelationContext correlationContext;
     private final AutoValidationProcessor autoValidationProcessor;
+    private final AuthorizationService authorizationService;
     private final CacheManager cacheManager;
     private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
 
@@ -58,11 +62,13 @@ public class DefaultQueryBus implements QueryBus {
     public DefaultQueryBus(ApplicationContext applicationContext,
                           CorrelationContext correlationContext,
                           AutoValidationProcessor autoValidationProcessor,
+                          AuthorizationService authorizationService,
                           @Autowired(required = false) CacheManager cacheManager,
                           @Autowired(required = false) io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.applicationContext = applicationContext;
         this.correlationContext = correlationContext;
         this.autoValidationProcessor = autoValidationProcessor;
+        this.authorizationService = authorizationService;
         this.cacheManager = cacheManager;
         this.meterRegistry = meterRegistry;
 
@@ -71,6 +77,22 @@ public class DefaultQueryBus implements QueryBus {
         }
 
         discoverHandlers();
+        log.info("DefaultQueryBus initialized");
+    }
+
+    @EventListener(ContextRefreshedEvent.class)
+    public void onContextRefreshed() {
+        int handlerCount = handlers.size();
+        if (handlerCount > 0) {
+            log.info("DefaultQueryBus ready with {} registered query handlers", handlerCount);
+            handlers.forEach((queryType, handler) -> {
+                log.info("Registered query handler: {} -> {}",
+                    queryType.getSimpleName(),
+                    handler.getClass().getSimpleName());
+            });
+        } else {
+            log.warn("DefaultQueryBus ready with no query handlers registered");
+        }
     }
 
     /**
@@ -161,6 +183,14 @@ public class DefaultQueryBus implements QueryBus {
                                     return Mono.error(new ValidationException(validationResult));
                                 }
 
+                                // Perform authorization (if authorization is enabled)
+                                if (authorizationService != null) {
+                                    return authorizationService.authorizeQuery(query);
+                                } else {
+                                    return Mono.empty(); // Skip authorization
+                                }
+                            })
+                            .then(Mono.defer(() -> {
                                 // Check cache if enabled
                                 if (query.isCacheable() && handler.supportsCaching()) {
                                     String cacheKey = query.getCacheKey();
@@ -183,13 +213,16 @@ public class DefaultQueryBus implements QueryBus {
                                                 query.getClass().getSimpleName(), query.getQueryId(),
                                                 error.getClass().getSimpleName(), error.getMessage(), error))
                                         .doFinally(signalType -> correlationContext.clear());
-                            });
+                            }));
                 })
                 .onErrorMap(throwable -> {
                     if (throwable instanceof QueryHandlerNotFoundException) {
                         return throwable;
                     }
                     if (throwable instanceof ValidationException) {
+                        return throwable;
+                    }
+                    if (throwable instanceof com.firefly.common.domain.authorization.AuthorizationException) {
                         return throwable;
                     }
                     return new QueryProcessingException("Failed to process query: " + query.getQueryId(), throwable);
@@ -230,7 +263,13 @@ public class DefaultQueryBus implements QueryBus {
                                             query.getClass().getSimpleName(), query.getQueryId(), validationResult.getSummary());
                                     return Mono.error(new ValidationException(validationResult));
                                 }
-                                return Mono.<Void>empty();
+
+                                // Authorize query with context (if authorization is enabled)
+                                if (authorizationService != null) {
+                                    return authorizationService.authorizeQuery(query, context);
+                                } else {
+                                    return Mono.empty(); // Skip authorization
+                                }
                             })
                             .then(Mono.defer(() -> {
                                 // Check if caching is enabled and query is cacheable
@@ -289,6 +328,9 @@ public class DefaultQueryBus implements QueryBus {
                         return throwable;
                     }
                     if (throwable instanceof ValidationException) {
+                        return throwable;
+                    }
+                    if (throwable instanceof com.firefly.common.domain.authorization.AuthorizationException) {
                         return throwable;
                     }
                     return new QueryProcessingException("Failed to process query with context: " + query.getQueryId(), throwable);

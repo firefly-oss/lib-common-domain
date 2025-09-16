@@ -32,6 +32,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -86,6 +87,31 @@ public class CqrsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConfigurationProperties(prefix = "firefly.cqrs.authorization")
+    public AuthorizationProperties authorizationProperties() {
+        log.info("Configuring CQRS Authorization Properties (auto-configured)");
+        return new AuthorizationProperties();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+        name = "firefly.cqrs.authorization.enabled",
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    public com.firefly.common.domain.authorization.AuthorizationService authorizationService(
+            AuthorizationProperties authorizationProperties,
+            @Autowired(required = false) com.firefly.common.domain.authorization.AuthorizationMetrics authorizationMetrics) {
+        log.info("Configuring CQRS Authorization Service (auto-configured)");
+        return new com.firefly.common.domain.authorization.AuthorizationService(
+            authorizationProperties,
+            java.util.Optional.ofNullable(authorizationMetrics)
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public CommandMetricsService commandMetricsService(@Autowired(required = false) io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         log.info("Configuring CQRS Command Metrics Service (auto-configured)");
         return new CommandMetricsService(meterRegistry);
@@ -95,10 +121,15 @@ public class CqrsAutoConfiguration {
     @ConditionalOnMissingBean
     public CommandBus commandBus(CommandHandlerRegistry handlerRegistry,
                                CommandValidationService validationService,
+                               @Autowired(required = false) com.firefly.common.domain.authorization.AuthorizationService authorizationService,
                                CommandMetricsService metricsService,
                                CorrelationContext correlationContext) {
-        log.info("Configuring CQRS Command Bus with separated services (auto-configured)");
-        return new DefaultCommandBus(handlerRegistry, validationService, metricsService, correlationContext);
+        if (authorizationService != null) {
+            log.info("Configuring CQRS Command Bus with authorization enabled (auto-configured)");
+        } else {
+            log.info("Configuring CQRS Command Bus with authorization disabled (auto-configured)");
+        }
+        return new DefaultCommandBus(handlerRegistry, validationService, authorizationService, metricsService, correlationContext);
     }
 
     @Bean
@@ -106,10 +137,15 @@ public class CqrsAutoConfiguration {
     public QueryBus queryBus(ApplicationContext applicationContext,
                            CorrelationContext correlationContext,
                            AutoValidationProcessor autoValidationProcessor,
+                           @Autowired(required = false) com.firefly.common.domain.authorization.AuthorizationService authorizationService,
                            CacheManager cacheManager,
                            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
-        log.info("Configuring CQRS Query Bus with caching support, Jakarta validation and metrics (auto-configured)");
-        return new DefaultQueryBus(applicationContext, correlationContext, autoValidationProcessor, cacheManager, meterRegistry);
+        if (authorizationService != null) {
+            log.info("Configuring CQRS Query Bus with authorization enabled (auto-configured)");
+        } else {
+            log.info("Configuring CQRS Query Bus with authorization disabled (auto-configured)");
+        }
+        return new DefaultQueryBus(applicationContext, correlationContext, autoValidationProcessor, authorizationService, cacheManager, meterRegistry);
     }
 
     @Bean

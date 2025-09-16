@@ -16,10 +16,13 @@
 
 package com.firefly.common.domain.cqrs.command;
 
+import com.firefly.common.domain.authorization.AuthorizationService;
 import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import com.firefly.common.domain.tracing.CorrelationContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -35,6 +38,7 @@ import java.util.List;
  * <ul>
  *   <li><strong>CommandHandlerRegistry:</strong> Handler discovery and management</li>
  *   <li><strong>CommandValidationService:</strong> Jakarta and custom validation</li>
+ *   <li><strong>AuthorizationService:</strong> Command authorization and access control</li>
  *   <li><strong>CommandMetricsService:</strong> Metrics collection and monitoring</li>
  *   <li><strong>CorrelationContext:</strong> Distributed tracing context</li>
  * </ul>
@@ -59,6 +63,7 @@ public class DefaultCommandBus implements CommandBus {
 
     private final CommandHandlerRegistry handlerRegistry;
     private final CommandValidationService validationService;
+    private final AuthorizationService authorizationService;
     private final CommandMetricsService metricsService;
     private final CorrelationContext correlationContext;
 
@@ -67,20 +72,31 @@ public class DefaultCommandBus implements CommandBus {
      *
      * @param handlerRegistry the registry for command handler management
      * @param validationService the service for command validation
+     * @param authorizationService the service for command authorization
      * @param metricsService the service for metrics collection
      * @param correlationContext the context for distributed tracing
      */
     @Autowired
     public DefaultCommandBus(CommandHandlerRegistry handlerRegistry,
                            CommandValidationService validationService,
+                           AuthorizationService authorizationService,
                            CommandMetricsService metricsService,
                            CorrelationContext correlationContext) {
         this.handlerRegistry = handlerRegistry;
         this.validationService = validationService;
+        this.authorizationService = authorizationService;
         this.metricsService = metricsService;
         this.correlationContext = correlationContext;
 
-        log.info("DefaultCommandBus initialized with {} registered handlers",
+        log.info("DefaultCommandBus initialized");
+    }
+
+    /**
+     * Called after Spring context is fully initialized to log the final handler count.
+     */
+    @EventListener(ContextRefreshedEvent.class)
+    public void onApplicationReady() {
+        log.info("DefaultCommandBus ready with {} registered handlers",
             handlerRegistry.getHandlerCount());
     }
 
@@ -94,6 +110,7 @@ public class DefaultCommandBus implements CommandBus {
      *   <li><strong>Handler Discovery:</strong> Find appropriate handler via registry</li>
      *   <li><strong>Correlation Context:</strong> Set up distributed tracing context</li>
      *   <li><strong>Validation:</strong> Perform Jakarta and custom validation</li>
+     *   <li><strong>Authorization:</strong> Verify permissions and access control</li>
      *   <li><strong>Execution:</strong> Execute the command handler</li>
      *   <li><strong>Metrics:</strong> Record success/failure metrics</li>
      *   <li><strong>Error Handling:</strong> Provide enhanced error context</li>
@@ -138,7 +155,15 @@ public class DefaultCommandBus implements CommandBus {
                     // Step 3: Validate command
                     return validationService.validateCommand(command)
                             .then(Mono.defer(() -> {
-                                // Step 4: Execute handler
+                                // Step 4: Authorize command (if authorization is enabled)
+                                if (authorizationService != null) {
+                                    return authorizationService.authorizeCommand(command);
+                                } else {
+                                    return Mono.empty(); // Skip authorization
+                                }
+                            }))
+                            .then(Mono.defer(() -> {
+                                // Step 5: Execute handler
                                 try {
                                     return handler.handle(command);
                                 } catch (Exception e) {
@@ -147,7 +172,7 @@ public class DefaultCommandBus implements CommandBus {
                                     ));
                                 }
                             }))
-                            // Step 5: Record metrics and handle completion
+                            // Step 6: Record metrics and handle completion
                             .doOnSuccess(result -> {
                                 Duration processingTime = Duration.between(startTime, Instant.now());
                                 log.info("CQRS Command Processing Completed - Type: {}, ID: {}, Duration: {}ms",
@@ -158,10 +183,14 @@ public class DefaultCommandBus implements CommandBus {
                             .doOnError(error -> {
                                 Duration processingTime = Duration.between(startTime, Instant.now());
 
-                                // Handle validation failures specifically
+                                // Handle validation and authorization failures specifically
                                 if (error instanceof com.firefly.common.domain.validation.ValidationException) {
                                     metricsService.recordValidationFailure(command, "Combined");
                                     log.warn("CQRS Command Validation Failed - Type: {}, ID: {}, Duration: {}ms",
+                                        commandType, command.getCommandId(), processingTime.toMillis());
+                                } else if (error instanceof com.firefly.common.domain.authorization.AuthorizationException) {
+                                    metricsService.recordCommandFailure(command, error, processingTime);
+                                    log.warn("CQRS Command Authorization Failed - Type: {}, ID: {}, Duration: {}ms",
                                         commandType, command.getCommandId(), processingTime.toMillis());
                                 } else {
                                     metricsService.recordCommandFailure(command, error, processingTime);
@@ -207,7 +236,15 @@ public class DefaultCommandBus implements CommandBus {
                     // Step 3: Validate command
                     return validationService.validateCommand(command)
                             .then(Mono.defer(() -> {
-                                // Step 4: Execute handler with context
+                                // Step 4: Authorize command with context (if authorization is enabled)
+                                if (authorizationService != null) {
+                                    return authorizationService.authorizeCommand(command, context);
+                                } else {
+                                    return Mono.empty(); // Skip authorization
+                                }
+                            }))
+                            .then(Mono.defer(() -> {
+                                // Step 5: Execute handler with context
                                 try {
                                     return handler.handle(command, context);
                                 } catch (Exception e) {
@@ -216,7 +253,7 @@ public class DefaultCommandBus implements CommandBus {
                                     ));
                                 }
                             }))
-                            // Step 5: Record metrics and handle completion
+                            // Step 6: Record metrics and handle completion
                             .doOnSuccess(result -> {
                                 Duration processingTime = Duration.between(startTime, Instant.now());
                                 log.info("CQRS Command Processing Completed with Context - Type: {}, ID: {}, Duration: {}ms",
@@ -227,10 +264,14 @@ public class DefaultCommandBus implements CommandBus {
                             .doOnError(error -> {
                                 Duration processingTime = Duration.between(startTime, Instant.now());
 
-                                // Handle validation failures specifically
+                                // Handle validation and authorization failures specifically
                                 if (error instanceof com.firefly.common.domain.validation.ValidationException) {
                                     metricsService.recordValidationFailure(command, "Combined");
                                     log.warn("CQRS Command Validation Failed with Context - Type: {}, ID: {}, Duration: {}ms",
+                                        commandType, command.getCommandId(), processingTime.toMillis());
+                                } else if (error instanceof com.firefly.common.domain.authorization.AuthorizationException) {
+                                    metricsService.recordCommandFailure(command, error, processingTime);
+                                    log.warn("CQRS Command Authorization Failed with Context - Type: {}, ID: {}, Duration: {}ms",
                                         commandType, command.getCommandId(), processingTime.toMillis());
                                 } else {
                                     metricsService.recordCommandFailure(command, error, processingTime);

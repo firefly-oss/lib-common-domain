@@ -16,6 +16,8 @@
 
 package com.firefly.common.domain.cqrs.command;
 
+import com.firefly.common.domain.authorization.AuthorizationResult;
+import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import com.firefly.common.domain.validation.ValidationResult;
 import reactor.core.publisher.Mono;
 
@@ -267,5 +269,139 @@ public interface Command<R> {
      */
     default Mono<ValidationResult> customValidate() {
         return Mono.just(ValidationResult.success());
+    }
+
+    /**
+     * Authorizes this command using custom authorization logic.
+     *
+     * <p>This method is called automatically by the {@link CommandBus} after validation
+     * and before command handlers execute. It allows commands to implement custom
+     * authorization rules such as:
+     * <ul>
+     *   <li>Resource ownership validation</li>
+     *   <li>Permission-based access control</li>
+     *   <li>Business-specific authorization rules</li>
+     *   <li>Integration with external authorization services</li>
+     * </ul>
+     *
+     * <p>If authorization fails, the command will not be processed and an
+     * {@link com.firefly.common.domain.authorization.AuthorizationException} will be thrown.
+     *
+     * <p><strong>Default Implementation:</strong>
+     * By default, this method returns {@link AuthorizationResult#success()}, meaning
+     * all commands are authorized unless they override this method.
+     *
+     * <p><strong>Usage Examples:</strong>
+     * <pre>{@code
+     * // Simple resource ownership check
+     * @Override
+     * public Mono<AuthorizationResult> authorize() {
+     *     return accountService.verifyOwnership(accountId, getCurrentUserId())
+     *         .map(isOwner -> isOwner ?
+     *             AuthorizationResult.success() :
+     *             AuthorizationResult.failure("account", "Account does not belong to user"));
+     * }
+     *
+     * // Complex authorization with multiple checks
+     * @Override
+     * public Mono<AuthorizationResult> authorize() {
+     *     return Mono.zip(
+     *         accountService.verifyOwnership(sourceAccountId, getCurrentUserId()),
+     *         accountService.verifyOwnership(targetAccountId, getCurrentUserId()),
+     *         permissionService.hasPermission(getCurrentUserId(), "TRANSFER_MONEY")
+     *     ).map(tuple -> {
+     *         boolean ownsSource = tuple.getT1();
+     *         boolean ownsTarget = tuple.getT2();
+     *         boolean hasPermission = tuple.getT3();
+     *
+     *         AuthorizationResult.Builder builder = AuthorizationResult.builder();
+     *         if (!ownsSource) {
+     *             builder.addError("sourceAccount", "Source account does not belong to user", "OWNERSHIP_VIOLATION");
+     *         }
+     *         if (!ownsTarget) {
+     *             builder.addError("targetAccount", "Target account does not belong to user", "OWNERSHIP_VIOLATION");
+     *         }
+     *         if (!hasPermission) {
+     *             builder.addError("permission", "User does not have transfer permission", "PERMISSION_DENIED");
+     *         }
+     *
+     *         return builder.build();
+     *     });
+     * }
+     * }</pre>
+     *
+     * @return a Mono containing the authorization result, never null
+     * @since 1.0.0
+     * @see AuthorizationResult
+     * @see #authorize(ExecutionContext)
+     * @see CommandBus#send(Command)
+     * @see com.firefly.common.domain.authorization.AuthorizationException
+     */
+    default Mono<AuthorizationResult> authorize() {
+        return Mono.just(AuthorizationResult.success());
+    }
+
+    /**
+     * Authorizes this command with execution context using custom authorization logic.
+     *
+     * <p>This method is called when the command is executed with an {@link ExecutionContext},
+     * providing additional information for authorization decisions:
+     * <ul>
+     *   <li><strong>User ID:</strong> The authenticated user making the request</li>
+     *   <li><strong>Tenant ID:</strong> Multi-tenant context for resource isolation</li>
+     *   <li><strong>Feature Flags:</strong> Dynamic feature enablement for authorization</li>
+     *   <li><strong>Source:</strong> Request origin (web, mobile, API, etc.)</li>
+     *   <li><strong>Custom Properties:</strong> Additional context-specific data</li>
+     * </ul>
+     *
+     * <p><strong>Default Implementation:</strong>
+     * By default, this method delegates to {@link #authorize()}, ignoring the context.
+     * Override this method when you need context-aware authorization.
+     *
+     * <p><strong>Usage Examples:</strong>
+     * <pre>{@code
+     * // Tenant-aware authorization
+     * @Override
+     * public Mono<AuthorizationResult> authorize(ExecutionContext context) {
+     *     String tenantId = context.getTenantId();
+     *     String userId = context.getUserId();
+     *
+     *     return accountService.verifyAccountBelongsToTenant(accountId, tenantId)
+     *         .flatMap(belongsToTenant -> {
+     *             if (!belongsToTenant) {
+     *                 return Mono.just(AuthorizationResult.failure("account",
+     *                     "Account does not belong to tenant"));
+     *             }
+     *             return accountService.verifyUserCanAccessAccount(accountId, userId);
+     *         })
+     *         .map(canAccess -> canAccess ?
+     *             AuthorizationResult.success() :
+     *             AuthorizationResult.failure("account", "User cannot access account"));
+     * }
+     *
+     * // Feature flag-based authorization
+     * @Override
+     * public Mono<AuthorizationResult> authorize(ExecutionContext context) {
+     *     boolean premiumFeatureEnabled = context.getFeatureFlag("premium-transfers", false);
+     *
+     *     if (transferAmount.compareTo(new BigDecimal("10000")) > 0 && !premiumFeatureEnabled) {
+     *         return Mono.just(AuthorizationResult.failure("amount",
+     *             "High-value transfers require premium features"));
+     *     }
+     *
+     *     return authorize(); // Delegate to standard authorization
+     * }
+     * }</pre>
+     *
+     * @param context the execution context with user, tenant, and feature information
+     * @return a Mono containing the authorization result, never null
+     * @since 1.0.0
+     * @see ExecutionContext
+     * @see AuthorizationResult
+     * @see #authorize()
+     */
+    default Mono<AuthorizationResult> authorize(ExecutionContext context) {
+        // Default implementation ignores context and delegates to standard authorize
+        return authorize();
     }
 }
