@@ -135,11 +135,7 @@ class SpringCqrsIntegrationTest {
     })
     static class TestConfiguration {
 
-        @Bean
-        public com.firefly.common.domain.tracing.CorrelationContext correlationContext() {
-            return new com.firefly.common.domain.tracing.CorrelationContext();
-        }
-
+        // CorrelationContext is now auto-configured by CqrsAutoConfiguration
         // MeterRegistry is now auto-configured by CqrsAutoConfiguration
 
         // Real handlers will be automatically discovered and registered

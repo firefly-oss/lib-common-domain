@@ -73,6 +73,13 @@ public class CqrsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public CorrelationContext correlationContext() {
+        log.info("Auto-configuring CorrelationContext for CQRS distributed tracing");
+        return new CorrelationContext();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public CommandHandlerRegistry commandHandlerRegistry(ApplicationContext applicationContext) {
         log.info("Configuring CQRS Command Handler Registry (auto-configured)");
         return new CommandHandlerRegistry(applicationContext);

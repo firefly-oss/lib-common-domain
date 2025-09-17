@@ -21,7 +21,6 @@ import com.firefly.common.domain.cqrs.query.Query;
 import com.firefly.common.domain.cqrs.query.QueryBus;
 import com.firefly.common.domain.cqrs.query.QueryHandler;
 import com.firefly.common.domain.cqrs.annotations.QueryHandlerComponent;
-import com.firefly.common.domain.tracing.CorrelationContext;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -90,10 +89,7 @@ class RedisIntegrationTest {
     })
     static class TestConfiguration {
 
-        @Bean
-        public CorrelationContext correlationContext() {
-            return new CorrelationContext();
-        }
+        // CorrelationContext is now auto-configured by CqrsAutoConfiguration
 
         @Bean
         public TestQueryHandler testQueryHandler() {

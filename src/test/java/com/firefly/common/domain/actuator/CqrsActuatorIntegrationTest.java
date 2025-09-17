@@ -322,9 +322,6 @@ class CqrsActuatorIntegrationTest {
     })
     static class TestConfiguration {
 
-        @Bean
-        public com.firefly.common.domain.tracing.CorrelationContext correlationContext() {
-            return new com.firefly.common.domain.tracing.CorrelationContext();
-        }
+        // CorrelationContext is now auto-configured by CqrsAutoConfiguration
     }
 }

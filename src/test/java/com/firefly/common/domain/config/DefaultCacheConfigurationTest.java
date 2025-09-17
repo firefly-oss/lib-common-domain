@@ -16,7 +16,6 @@
 
 package com.firefly.common.domain.config;
 
-import com.firefly.common.domain.tracing.CorrelationContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
@@ -96,9 +95,6 @@ class DefaultCacheConfigurationTest {
 
     @Configuration
     static class TestConfiguration {
-        @Bean
-        public CorrelationContext correlationContext() {
-            return new CorrelationContext();
-        }
+        // CorrelationContext is now auto-configured by CqrsAutoConfiguration
     }
 }

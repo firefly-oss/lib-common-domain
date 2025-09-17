@@ -19,7 +19,6 @@ package com.firefly.common.domain.tracing;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,8 +27,9 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * Utility class for managing correlation IDs and distributed context.
  * Provides correlation ID propagation across event publishing and consumption operations.
+ *
+ * <p>This class is auto-configured by CqrsAutoConfiguration.
  */
-@Component
 public class CorrelationContext {
 
     private static final Logger log = LoggerFactory.getLogger(CorrelationContext.class);

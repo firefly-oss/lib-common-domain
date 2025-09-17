@@ -16,7 +16,6 @@
 
 package com.firefly.common.domain.config;
 
-import com.firefly.common.domain.tracing.CorrelationContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -37,10 +36,7 @@ class RedisCacheConfigurationTest {
 
     @Configuration
     static class TestConfiguration {
-        @Bean
-        public CorrelationContext correlationContext() {
-            return new CorrelationContext();
-        }
+        // CorrelationContext is now auto-configured by CqrsAutoConfiguration
     }
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
