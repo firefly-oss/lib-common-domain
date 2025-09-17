@@ -67,26 +67,30 @@ firefly:
 Provides comprehensive JVM monitoring including:
 
 ### Memory Metrics
-- `jvm.memory.heap.used` - Used heap memory in bytes
-- `jvm.memory.heap.committed` - Committed heap memory in bytes  
-- `jvm.memory.heap.max` - Maximum heap memory in bytes
-- `jvm.memory.heap.init` - Initial heap memory in bytes
-- `jvm.memory.non_heap.used` - Used non-heap memory in bytes
-- `jvm.memory.non_heap.committed` - Committed non-heap memory in bytes
-- `jvm.memory.non_heap.max` - Maximum non-heap memory in bytes
-- `jvm.memory.non_heap.init` - Initial non-heap memory in bytes
+- `firefly.jvm.memory.heap.used` - Used heap memory in bytes
+- `firefly.jvm.memory.heap.committed` - Committed heap memory in bytes
+- `firefly.jvm.memory.heap.max` - Maximum heap memory in bytes
+- `firefly.jvm.memory.heap.init` - Initial heap memory in bytes
+- `firefly.jvm.memory.non_heap.used` - Used non-heap memory in bytes
+- `firefly.jvm.memory.non_heap.committed` - Committed non-heap memory in bytes
+- `firefly.jvm.memory.non_heap.max` - Maximum non-heap memory in bytes
+- `firefly.jvm.memory.non_heap.init` - Initial non-heap memory in bytes
 
 ### Garbage Collection Metrics
-- `jvm.gc.collection.count{gc=<gc_name>}` - Number of GC collections
-- `jvm.gc.collection.time{gc=<gc_name>}` - Time spent in GC collections (ms)
+- `firefly.jvm.gc.collection.count{gc=<gc_name>}` - Number of GC collections
+- `firefly.jvm.gc.collection.time{gc=<gc_name>}` - Time spent in GC collections (ms)
 
 ### Thread Metrics
-- `jvm.threads.live` - Current number of live threads
-- `jvm.threads.daemon` - Current number of daemon threads
-- `jvm.threads.peak` - Peak number of live threads
-- `jvm.threads.started` - Total threads started since JVM start
-- `jvm.threads.deadlocked` - Number of deadlocked threads
-- `jvm.threads.deadlocked.monitor` - Number of monitor deadlocked threads
+- `firefly.jvm.threads.live` - Current number of live threads
+- `firefly.jvm.threads.daemon` - Current number of daemon threads
+- `firefly.jvm.threads.peak` - Peak number of live threads
+- `firefly.jvm.threads.started` - Total threads started since JVM start
+- `firefly.jvm.threads.deadlocked` - Number of deadlocked threads (enhanced detection)
+- `firefly.jvm.threads.deadlocked.monitor` - Number of monitor deadlocked threads (enhanced detection)
+
+> **Note**: These metrics use the `firefly.` prefix to avoid conflicts with Spring Boot's built-in JVM metrics.
+> The built-in metrics (e.g., `jvm.memory.used`, `jvm.threads.live`) are still available and provide standard JVM monitoring.
+> Firefly's enhanced metrics provide additional insights like deadlock detection that are not available in the standard metrics.
 
 ## Thread Pool Health
 

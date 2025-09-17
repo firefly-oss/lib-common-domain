@@ -51,65 +51,67 @@ public class JvmMetrics {
     }
 
     private void registerMemoryMetrics() {
-        // Heap memory metrics
-        meterRegistry.gauge("jvm.memory.heap.used", Tags.empty(), memoryMXBean,
+        // Heap memory metrics - using firefly prefix to avoid conflicts with built-in metrics
+        meterRegistry.gauge("firefly.jvm.memory.heap.used", Tags.empty(), memoryMXBean,
                 bean -> bean.getHeapMemoryUsage().getUsed());
-        
-        meterRegistry.gauge("jvm.memory.heap.committed", Tags.empty(), memoryMXBean,
+
+        meterRegistry.gauge("firefly.jvm.memory.heap.committed", Tags.empty(), memoryMXBean,
                 bean -> bean.getHeapMemoryUsage().getCommitted());
-        
-        meterRegistry.gauge("jvm.memory.heap.max", Tags.empty(), memoryMXBean,
+
+        meterRegistry.gauge("firefly.jvm.memory.heap.max", Tags.empty(), memoryMXBean,
                 bean -> bean.getHeapMemoryUsage().getMax());
-        
-        meterRegistry.gauge("jvm.memory.heap.init", Tags.empty(), memoryMXBean,
+
+        meterRegistry.gauge("firefly.jvm.memory.heap.init", Tags.empty(), memoryMXBean,
                 bean -> bean.getHeapMemoryUsage().getInit());
 
-        // Non-heap memory metrics
-        meterRegistry.gauge("jvm.memory.non_heap.used", Tags.empty(), memoryMXBean,
+        // Non-heap memory metrics - using firefly prefix to avoid conflicts with built-in metrics
+        meterRegistry.gauge("firefly.jvm.memory.non_heap.used", Tags.empty(), memoryMXBean,
                 bean -> bean.getNonHeapMemoryUsage().getUsed());
-        
-        meterRegistry.gauge("jvm.memory.non_heap.committed", Tags.empty(), memoryMXBean,
+
+        meterRegistry.gauge("firefly.jvm.memory.non_heap.committed", Tags.empty(), memoryMXBean,
                 bean -> bean.getNonHeapMemoryUsage().getCommitted());
-        
-        meterRegistry.gauge("jvm.memory.non_heap.max", Tags.empty(), memoryMXBean,
+
+        meterRegistry.gauge("firefly.jvm.memory.non_heap.max", Tags.empty(), memoryMXBean,
                 bean -> bean.getNonHeapMemoryUsage().getMax());
-        
-        meterRegistry.gauge("jvm.memory.non_heap.init", Tags.empty(), memoryMXBean,
+
+        meterRegistry.gauge("firefly.jvm.memory.non_heap.init", Tags.empty(), memoryMXBean,
                 bean -> bean.getNonHeapMemoryUsage().getInit());
     }
 
     private void registerGarbageCollectionMetrics() {
         ManagementFactory.getGarbageCollectorMXBeans().forEach(gcBean -> {
             String gcName = gcBean.getName().toLowerCase().replace(" ", "_");
-            
-            meterRegistry.gauge("jvm.gc.collection.count", Tags.of("gc", gcName), gcBean,
+
+            // Using firefly prefix to avoid conflicts with built-in GC metrics
+            meterRegistry.gauge("firefly.jvm.gc.collection.count", Tags.of("gc", gcName), gcBean,
                     GarbageCollectorMXBean::getCollectionCount);
-            
-            meterRegistry.gauge("jvm.gc.collection.time", Tags.of("gc", gcName), gcBean,
+
+            meterRegistry.gauge("firefly.jvm.gc.collection.time", Tags.of("gc", gcName), gcBean,
                     GarbageCollectorMXBean::getCollectionTime);
         });
     }
 
     private void registerThreadMetrics() {
-        meterRegistry.gauge("jvm.threads.live", Tags.empty(), threadMXBean,
+        // Using firefly prefix to avoid conflicts with built-in thread metrics
+        meterRegistry.gauge("firefly.jvm.threads.live", Tags.empty(), threadMXBean,
                 ThreadMXBean::getThreadCount);
-        
-        meterRegistry.gauge("jvm.threads.daemon", Tags.empty(), threadMXBean,
+
+        meterRegistry.gauge("firefly.jvm.threads.daemon", Tags.empty(), threadMXBean,
                 ThreadMXBean::getDaemonThreadCount);
-        
-        meterRegistry.gauge("jvm.threads.peak", Tags.empty(), threadMXBean,
+
+        meterRegistry.gauge("firefly.jvm.threads.peak", Tags.empty(), threadMXBean,
                 ThreadMXBean::getPeakThreadCount);
-        
-        meterRegistry.gauge("jvm.threads.started", Tags.empty(), threadMXBean,
+
+        meterRegistry.gauge("firefly.jvm.threads.started", Tags.empty(), threadMXBean,
                 ThreadMXBean::getTotalStartedThreadCount);
 
-        // Deadlocked threads
-        meterRegistry.gauge("jvm.threads.deadlocked", Tags.empty(), threadMXBean, bean -> {
+        // Enhanced deadlock detection metrics (not available in built-in metrics)
+        meterRegistry.gauge("firefly.jvm.threads.deadlocked", Tags.empty(), threadMXBean, bean -> {
             long[] deadlockedThreads = bean.findDeadlockedThreads();
             return deadlockedThreads != null ? deadlockedThreads.length : 0;
         });
-        
-        meterRegistry.gauge("jvm.threads.deadlocked.monitor", Tags.empty(), threadMXBean, bean -> {
+
+        meterRegistry.gauge("firefly.jvm.threads.deadlocked.monitor", Tags.empty(), threadMXBean, bean -> {
             long[] deadlockedThreads = bean.findMonitorDeadlockedThreads();
             return deadlockedThreads != null ? deadlockedThreads.length : 0;
         });
