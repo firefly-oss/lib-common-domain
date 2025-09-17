@@ -75,15 +75,15 @@ public class RedisCacheAutoConfiguration {
         return factory;
     }
 
-    @Bean
-    @ConditionalOnMissingBean(CacheManager.class)
+    @Bean("cqrsCacheManager")
+    @ConditionalOnMissingBean(name = "cqrsCacheManager")
     @ConditionalOnProperty(prefix = "firefly.cqrs.query.cache", name = "type", havingValue = "REDIS")
-    public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory,
+    public CacheManager cqrsCacheManager(RedisConnectionFactory redisConnectionFactory,
                                         CqrsProperties cqrsProperties) {
         CqrsProperties.Redis redisConfig = cqrsProperties.getQuery().getCache().getRedis();
         Duration defaultTtl = cqrsProperties.getQuery().getCacheTtl();
 
-        log.info("Configuring Redis cache manager for CQRS queries - TTL: {}, key prefix: {}",
+        log.info("Configuring Redis cache manager for CQRS queries (cqrsCacheManager) - TTL: {}, key prefix: {}",
                 defaultTtl, redisConfig.getKeyPrefix());
 
         RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()

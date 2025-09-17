@@ -28,6 +28,7 @@ import com.firefly.common.domain.validation.AutoValidationProcessor;
 import jakarta.validation.Validator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -145,7 +146,7 @@ public class CqrsAutoConfiguration {
                            CorrelationContext correlationContext,
                            AutoValidationProcessor autoValidationProcessor,
                            @Autowired(required = false) com.firefly.common.domain.authorization.AuthorizationService authorizationService,
-                           CacheManager cacheManager,
+                           @Qualifier("cqrsCacheManager") CacheManager cacheManager,
                            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         if (authorizationService != null) {
             log.info("Configuring CQRS Query Bus with authorization enabled (auto-configured)");
@@ -155,9 +156,9 @@ public class CqrsAutoConfiguration {
         return new DefaultQueryBus(applicationContext, correlationContext, autoValidationProcessor, authorizationService, cacheManager, meterRegistry);
     }
 
-    @Bean
-    @ConditionalOnMissingBean(CacheManager.class)
-    public CacheManager localCacheManager(CqrsProperties cqrsProperties) {
+    @Bean("cqrsCacheManager")
+    @ConditionalOnMissingBean(name = "cqrsCacheManager")
+    public CacheManager cqrsCacheManager(CqrsProperties cqrsProperties) {
         CqrsProperties.Cache.CacheType cacheType = cqrsProperties.getQuery().getCache().getType();
 
         if (cacheType == CqrsProperties.Cache.CacheType.REDIS &&
@@ -166,7 +167,7 @@ public class CqrsAutoConfiguration {
                     "Falling back to local cache. Check Redis dependencies and configuration.");
         }
 
-        log.info("Configuring default local cache manager for CQRS queries");
+        log.info("Configuring default local cache manager for CQRS queries (cqrsCacheManager)");
         ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager();
         cacheManager.setCacheNames(java.util.Arrays.asList("query-cache"));
         return cacheManager;

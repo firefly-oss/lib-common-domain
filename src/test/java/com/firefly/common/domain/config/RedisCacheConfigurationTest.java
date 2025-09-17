@@ -56,10 +56,10 @@ class RedisCacheConfigurationTest {
                 )
                 .run(context -> {
                     // Then: Should have local cache manager
-                    assertThat(context).hasSingleBean(CacheManager.class);
+                    assertThat(context).hasBean("cqrsCacheManager");
                     assertThat(context).doesNotHaveBean(RedisConnectionFactory.class);
-                    
-                    CacheManager cacheManager = context.getBean(CacheManager.class);
+
+                    CacheManager cacheManager = context.getBean("cqrsCacheManager", CacheManager.class);
                     assertThat(cacheManager).isInstanceOf(ConcurrentMapCacheManager.class);
                 });
     }
@@ -75,10 +75,10 @@ class RedisCacheConfigurationTest {
                 )
                 .run(context -> {
                     // Then: Should have local cache manager
-                    assertThat(context).hasSingleBean(CacheManager.class);
+                    assertThat(context).hasBean("cqrsCacheManager");
                     assertThat(context).doesNotHaveBean(RedisConnectionFactory.class);
-                    
-                    CacheManager cacheManager = context.getBean(CacheManager.class);
+
+                    CacheManager cacheManager = context.getBean("cqrsCacheManager", CacheManager.class);
                     assertThat(cacheManager).isInstanceOf(ConcurrentMapCacheManager.class);
                 });
     }
@@ -98,8 +98,8 @@ class RedisCacheConfigurationTest {
                     assertThat(context).doesNotHaveBean(RedisCacheManager.class);
                     
                     // Should fall back to local cache
-                    assertThat(context).hasSingleBean(CacheManager.class);
-                    CacheManager cacheManager = context.getBean(CacheManager.class);
+                    assertThat(context).hasBean("cqrsCacheManager");
+                    CacheManager cacheManager = context.getBean("cqrsCacheManager", CacheManager.class);
                     assertThat(cacheManager).isInstanceOf(ConcurrentMapCacheManager.class);
                 });
     }

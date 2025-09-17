@@ -218,7 +218,7 @@ class AutoConfigurationTest {
                 // CQRS Framework
                 assertThat(context).hasSingleBean(CommandBus.class);
                 assertThat(context).hasSingleBean(QueryBus.class);
-                assertThat(context).hasSingleBean(CacheManager.class);
+                assertThat(context).hasBean("cqrsCacheManager");
                 
                 // Domain Events
                 assertThat(context).hasSingleBean(DomainEventPublisher.class);
@@ -297,15 +297,15 @@ class AutoConfigurationTest {
             .withPropertyValues(
                 "firefly.cqrs.enabled=true"
             )
-            .withBean("customCacheManager", CacheManager.class, () -> {
+            .withBean("cqrsCacheManager", CacheManager.class, () -> {
                 // Custom cache manager implementation
                 return new org.springframework.cache.concurrent.ConcurrentMapCacheManager("custom-cache");
             })
             .run(context -> {
                 // Then: Custom bean should be used instead of auto-configured one
-                assertThat(context).hasSingleBean(CacheManager.class);
-                
-                CacheManager cacheManager = context.getBean(CacheManager.class);
+                assertThat(context).hasBean("cqrsCacheManager");
+
+                CacheManager cacheManager = context.getBean("cqrsCacheManager", CacheManager.class);
                 assertThat(cacheManager).isInstanceOf(org.springframework.cache.concurrent.ConcurrentMapCacheManager.class);
                 assertThat(cacheManager.getCacheNames()).contains("custom-cache");
             });
