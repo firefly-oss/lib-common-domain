@@ -36,7 +36,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -48,7 +47,6 @@ import org.springframework.context.annotation.Bean;
 @Slf4j
 @AutoConfiguration
 @AutoConfigureAfter(RedisCacheAutoConfiguration.class)
-@EnableCaching
 @EnableConfigurationProperties(CqrsProperties.class)
 @ConditionalOnProperty(prefix = "firefly.cqrs", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class CqrsAutoConfiguration {
@@ -168,6 +166,8 @@ public class CqrsAutoConfiguration {
         }
 
         log.info("Configuring default local cache manager for CQRS queries (cqrsCacheManager)");
+        log.info("Note: If lib-common-web is also present, the idempotency cache manager will be used as primary for global @Cacheable support.");
+
         ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager();
         cacheManager.setCacheNames(java.util.Arrays.asList("query-cache"));
         return cacheManager;

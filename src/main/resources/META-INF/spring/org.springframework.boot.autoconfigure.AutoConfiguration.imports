@@ -6,3 +6,4 @@ com.firefly.common.domain.config.CqrsAutoConfiguration
 com.firefly.common.domain.config.RedisCacheAutoConfiguration
 com.firefly.common.domain.config.ServiceClientAutoConfiguration
 com.firefly.common.domain.config.CqrsActuatorAutoConfiguration
+com.firefly.common.domain.config.CacheManagerCoexistenceConfiguration

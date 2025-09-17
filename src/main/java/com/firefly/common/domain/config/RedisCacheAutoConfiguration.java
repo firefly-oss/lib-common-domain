@@ -85,6 +85,7 @@ public class RedisCacheAutoConfiguration {
 
         log.info("Configuring Redis cache manager for CQRS queries (cqrsCacheManager) - TTL: {}, key prefix: {}",
                 defaultTtl, redisConfig.getKeyPrefix());
+        log.info("Note: If lib-common-web is also present, the idempotency cache manager will be used as primary for global @Cacheable support.");
 
         RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(defaultTtl)
