@@ -16,6 +16,7 @@
 
 package com.firefly.common.domain.cqrs.command;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.firefly.common.domain.authorization.AuthorizationResult;
 import com.firefly.common.domain.cqrs.context.ExecutionContext;
 import com.firefly.common.domain.validation.ValidationResult;
@@ -85,6 +86,7 @@ public interface Command<R> {
      * @return the unique command identifier, never null
      * @since 1.0.0
      */
+    @JsonIgnore
     default String getCommandId() {
         return UUID.randomUUID().toString();
     }
@@ -99,6 +101,7 @@ public interface Command<R> {
      * @return the command creation timestamp, never null
      * @since 1.0.0
      */
+    @JsonIgnore
     default Instant getTimestamp() {
         return Instant.now();
     }
@@ -117,6 +120,7 @@ public interface Command<R> {
      * @since 1.0.0
      * @see com.firefly.common.domain.tracing.CorrelationContext
      */
+    @JsonIgnore
     default String getCorrelationId() {
         return null;
     }
@@ -131,6 +135,7 @@ public interface Command<R> {
      * @return the initiator identifier, or null if not set
      * @since 1.0.0
      */
+    @JsonIgnore
     default String getInitiatedBy() {
         return null;
     }
@@ -150,6 +155,7 @@ public interface Command<R> {
      * @return a map of metadata key-value pairs, or null if no metadata
      * @since 1.0.0
      */
+    @JsonIgnore
     default Map<String, Object> getMetadata() {
         return null;
     }
@@ -173,6 +179,7 @@ public interface Command<R> {
      * @since 1.0.0
      */
     @SuppressWarnings("unchecked")
+    @JsonIgnore
     default Class<R> getResultType() {
         return (Class<R>) Object.class;
     }
@@ -228,6 +235,7 @@ public interface Command<R> {
      * @see CommandBus#send(Command)
      * @see com.firefly.common.domain.validation.ValidationException
      */
+    @JsonIgnore
     default Mono<ValidationResult> validate() {
         // Note: Automatic validation is now handled by the CommandBus using AutoValidationProcessor bean
         // This method is kept for backward compatibility and custom validation
@@ -267,6 +275,7 @@ public interface Command<R> {
      * @return a Mono containing the custom validation result, never null
      * @since 1.0.0
      */
+    @JsonIgnore
     default Mono<ValidationResult> customValidate() {
         return Mono.just(ValidationResult.success());
     }
@@ -337,6 +346,7 @@ public interface Command<R> {
      * @see CommandBus#send(Command)
      * @see com.firefly.common.domain.authorization.AuthorizationException
      */
+    @JsonIgnore
     default Mono<AuthorizationResult> authorize() {
         return Mono.just(AuthorizationResult.success());
     }
@@ -400,6 +410,7 @@ public interface Command<R> {
      * @see AuthorizationResult
      * @see #authorize()
      */
+    @JsonIgnore
     default Mono<AuthorizationResult> authorize(ExecutionContext context) {
         // Default implementation ignores context and delegates to standard authorize
         return authorize();
