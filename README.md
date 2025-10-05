@@ -618,97 +618,6 @@ public class MoneyTransferSaga {
 }
 ```
 
-## 🌍 ExecutionContext Framework
-
-### Context Creation and Propagation
-
-```java
-@RestController
-public class AccountController {
-    
-    private final CommandBus commandBus;
-    private final QueryBus queryBus;
-    
-    @PostMapping("/accounts")
-    public Mono<ResponseEntity<AccountResult>> createAccount(
-            @RequestBody CreateAccountRequest request,
-            @RequestHeader("Authorization") String authToken,
-            @RequestHeader(value = "X-Tenant-ID", required = false) String tenantId,
-            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId,
-            ServerHttpRequest httpRequest) {
-        
-        ExecutionContext context = ExecutionContext.builder()
-            .userId(extractUserIdFromToken(authToken))
-            .tenantId(tenantId != null ? tenantId : "default")
-            .sessionId(extractSessionId(httpRequest))
-            .correlationId(correlationId != null ? correlationId : UUID.randomUUID().toString())
-            .source("web-app")
-            .clientIp(getClientIp(httpRequest))
-            .featureFlag("enhanced-validation", featureFlagService.isEnabled("enhanced-validation", tenantId))
-            .featureFlag("premium-features", isPremiumTenant(tenantId))
-            .customProperty("request-id", UUID.randomUUID().toString())
-            .build();
-            
-        CreateAccountCommand command = toCommand(request);
-        
-        return commandBus.send(command, context)
-            .map(result -> ResponseEntity.ok(result))
-            .onErrorResume(this::handleError);
-    }
-    
-    @GetMapping("/accounts/{accountId}/balance")
-    public Mono<ResponseEntity<AccountBalance>> getAccountBalance(
-            @PathVariable String accountId,
-            @RequestHeader("Authorization") String authToken) {
-        
-        ExecutionContext context = buildExecutionContext(authToken);
-        GetAccountBalanceQuery query = new GetAccountBalanceQuery(accountId);
-        
-        return queryBus.query(query, context)
-            .map(balance -> ResponseEntity.ok(balance));
-    }
-}
-```
-
-### Context-Aware Service Implementation
-
-```java
-@Service
-public class TenantAwareAccountService {
-    
-    public Mono<Account> createAccountInTenant(CreateAccountCommand command, ExecutionContext context) {
-        String tenantId = context.getTenantId();
-        String userId = context.getUserId();
-        
-        return validateTenantLimits(tenantId)
-            .flatMap(limits -> validateUserPermissions(userId, tenantId))
-            .flatMap(permissions -> createAccount(command, tenantId, context))
-            .flatMap(account -> applyTenantSpecificRules(account, context));
-    }
-    
-    private Mono<Account> createAccount(CreateAccountCommand command, String tenantId, ExecutionContext context) {
-        Account account = Account.builder()
-            .tenantId(tenantId)
-            .customerId(command.getCustomerId())
-            .type(command.getAccountType())
-            .balance(command.getInitialDeposit())
-            .createdBy(context.getUserId())
-            .createdFrom(context.getSource())
-            .build();
-            
-        // Apply feature flags
-        if (context.getFeatureFlag("enhanced-security", false)) {
-            account = account.withEnhancedSecurityEnabled(true);
-        }
-        
-        if (context.getFeatureFlag("premium-features", false)) {
-            account = account.withPremiumFeaturesEnabled(true);
-        }
-        
-        return accountRepository.save(account);
-    }
-}
-```
 
 ## ⚙️ Configuration
 
@@ -1121,20 +1030,28 @@ class ServiceClientTest {
 
 ## 🔄 Integration with lib-common-cqrs
 
-This library includes `lib-common-cqrs` transitively, providing complete CQRS support:
+For CQRS functionality, use `lib-common-cqrs` alongside this library:
 
 ```xml
+<!-- For domain layer capabilities -->
 <dependency>
     <groupId>com.firefly</groupId>
     <artifactId>lib-common-domain</artifactId>
     <version>2.0.0-SNAPSHOT</version>
-    <!-- lib-common-cqrs is automatically included -->
+</dependency>
+
+<!-- For CQRS capabilities -->
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-cqrs</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
 **What you get from lib-common-cqrs:**
 - CommandBus and QueryBus: Central dispatching for commands and queries
 - Handler Annotations: @CommandHandlerComponent and @QueryHandlerComponent
+- ExecutionContext: Context propagation for tenant isolation and cross-cutting concerns
 - Automatic Validation: Jakarta Bean Validation integration
 - Query Caching: Intelligent caching with configurable TTL
 - Authorization Framework: Integration with lib-common-auth
@@ -1151,7 +1068,12 @@ public class BankingOrchestrationService {
     private final ServiceClient paymentService;   // From lib-common-domain
     
     public Mono<TransferResult> processTransfer(TransferRequest request) {
-        ExecutionContext context = buildExecutionContext(request);
+        // ExecutionContext is from lib-common-cqrs
+        ExecutionContext context = ExecutionContext.builder()
+            .userId(request.getUserId())
+            .tenantId(request.getTenantId())
+            .correlationId(request.getCorrelationId())
+            .build();
         
         return validateTransfer(request, context)
             .flatMap(validation -> executeTransfer(request, context))
@@ -1198,6 +1120,8 @@ public class BankingOrchestrationService {
     }
 }
 ```
+
+> **Note**: For ExecutionContext usage patterns, authorization, caching, and CQRS handler development, see the [lib-common-cqrs documentation](../lib-common-cqrs/README.md).
 
 ## 🤝 Contributing
 
