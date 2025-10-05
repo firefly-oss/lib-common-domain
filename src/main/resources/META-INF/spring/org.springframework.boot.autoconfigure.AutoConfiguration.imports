@@ -2,5 +2,4 @@ com.firefly.common.domain.config.JsonLoggingAutoConfiguration
 com.firefly.common.domain.config.DomainEventsAutoConfiguration
 com.firefly.common.domain.config.StepBridgeConfiguration
 com.firefly.common.domain.config.DomainEventsActuatorAutoConfiguration
-com.firefly.common.domain.config.ServiceClientAutoConfiguration
 com.firefly.common.domain.config.CacheManagerCoexistenceConfiguration

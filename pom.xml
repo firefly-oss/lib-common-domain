@@ -177,6 +177,13 @@
             <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
+        <!-- lib-common-client for service client support -->
+        <dependency>
+            <groupId>com.firefly</groupId>
+            <artifactId>lib-common-client</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
         <!-- All messaging dependencies included (Application Events work by default, others require additional setup) -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
@@ -197,45 +204,6 @@
             <version>${aws.sdk2.version}</version>
         </dependency>
 
-        <!-- gRPC Dependencies -->
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-netty-shaded</artifactId>
-            <version>1.60.1</version>
-        </dependency>
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-protobuf</artifactId>
-            <version>1.60.1</version>
-        </dependency>
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-stub</artifactId>
-            <version>1.60.1</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.protobuf</groupId>
-            <artifactId>protobuf-java</artifactId>
-            <version>3.25.1</version>
-        </dependency>
-
-        <!-- Circuit Breaker for resilience -->
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-spring-boot3</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-reactor</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-circuitbreaker</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-retry</artifactId>
-        </dependency>
 
         <!-- Redis Cache Support (optional) -->
         <dependency>

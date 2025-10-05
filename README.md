@@ -1,6 +1,6 @@
 # lib-common-domain
 
-**A comprehensive Spring Boot library for domain-driven design (DDD) with reactive programming support, featuring multi-messaging event publishing, service client framework, resilience patterns, and saga integration.**
+**A comprehensive Spring Boot library for domain-driven design (DDD) with reactive programming support, featuring multi-messaging event publishing, resilience patterns, and saga integration.**
 
 ## 🚀 Quick Start
 
@@ -25,10 +25,9 @@ public class MyApplication {
     public static void main(String[] args) {
         SpringApplication.run(MyApplication.class, args);
         // ✅ Domain event publishers are automatically available
-        // ✅ Service clients are auto-configured  
-        // ✅ Circuit breakers are ready to use
         // ✅ Distributed tracing is enabled
         // ✅ CQRS features available via lib-common-cqrs
+        // ✅ Service clients available via lib-common-client
     }
 }
 ```
@@ -61,37 +60,19 @@ public class AccountService {
 }
 ```
 
-### Your First Service Client
+### Service Client Support
 
-```java
-@Service 
-public class CustomerServiceClient {
-    
-    private final ServiceClient serviceClient;
-    
-    public CustomerServiceClient() {
-        this.serviceClient = ServiceClient.rest("customer-service")
-            .baseUrl("http://customer-service:8080")
-            .timeout(Duration.ofSeconds(30))
-            .defaultHeader("Content-Type", "application/json")
-            .build();
-    }
-    
-    public Mono<Customer> getCustomer(String customerId) {
-        return serviceClient.get("/customers/{id}", Customer.class)
-            .withPathParam("id", customerId)
-            .withCircuitBreaker("customer-service")
-            .withRetry(3)
-            .execute();
-    }
-    
-    public Mono<Customer> createCustomer(CustomerCreateRequest request) {
-        return serviceClient.post("/customers", Customer.class)
-            .withBody(request)
-            .execute();
-    }
-}
+For service-to-service communication, use the dedicated `lib-common-client` library:
+
+```xml
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-client</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
 ```
+
+See the [lib-common-client documentation](../lib-common-client/README.md) for comprehensive service client usage.
 
 ## 🎯 Features
 
@@ -102,8 +83,8 @@ public class CustomerServiceClient {
 - **Flexible Routing**: Topic-based routing with filtering capabilities
 - **Reliable Delivery**: Built-in error handling and retry mechanisms
 
-### 🔗 Service Client Framework
-- **REST & gRPC**: Unified interface for different protocols
+### 🔗 Service Client Framework (lib-common-client)
+- **REST & gRPC**: Unified interface for different protocols (see lib-common-client)
 - **Circuit Breakers**: Automatic failure detection and recovery
 - **Retry Logic**: Configurable retry with exponential backoff
 - **Load Balancing**: Multiple instance support with health checks
@@ -382,108 +363,25 @@ public class EventFilterConfiguration {
 
 ## 🔗 Service Client Framework
 
-### REST Client Configuration
+For service-to-service communication, use the dedicated `lib-common-client` library:
 
-Create type-safe, resilient REST clients:
-
-```java
-@Configuration
-public class ServiceClientConfiguration {
-    
-    @Bean
-    public ServiceClient customerServiceClient() {
-        return ServiceClient.rest("customer-service")
-            .baseUrl("http://customer-service:8080")
-            .timeout(Duration.ofSeconds(30))
-            .maxConnections(100)
-            .defaultHeader("Authorization", "Bearer ${jwt.token}")
-            .defaultHeader("Content-Type", "application/json")
-            .build();
-    }
-    
-    @Bean
-    public ServiceClient paymentServiceClient() {
-        return ServiceClient.rest("payment-service")
-            .baseUrl("https://payment-service.banking.com")
-            .timeout(Duration.ofSeconds(45))
-            .maxConnections(50)
-            .build();
-    }
-}
+```xml
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-client</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
 ```
 
-### Service Client Usage
+The `lib-common-client` library provides:
+- **Unified API**: Single interface for REST and gRPC communication
+- **Circuit Breakers**: Built-in resilience patterns
+- **Reactive Programming**: Non-blocking operations with Spring WebFlux
+- **Health Checks**: Built-in service health monitoring
+- **Request/Response Interceptors**: Extensible request processing
+- **Type Safety**: Strong typing with support for generic types
 
-```java
-@Service
-public class AccountService {
-    
-    private final ServiceClient customerService;
-    private final ServiceClient paymentService;
-    
-    public Mono<AccountSummary> getAccountSummary(String accountId) {
-        return getAccount(accountId)
-            .flatMap(account -> enhanceWithCustomerInfo(account))
-            .flatMap(account -> enhanceWithPaymentInfo(account))
-            .map(this::toAccountSummary);
-    }
-    
-    private Mono<Account> getAccount(String accountId) {
-        return accountRepository.findById(accountId)
-            .switchIfEmpty(Mono.error(new AccountNotFoundException(accountId)));
-    }
-    
-    private Mono<Account> enhanceWithCustomerInfo(Account account) {
-        return customerService.get("/customers/{id}", Customer.class)
-            .withPathParam("id", account.getCustomerId())
-            .withTimeout(Duration.ofSeconds(10))
-            .withCircuitBreaker("customer-service")
-            .withRetry(3)
-            .execute()
-            .map(customer -> account.withCustomerInfo(customer))
-            .onErrorReturn(account); // Graceful degradation
-    }
-    
-    private Mono<Account> enhanceWithPaymentInfo(Account account) {
-        return paymentService.get("/payment-methods", PaymentMethodList.class)
-            .withQueryParam("customerId", account.getCustomerId())
-            .withHeader("X-Account-ID", account.getId())
-            .execute()
-            .map(paymentMethods -> account.withPaymentMethods(paymentMethods.getItems()))
-            .onErrorReturn(account);
-    }
-}
-```
-
-### gRPC Client Support
-
-```java
-@Service
-public class RiskAssessmentServiceClient {
-    
-    private final ServiceClient grpcClient;
-    
-    public RiskAssessmentServiceClient() {
-        this.grpcClient = ServiceClient.grpc("risk-service", RiskServiceGrpc.RiskServiceBlockingStub.class)
-            .address("risk-service:9090")
-            .timeout(Duration.ofSeconds(15))
-            .usePlaintext() // For internal services
-            .build();
-    }
-    
-    public Mono<RiskScore> assessRisk(String customerId, BigDecimal amount) {
-        RiskAssessmentRequest request = RiskAssessmentRequest.newBuilder()
-            .setCustomerId(customerId)
-            .setAmount(amount.toString())
-            .setTransactionType("TRANSFER")
-            .build();
-            
-        return grpcClient.post("/assess-risk", RiskScore.class)
-            .withBody(request)
-            .execute();
-    }
-}
-```
+See the [lib-common-client documentation](../lib-common-client/README.md) for complete usage examples and configuration options.
 
 ## 🛡️ Resilience Patterns
 
@@ -963,70 +861,7 @@ class TestEventListener {
 
 ### Service Client Testing
 
-```java
-@SpringBootTest
-class ServiceClientTest {
-
-    @Autowired
-    private ServiceClient customerServiceClient;
-    
-    private MockWebServer mockWebServer;
-    
-    @BeforeEach
-    void setUp() throws IOException {
-        mockWebServer = new MockWebServer();
-        mockWebServer.start();
-        
-        // Configure client to use mock server
-        ReflectionTestUtils.setField(customerServiceClient, "baseUrl", 
-            mockWebServer.url("/").toString());
-    }
-    
-    @AfterEach
-    void tearDown() throws IOException {
-        mockWebServer.shutdown();
-    }
-    
-    @Test
-    void shouldHandleSuccessfulResponse() {
-        // Given
-        Customer expectedCustomer = new Customer("CUST-123", "John Doe", "john@example.com");
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(200)
-            .setHeader("Content-Type", "application/json")
-            .setBody(objectMapper.writeValueAsString(expectedCustomer)));
-            
-        // When
-        Mono<Customer> result = customerServiceClient.get("/customers/{id}", Customer.class)
-            .withPathParam("id", "CUST-123")
-            .execute();
-            
-        // Then
-        StepVerifier.create(result)
-            .assertNext(customer -> {
-                assertThat(customer.getId()).isEqualTo("CUST-123");
-                assertThat(customer.getName()).isEqualTo("John Doe");
-                assertThat(customer.getEmail()).isEqualTo("john@example.com");
-            })
-            .verifyComplete();
-    }
-    
-    @Test
-    void shouldHandleServiceUnavailable() {
-        // Given
-        mockWebServer.enqueue(new MockResponse().setResponseCode(503));
-        
-        // When & Then
-        StepVerifier.create(
-            customerServiceClient.get("/customers/{id}", Customer.class)
-                .withPathParam("id", "CUST-123")
-                .execute()
-        )
-        .expectError(ServiceUnavailableException.class)
-        .verify();
-    }
-}
-```
+For service client testing, see the [lib-common-client testing documentation](../lib-common-client/README.md#testing).
 
 ## 🔄 Integration with lib-common-cqrs
 
@@ -1044,6 +879,13 @@ For CQRS functionality, use `lib-common-cqrs` alongside this library:
 <dependency>
     <groupId>com.firefly</groupId>
     <artifactId>lib-common-cqrs</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+
+<!-- For service client capabilities -->
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-client</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
@@ -1065,7 +907,7 @@ public class BankingOrchestrationService {
     private final CommandBus commandBus;           // From lib-common-cqrs
     private final QueryBus queryBus;              // From lib-common-cqrs  
     private final DomainEventPublisher eventPublisher; // From lib-common-domain
-    private final ServiceClient paymentService;   // From lib-common-domain
+    private final ServiceClient paymentService;   // From lib-common-client
     
     public Mono<TransferResult> processTransfer(TransferRequest request) {
         // ExecutionContext is from lib-common-cqrs

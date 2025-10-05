@@ -22,7 +22,6 @@ import com.firefly.common.cqrs.config.CqrsProperties;
 import com.firefly.common.cqrs.query.QueryBus;
 import com.firefly.common.domain.events.outbound.DomainEventPublisher;
 import com.firefly.common.domain.events.properties.DomainEventsProperties;
-import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import com.firefly.common.domain.stepevents.StepEventPublisherBridge;
 import com.firefly.common.cqrs.tracing.CorrelationContext;
 import org.junit.jupiter.api.DisplayName;
@@ -48,7 +47,6 @@ class AutoConfigurationTest {
         .withConfiguration(AutoConfigurations.of(
             CqrsAutoConfiguration.class,
             DomainEventsAutoConfiguration.class,
-            ServiceClientAutoConfiguration.class,
             StepBridgeConfiguration.class
         ))
         .withBean(CorrelationContext.class);
@@ -153,40 +151,6 @@ class AutoConfigurationTest {
             });
     }
 
-    @Test
-    @DisplayName("Should auto-configure ServiceClient framework when enabled")
-    void shouldAutoConfigureServiceClientFrameworkWhenEnabled() {
-        contextRunner
-            .withPropertyValues(
-                "firefly.service-client.enabled=true"
-            )
-            .run(context -> {
-                // Then: ServiceClient components should be available
-                assertThat(context).hasSingleBean(WebClient.Builder.class);
-                assertThat(context).hasSingleBean(CircuitBreakerManager.class);
-
-                // Verify components are properly configured
-                WebClient.Builder webClientBuilder = context.getBean(WebClient.Builder.class);
-                assertThat(webClientBuilder).isNotNull();
-
-                CircuitBreakerManager circuitBreakerManager = context.getBean(CircuitBreakerManager.class);
-                assertThat(circuitBreakerManager).isNotNull();
-            });
-    }
-
-    @Test
-    @DisplayName("Should not auto-configure ServiceClient framework when disabled")
-    void shouldNotAutoConfigureServiceClientFrameworkWhenDisabled() {
-        contextRunner
-            .withPropertyValues(
-                "firefly.service-client.enabled=false"
-            )
-            .run(context -> {
-                // Then: ServiceClient components should not be available
-                assertThat(context).doesNotHaveBean(WebClient.Builder.class);
-                assertThat(context).doesNotHaveBean(CircuitBreakerManager.class);
-            });
-    }
 
     @Test
     @DisplayName("Should configure complete banking microservice stack")
@@ -198,7 +162,6 @@ class AutoConfigurationTest {
                 "firefly.events.enabled=true",
                 "firefly.events.adapter=APPLICATION_EVENT",
                 "firefly.stepevents.enabled=true",
-                "firefly.service-client.enabled=true",
                 
                 // Banking-specific configuration
                 "domain.topic=banking-domain-events",
@@ -206,13 +169,7 @@ class AutoConfigurationTest {
                 
                 // CQRS configuration
                 "firefly.cqrs.query.cache.enabled=true",
-                "firefly.cqrs.query.cache.default-ttl=300",
-                
-                // ServiceClient configuration
-                "firefly.service-client.rest.max-connections=100",
-                "firefly.service-client.rest.response-timeout=30s",
-                "firefly.service-client.circuit-breaker.failure-rate-threshold=50",
-                "firefly.service-client.retry.max-attempts=3"
+                "firefly.cqrs.query.cache.default-ttl=300"
             )
             .run(context -> {
                 // Then: All banking microservice components should be available
@@ -227,10 +184,6 @@ class AutoConfigurationTest {
                 
                 // StepEvents Bridge
                 assertThat(context).hasSingleBean(StepEventPublisherBridge.class);
-                
-                // ServiceClient Framework
-                assertThat(context).hasSingleBean(WebClient.Builder.class);
-                assertThat(context).hasSingleBean(CircuitBreakerManager.class);
                 
                 // Correlation Context
                 assertThat(context).hasSingleBean(CorrelationContext.class);
@@ -266,29 +219,17 @@ class AutoConfigurationTest {
             .withPropertyValues(
                 "firefly.cqrs.enabled=true",
                 "firefly.events.enabled=true",
-                "firefly.events.adapter=APPLICATION_EVENT",
-                "firefly.service-client.enabled=true",
-                "firefly.service-client.rest.max-connections=200",
-                "firefly.service-client.rest.response-timeout=45s",
-                "firefly.service-client.circuit-breaker.failure-rate-threshold=60",
-                "firefly.service-client.retry.max-attempts=5"
+                "firefly.events.adapter=APPLICATION_EVENT"
             )
             .run(context -> {
                 // Then: Configuration properties should be properly bound
                 assertThat(context).hasSingleBean(CqrsProperties.class);
                 assertThat(context).hasSingleBean(DomainEventsProperties.class);
-                assertThat(context).hasSingleBean(ServiceClientProperties.class);
                 
                 // Verify property values
                 DomainEventsProperties eventsProps = context.getBean(DomainEventsProperties.class);
                 assertThat(eventsProps.isEnabled()).isTrue();
                 assertThat(eventsProps.getAdapter()).isEqualTo(DomainEventsProperties.Adapter.APPLICATION_EVENT);
-                
-                ServiceClientProperties clientProps = context.getBean(ServiceClientProperties.class);
-                assertThat(clientProps.isEnabled()).isTrue();
-                assertThat(clientProps.getRest().getMaxConnections()).isEqualTo(200);
-                assertThat(clientProps.getCircuitBreaker().getFailureRateThreshold()).isEqualTo(60);
-                assertThat(clientProps.getRetry().getMaxAttempts()).isEqualTo(5);
             });
     }
 
