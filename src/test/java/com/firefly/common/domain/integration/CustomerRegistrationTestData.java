@@ -16,9 +16,9 @@
 
 package com.firefly.common.domain.integration;
 
-import com.firefly.common.domain.cqrs.command.Command;
-import com.firefly.common.domain.cqrs.query.Query;
-import com.firefly.common.domain.validation.ValidationResult;
+import com.firefly.common.cqrs.command.Command;
+import com.firefly.common.cqrs.query.Query;
+import com.firefly.common.cqrs.validation.ValidationResult;
 import lombok.Builder;
 import lombok.Data;
 import reactor.core.publisher.Mono;

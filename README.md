@@ -1,1664 +1,1224 @@
-# Firefly Common Domain Library
+# lib-common-domain
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.java.net/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green.svg)](https://spring.io/projects/spring-boot)
+**A comprehensive Spring Boot library for domain-driven design (DDD) with reactive programming support, featuring multi-messaging event publishing, service client framework, resilience patterns, and saga integration.**
 
-A powerful Spring Boot library that enables domain-driven design (DDD) with reactive programming support, featuring an **enhanced CQRS framework with zero boilerplate**, smart caching, automatic validation, and comprehensive event handling capabilities for the **Core-Domain Layer** of the Firefly OpenCore Banking Platform.
+## 🚀 Quick Start
 
-## 📋 Table of Contents
-
-- [🏗️ Architecture Overview](#️-architecture-overview)
-- [🚀 Key Features](#-key-features)
-- [💡 Core Concepts](#-core-concepts)
-  - [CQRS (Command Query Responsibility Segregation)](#cqrs-command-query-responsibility-segregation)
-  - [Saga Pattern](#saga-pattern)
-  - [Domain Events](#domain-events)
-  - [Reactive Programming](#reactive-programming)
-- [📦 Quick Start](#-quick-start)
-- [🎯 CQRS Framework Usage](#-cqrs-framework-usage)
-- [🔐 Authorization System](#-authorization-system)
-- [🌐 ServiceClient Framework](#-serviceclient-framework)
-- [📡 Domain Events](#-domain-events)
-- [🔄 CQRS + Saga Integration](#-cqrs--saga-integration)
-- [🔧 Technology Stack](#-technology-stack)
-- [📄 License](#-license)
-- [🏢 About Firefly](#-about-firefly)
-
-## 🏗️ Architecture Overview
-
-This library serves as the foundational architecture framework for the **Core-Domain Layer** within Firefly's 4-tier microservices architecture:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Channels Layer                           │
-│              (User-facing interfaces)                       │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│               Application/Process Layer                     │
-│            (Business processes & workflows)                 │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│ ★                    Core-Domain Layer                    ★ │
-│        (Business logic & middleware - THIS LIBRARY)         │
-│   • CQRS Framework    • Domain Events    • ServiceClients   │
-│   • Event Processing  • Resilience     • Observability      │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│                  Core-Infrastructure Layer                  │
-│              (Database CRUD & data persistence)             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 🚀 Key Features
-
-### 🎯 Enhanced CQRS Framework (Zero Boilerplate)
-- **Single Best Way**: Only ONE way to create handlers - extend `CommandHandler<C,R>` or `QueryHandler<Q,R>` - no confusion!
-- **Zero Boilerplate**: Automatic type detection from generics - no `getCommandType()` or `getResultType()` methods needed
-- **Jakarta Validation Integration**: Automatic validation using @NotBlank, @NotNull, @Min, @Max annotations - no manual validation code
-- **Built-in Features**: Automatic logging, **metrics by default**, error handling, correlation context, and performance monitoring
-- **Smart Caching**: Intelligent query result caching with configurable TTL, automatic cache key generation, and Redis support
-- **Advanced Features**: Batch processing, event sourcing support, multi-tenancy, performance monitoring, and testing utilities
-- **Context-Aware Processing**: ExecutionContext support for tenant-aware operations and feature flags
-- **Reactive Processing**: Built on Project Reactor for non-blocking, asynchronous operations
-- **Focus on Business Logic**: Just implement `doHandle()` - everything else is handled automatically
-
-#### 🏗️ **CQRS Architecture Components**
-
-**Core Processing Pipeline:**
-- **CommandBus** (`DefaultCommandBus`): Routes commands to handlers with validation, authorization, and metrics
-- **QueryBus** (`DefaultQueryBus`): Routes queries to handlers with caching, authorization, and performance tracking
-- **CommandHandlerRegistry**: Automatic discovery and registration of command handlers
-- **ValidationService**: Jakarta Bean Validation integration with custom validation support
-- **AuthorizationService**: Multi-layered authorization with lib-common-auth integration
-- **MetricsService**: Comprehensive metrics collection for commands and queries
-
-**Handler Lifecycle:**
-1. **Discovery**: Auto-discovery of handlers via `@CommandHandlerComponent`/`@QueryHandlerComponent`
-2. **Registration**: Type-safe registration with automatic generic type resolution
-3. **Validation**: Jakarta Bean Validation + custom validation rules
-4. **Authorization**: lib-common-auth + custom authorization logic
-5. **Execution**: Business logic in `doHandle()` method
-6. **Post-Processing**: Metrics collection, caching (queries), event publishing
-
-### 🔐 Authorization System (Zero-Trust Banking)
-- **lib-common-auth Integration**: Seamless integration with existing authentication infrastructure via `LibCommonAuthIntegration`
-- **Zero-Trust Architecture**: All operations denied by default with explicit authorization required
-- **Multi-Layer Authorization**: lib-common-auth + custom authorization with configurable combination patterns
-- **Authorization Patterns**: Standard + Custom, Custom Override, Custom Only, Both Must Pass
-- **Context-Aware Security**: ExecutionContext support for tenant-aware and user-specific authorization
-- **Banking-Grade Security**: Resource ownership validation, fraud detection, compliance checks
-- **Performance Optimized**: Reactive authorization pipeline with async processing and detailed error reporting
-
-#### 🏗️ **Authorization Architecture**
-
-**Core Components:**
-- **AuthorizationService**: Central authorization orchestrator with multi-layer support
-- **LibCommonAuthIntegration**: Bridge to lib-common-auth system with annotation detection
-- **AuthorizationResult**: Comprehensive result object with detailed error information
-- **AuthorizationError**: Structured error reporting with resource, message, and error codes
-- **ExecutionContext**: Context-aware authorization with tenant, user, and feature flag support
-
-**Authorization Flow:**
-1. **lib-common-auth Check**: Automatic detection and processing of lib-common-auth annotations
-2. **Custom Authorization**: Command/query-specific authorization via `authorize()` method
-3. **Context Integration**: ExecutionContext-aware authorization for multi-tenant scenarios
-4. **Result Combination**: Intelligent combination of authorization results based on configuration
-5. **Error Aggregation**: Detailed error reporting with resource-specific failure information
-
-**Authorization Patterns:**
-```java
-// lib-common-auth + Custom (default)
-@CommandHandlerComponent
-public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
-    @Override
-    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
-        // Both lib-common-auth annotations and custom authorize() method are checked
-        return processTransfer(command);
-    }
-}
-
-// Custom authorization with context
-public class GetAccountBalanceQuery implements Query<AccountBalance> {
-    @Override
-    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
-        String userId = context.getUserId();
-        String tenantId = context.getTenantId();
-
-        // Custom business logic for account ownership validation
-        return validateAccountOwnership(accountNumber, userId, tenantId);
-    }
-}
-```
-
-### 🌐 ServiceClient Framework (Redesigned)
-- **Unified API**: Single `ServiceClient` interface for REST, gRPC, and SDK clients
-- **Fluent Request Builder**: Intuitive `RequestBuilder<R>` with method chaining for all operations
-- **Protocol Implementations**: `RestServiceClientImpl`, `GrpcServiceClientImpl` with protocol-specific optimizations
-- **Builder Pattern**: `RestClientBuilder`, `GrpcClientBuilder` for simplified client creation
-- **Advanced Resilience**: `CircuitBreakerManager`, retry templates, adaptive timeouts, and bulkhead isolation
-- **Health Monitoring**: Automatic service health detection, recovery, and health indicators
-- **Interceptor Framework**: Request/response interceptors for cross-cutting concerns (logging, metrics, security)
-- **Environment Configuration**: Development, testing, and production-optimized defaults
-- **Production Ready**: Banking-optimized with comprehensive monitoring and observability
-
-#### 🏗️ **ServiceClient Architecture**
-
-**Core Components:**
-- **ServiceClient Interface**: Unified API for all client types with fluent request builders
-- **RestServiceClientImpl**: WebClient-based implementation with reactive streams
-- **GrpcServiceClientImpl**: gRPC implementation with Protocol Buffer optimization
-- **RequestBuilder**: Fluent API for building requests with path params, query params, headers, and body
-- **CircuitBreakerManager**: Advanced circuit breaker with sliding window and health monitoring
-- **ServiceClientProperties**: Comprehensive configuration with environment-specific defaults
-
-**Client Creation Patterns:**
-```java
-// REST Client
-ServiceClient restClient = ServiceClient.rest("account-service")
-    .baseUrl("http://account-service:8080")
-    .timeout(Duration.ofSeconds(30))
-    .maxConnections(100)
-    .defaultHeader("Content-Type", "application/json")
-    .build();
-
-// gRPC Client
-ServiceClient grpcClient = ServiceClient.grpc("payment-service", PaymentServiceStub.class)
-    .address("payment-service:9090")
-    .timeout(Duration.ofSeconds(45))
-    .useTransportSecurity()
-    .stubFactory(channel -> PaymentServiceGrpc.newStub(channel))
-    .build();
-```
-
-### 📡 Multi-Messaging Domain Events
-- **Adapter Pattern**: Support for Kafka, RabbitMQ, AWS SQS, Kinesis, ApplicationEvent, and NOOP adapters
-- **Auto-Detection**: Intelligent adapter selection based on available infrastructure (priority: Kafka → RabbitMQ → Kinesis → SQS → ApplicationEvent)
-- **Event Sourcing Ready**: Built-in support for event-driven architectures with `DomainEventEnvelope`
-- **Correlation Tracking**: Distributed tracing across service boundaries with correlation context
-- **Event Envelope**: Standardized event structure with topic, type, key, payload, headers, and metadata
-- **Resilient Publishing**: Retry templates, circuit breakers, and error handling for reliable event delivery
-- **Inbound Processing**: Automatic event consumption and republishing as Spring ApplicationEvents
-
-#### 🏗️ **Domain Events Architecture**
-
-**Core Components:**
-- **DomainEventEnvelope**: Standardized event wrapper with topic, type, key, payload, headers, and metadata
-- **DomainEventPublisher**: Interface for publishing events with adapter-specific implementations
-- **Adapter Implementations**:
-  - `KafkaDomainEventPublisher`: Apache Kafka integration with producer configuration
-  - `RabbitMqDomainEventPublisher`: RabbitMQ integration with exchange/routing key support
-  - `SqsAsyncClientDomainEventPublisher`: AWS SQS integration with async client
-  - `KinesisDomainEventPublisher`: AWS Kinesis integration for streaming events
-  - `ApplicationEventDomainEventPublisher`: In-process Spring ApplicationEvent publishing
-  - `NoopDomainEventPublisher`: No-op implementation for testing/disabled scenarios
-
-**Event Processing Pipeline:**
-1. **Event Creation**: Build `DomainEventEnvelope` with business payload and metadata
-2. **Adapter Selection**: Auto-detection or explicit configuration of messaging adapter
-3. **Publishing**: Resilient publishing with retry logic and circuit breaker protection
-4. **Transport**: Message delivery via configured messaging infrastructure
-5. **Consumption**: Inbound subscribers convert messages back to `DomainSpringEvent`
-6. **Processing**: Spring ApplicationEvent listeners handle domain events
-
-### 🔄 lib-transactional-engine Integration
-- **Manual Integration Pattern**: Flexible integration allowing developers to wire lib-transactional-engine with CQRS framework manually
-- **StepEventPublisherBridge**: Bridge component that publishes saga step events through domain events infrastructure
-- **Metadata Enrichment**: Enhanced step events with execution metrics and correlation data
-- **Unified Event Handling**: Single event processing pipeline for both domain and step events
-- **Developer Control**: No native integration - developers maintain full control over saga orchestration patterns
-
-### 🛡️ Resilience Patterns
-- **Circuit Breaker**: `CircuitBreakerManager` with sliding window failure detection and automatic recovery
-- **Retry Logic**: Configurable retry templates with exponential backoff and jitter
-- **Timeout Management**: Adaptive timeouts with circuit breaker integration
-- **Bulkhead Isolation**: Resource isolation to prevent cascade failures
-- **Health Monitoring**: Continuous health checks with automatic service discovery
-
-#### 🏗️ **Resilience Architecture**
-- **CircuitBreakerManager**: Advanced circuit breaker with configurable failure thresholds
-- **SlidingWindow**: Time-based and count-based sliding window for failure rate calculation
-- **CircuitBreakerMetrics**: Comprehensive metrics for circuit breaker state and performance
-- **DomainEventsRetryConfig**: Specialized retry configuration for event publishing
-
-### 📊 Validation Framework
-- **Jakarta Bean Validation**: Automatic validation using standard annotations (@NotNull, @NotBlank, @Min, @Max)
-- **AutoValidationProcessor**: Seamless integration with CQRS command/query processing
-- **Custom Validation**: Support for custom validation rules and business logic validation
-- **Validation Results**: Structured validation error reporting with field-level details
-- **Performance Optimized**: Validation caching and lazy initialization for optimal performance
-
-#### 🏗️ **Validation Architecture**
-- **AutoValidationProcessor**: Central validation orchestrator with Jakarta Bean Validation integration
-- **ValidationResult**: Comprehensive validation result with detailed error information
-- **ValidationError**: Structured error reporting with field, message, and error code
-- **ValidationUtils**: Utility methods for common validation patterns
-
-### 🔍 Enhanced Observability
-- **Metrics by Default**: Auto-configured MeterRegistry with CQRS command/query metrics (no manual setup required)
-- **Comprehensive Metrics**: JVM, HTTP client, thread pool, and application startup metrics
-- **Health Indicators**: Thread pool, cache, and external service health monitoring
-- **Distributed Tracing**: Correlation context propagation across all operations
-- **Step Event Monitoring**: Detailed saga execution tracking and performance metrics
-
-#### 🏗️ **Observability Architecture**
-- **CorrelationContext**: Distributed tracing context with automatic propagation
-- **CommandMetricsService**: Comprehensive metrics collection for command processing
-- **QueryMetricsService**: Performance metrics for query processing and caching
-- **ActuatorEndpoints**: Custom Spring Boot Actuator endpoints for CQRS and domain events
-- **HealthIndicators**: Service health monitoring with automatic failure detection
-
-### 📈 Spring Boot Actuator Extensions
-- **CQRS Endpoints**: Custom actuator endpoints for command/query handler monitoring
-- **Domain Events Endpoints**: Event publisher and subscriber health and metrics
-- **ServiceClient Endpoints**: Client health, circuit breaker status, and performance metrics
-- **Cache Endpoints**: Cache statistics, hit rates, and configuration details
-- **Authorization Endpoints**: Authorization service health and performance metrics
-
-## 💡 Core Concepts
-
-Understanding these fundamental patterns is essential for effectively using this library in banking and financial services applications.
-
-### CQRS (Command Query Responsibility Segregation)
-
-**CQRS** is an architectural pattern that separates read and write operations into different models, optimizing each for their specific use cases.
-
-**Key Principles:**
-- **Commands**: Represent intentions to change state (e.g., "Transfer Money", "Create Account")
-- **Queries**: Retrieve data without side effects (e.g., "Get Account Balance", "List Transactions")
-- **Separation**: Different models for reading and writing data
-- **Scalability**: Independent scaling of read and write operations
-
-**Benefits in Banking:**
-- **Performance**: Optimized read models for complex reporting and analytics
-- **Security**: Clear separation between data modification and retrieval operations
-- **Auditability**: All state changes are explicit commands with full traceability
-- **Scalability**: Read replicas can be optimized for specific query patterns
-
-**Real Implementation Example from Test Suite:**
-```java
-import jakarta.validation.constraints.*;
-import lombok.Builder;
-import lombok.Data;
-import com.firefly.common.domain.cqrs.annotations.CommandHandlerComponent;
-
-// Real command with Jakarta validation - no boilerplate!
-@Data
-@Builder
-public class CreateAccountCommand implements Command<AccountCreatedResult> {
-    @NotBlank(message = "Customer ID is required")
-    private final String customerId;
-
-    @NotBlank(message = "Account type is required")
-    private final String accountType;
-
-    @NotNull
-    @Min(value = 0, message = "Initial balance cannot be negative")
-    private final BigDecimal initialBalance;
-
-    // No validate() method needed - Jakarta validation handles annotations automatically!
-    // Framework automatically validates @NotBlank, @NotNull, @Min annotations
-}
-
-// Real command handler from test suite - THE ONLY WAY to create handlers!
-@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
-public class CreateAccountHandler extends CommandHandler<CreateAccountCommand, AccountCreatedResult> {
-
-    @Override
-    protected Mono<AccountCreatedResult> doHandle(CreateAccountCommand command) {
-        // Only business logic - validation, logging, metrics handled automatically!
-        String accountNumber = "ACC-" + System.currentTimeMillis();
-        AccountCreatedResult result = new AccountCreatedResult(
-            accountNumber,
-            command.getCustomerId(),
-            command.getAccountType(),
-            command.getInitialBalance(),
-            "ACTIVE"
-        );
-        return Mono.just(result);
-    }
-
-    // No getCommandType() needed - automatically detected from generics!
-    // Built-in features: validation, logging, metrics, error handling
-}
-
-// Real query with caching from test suite
-@Data
-@Builder
-public class GetAccountBalanceQuery implements Query<AccountBalance> {
-    @NotBlank(message = "Account number is required")
-    private final String accountNumber;
-
-    @NotBlank(message = "Customer ID is required")
-    private final String customerId;
-
-    // No getCacheKey() method needed - automatic generation based on fields!
-}
-
-@QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
-public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
-
-    @Override
-    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
-        // Only business logic - validation, caching, metrics handled automatically!
-        AccountBalance balance = new AccountBalance(
-            query.getAccountNumber(),
-            new BigDecimal("2500.00"),
-            new BigDecimal("2300.00"),
-            "USD",
-            LocalDateTime.now()
-        );
-        return Mono.just(balance);
-    }
-
-    // ✅ NO BOILERPLATE NEEDED:
-    // - No getQueryType() - automatically detected from generics!
-    // - No supportsCaching() - handled by @QueryHandlerComponent annotation
-    // - No getCacheTtlSeconds() - handled by @QueryHandlerComponent annotation
-    // - Built-in features: caching, logging, metrics, error handling
-}
-
-// Simple command execution using builder pattern
-TransferMoneyCommand command = TransferMoneyCommand.builder()
-    .fromAccount("ACC-001")
-    .toAccount("ACC-002")
-    .amount(new BigDecimal("1000.00"))
-    .description("Monthly transfer")
-    .correlationId("CORR-12345")
-    .build();
-
-commandBus.send(command).subscribe();
-```
-
-### Saga Pattern
-
-**Saga** is a distributed transaction pattern that manages data consistency across microservices without using distributed transactions.
-
-**Key Principles:**
-- **Local Transactions**: Each service manages its own data with local ACID transactions
-- **Compensation**: Failed transactions trigger compensating actions to undo previous steps
-- **Orchestration**: A central coordinator manages the sequence of operations
-- **Event-Driven**: Services communicate through events rather than direct calls
-
-**Benefits in Banking:**
-- **Reliability**: Handles partial failures gracefully with automatic compensation
-- **Consistency**: Maintains eventual consistency across distributed services
-- **Scalability**: No distributed locks or two-phase commits
-- **Observability**: Clear visibility into complex business process execution
-
-**Example Banking Workflow:**
-```
-Money Transfer Saga:
-1. Reserve funds from source account
-2. Validate destination account
-3. Execute transfer
-4. Send notifications
-
-If step 3 fails → Compensate: Release reservation from step 1
-```
-
-### Domain Events
-
-**Domain Events** represent significant business occurrences that other parts of the system care about.
-
-**Key Principles:**
-- **Business Significance**: Events represent meaningful business state changes
-- **Decoupling**: Publishers don't know about subscribers
-- **Eventual Consistency**: Systems synchronize through event processing
-- **Event Sourcing**: Events can be stored as the source of truth
-
-**Benefits in Banking:**
-- **Integration**: Loose coupling between banking services
-- **Auditability**: Complete audit trail of all business events
-- **Real-time Processing**: Immediate reaction to business events
-- **Scalability**: Asynchronous processing of business logic
-
-**Example:**
-```java
-// Domain event published when money transfer completes
-MoneyTransferCompletedEvent event = MoneyTransferCompletedEvent.builder()
-    .transferId("TXN-12345")
-    .fromAccount("ACC-001")
-    .toAccount("ACC-002")
-    .amount(new BigDecimal("1000.00"))
-    .completedAt(Instant.now())
-    .build();
-```
-
-### Reactive Programming
-
-**Reactive Programming** is a programming paradigm focused on asynchronous data streams and the propagation of change.
-
-**Key Principles:**
-- **Non-blocking**: Operations don't block threads waiting for I/O
-- **Backpressure**: Handling of fast producers and slow consumers
-- **Resilience**: Graceful handling of failures and recovery
-- **Responsiveness**: Systems remain responsive under varying load
-
-**Benefits in Banking:**
-- **Performance**: Handle thousands of concurrent transactions efficiently
-- **Resource Efficiency**: Better utilization of system resources
-- **Scalability**: Handle varying loads without degrading performance
-- **Resilience**: Graceful degradation under high load or failures
-
-**Example:**
-```java
-// Reactive money transfer processing
-public Mono<TransferResult> transferMoney(TransferRequest request) {
-    return validateAccount(request.getFromAccount())
-        .flatMap(account -> reserveFunds(account, request.getAmount()))
-        .flatMap(reservation -> executeTransfer(reservation, request))
-        .doOnSuccess(result -> publishTransferEvent(result))
-        .doOnError(error -> handleTransferFailure(request, error));
-}
-```
-
-## 🎯 **The Single Best Way**
-
-This framework provides **ONE clear way** to create CQRS handlers - no confusion, no multiple approaches:
-
-- **Commands**: Use `@CommandHandlerComponent` + extend `CommandHandler<Command, Result>` + implement `doHandle()`
-- **Queries**: Use `@QueryHandlerComponent` + extend `QueryHandler<Query, Result>` + implement `doHandle()`
-- **Zero Boilerplate**: Automatic type detection, logging, metrics, validation, caching
-- **Annotations**: Configure timeout, retries, caching, metrics via annotations
-- **Focus**: Only write business logic - everything else is handled automatically
-
-## 📦 Quick Start
-
-### 1. Add Dependency
+### Maven Dependency
 
 ```xml
 <dependency>
     <groupId>com.firefly</groupId>
     <artifactId>lib-common-domain</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>2.0.0-SNAPSHOT</version>
+    <!-- lib-common-cqrs is included transitively -->
 </dependency>
 ```
 
-### 2. Enable Auto-Configuration
+### Auto-Configuration
 
-The library uses Spring Boot's standard auto-configuration mechanism. Simply add the dependency and the components will be automatically configured:
+The framework auto-configures when detected on the classpath:
 
 ```java
 @SpringBootApplication
-public class BankingServiceApplication {
+public class MyApplication {
     public static void main(String[] args) {
-        SpringApplication.run(BankingServiceApplication.class, args);
+        SpringApplication.run(MyApplication.class, args);
+        // ✅ Domain event publishers are automatically available
+        // ✅ Service clients are auto-configured  
+        // ✅ Circuit breakers are ready to use
+        // ✅ Distributed tracing is enabled
+        // ✅ CQRS features available via lib-common-cqrs
     }
 }
 ```
 
-The following components are automatically configured when the library is on the classpath:
-- **CQRS Framework** (`CqrsAutoConfiguration`) - **includes auto-configured MeterRegistry for metrics**
-- **Domain Events** (`DomainEventsAutoConfiguration`)
-- **ServiceClient Framework** (`ServiceClientAutoConfiguration`)
-- **StepEvents Bridge** (`StepBridgeConfiguration`)
-- **JSON Logging** (`JsonLoggingAutoConfiguration`)
-- **Observability Features** (`DomainEventsActuatorAutoConfiguration`)
-
-### 3. Basic Configuration
-
-```yaml
-firefly:
-  # CQRS Framework Configuration
-  cqrs:
-    enabled: true                    # Enable CQRS framework (default: true)
-    command:
-      timeout: 30s                  # Command timeout (default: 30s)
-      metrics-enabled: true         # Enable command metrics (default: true)
-      tracing-enabled: true         # Enable command tracing (default: true)
-    query:
-      timeout: 15s                  # Query timeout (default: 15s)
-      caching-enabled: true         # Enable query caching (default: true)
-      cache-ttl: 15m               # Default cache TTL (default: 15m)
-      metrics-enabled: true         # Enable query metrics (default: true)
-      tracing-enabled: true         # Enable query tracing (default: true)
-      cache:
-        type: LOCAL                 # Cache type: LOCAL or REDIS (default: LOCAL)
-        redis:
-          enabled: false            # Enable Redis cache (default: false)
-          host: localhost           # Redis host (default: localhost)
-          port: 6379               # Redis port (default: 6379)
-          database: 0              # Redis database (default: 0)
-          timeout: 2s              # Connection timeout (default: 2s)
-          key-prefix: "firefly:cqrs:"  # Cache key prefix (default: "firefly:cqrs:")
-          statistics: true          # Enable cache statistics (default: true)
-
-  # Domain Events Configuration
-  events:
-    enabled: true                   # Enable domain events (default: true)
-    adapter: AUTO                   # Adapter: AUTO, KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT, NOOP
-    kafka:
-      bootstrap-servers: localhost:9092
-      topic: banking-events
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
-    rabbit:
-      exchange: banking-events
-      routing-key: "${type}"
-    sqs:
-      queue-name: banking-events-queue
-      region: us-east-1
-    kinesis:
-      stream-name: banking-events-stream
-      partition-key: "${key}"
-      region: us-east-1
-
-  # ServiceClient Framework Configuration
-  service-client:
-    enabled: true                   # Enable ServiceClient framework (default: true)
-    default-timeout: 30s           # Global default timeout (default: 30s)
-    environment: DEVELOPMENT       # Environment: DEVELOPMENT, TESTING, PRODUCTION
-    rest:
-      max-connections: 100         # Connection pool size (default: 100)
-      response-timeout: 30s        # Response timeout (default: 30s)
-      connect-timeout: 10s         # Connect timeout (default: 10s)
-      max-idle-time: 5m           # Max idle time (default: 5m)
-    grpc:
-      keep-alive-time: 5m         # Keep alive time (default: 5m)
-      keep-alive-timeout: 30s     # Keep alive timeout (default: 30s)
-      call-timeout: 30s           # Call timeout (default: 30s)
-    circuit-breaker:
-      failure-rate-threshold: 50   # Failure rate threshold % (default: 50)
-      slow-call-rate-threshold: 50 # Slow call rate threshold % (default: 50)
-      slow-call-duration-threshold: 60s  # Slow call duration (default: 60s)
-      sliding-window-size: 100     # Sliding window size (default: 100)
-    retry:
-      max-attempts: 3             # Max retry attempts (default: 3)
-      wait-duration: 500ms        # Wait duration between retries (default: 500ms)
-
-  # lib-transactional-engine Integration
-  stepevents:
-    enabled: true                   # Enable step events bridge (default: true)
-
-# Authorization Configuration
-  authorization:
-    enabled: true                   # Enable authorization (default: true)
-    lib-common-auth:
-      enabled: true                # Enable lib-common-auth integration (default: true)
-    cache:
-      enabled: false              # Enable authorization caching (default: false)
-      ttl: 5m                     # Cache TTL (default: 5m)
-
-# Domain topic for step events (optional, defaults to "domain-events")
-domain:
-  topic: banking-domain-events
-```
-
-### 4. Cache Configuration (Local vs Redis)
-
-The framework supports both local in-memory cache and distributed Redis cache for query results:
-
-#### Local Cache (Default)
-```yaml
-firefly:
-  cqrs:
-    query:
-      cache:
-        type: LOCAL  # Default - no additional configuration needed
-```
-
-#### Redis Cache (Production)
-```yaml
-firefly:
-  cqrs:
-    query:
-      cache:
-        type: REDIS              # Switch to Redis cache
-        redis:
-          enabled: true          # Must be explicitly enabled
-          host: localhost        # Redis server host
-          port: 6379            # Redis server port
-          database: 0           # Redis database index
-          password: your-password # Optional password
-          timeout: 2s           # Connection timeout
-          key-prefix: "firefly:cqrs:" # Cache key prefix
-          statistics: true      # Enable cache statistics (reserved for future use)
-```
-
-**Important Notes:**
-- Redis cache is **disabled by default** - no Redis connections are attempted unless explicitly enabled
-- When Redis is unavailable, the framework gracefully falls back to local cache with a warning
-- Redis dependency is optional when using local cache only
-
-### 5. Create Your First Command and Handler
-
-```java
-import jakarta.validation.constraints.*;
-import lombok.Builder;
-import lombok.Data;
-
-// Command with automatic Jakarta validation
-@Data
-@Builder
-public class ProcessPaymentCommand implements Command<PaymentResult> {
-    @NotBlank(message = "Customer ID is required")
-    private final String customerId;
-
-    @NotNull(message = "Payment amount is required")
-    @Min(value = 1, message = "Payment amount must be greater than zero")
-    @Max(value = 50000, message = "Payment amount cannot exceed $50,000")
-    private final BigDecimal amount;
-
-    @NotBlank(message = "Payment method is required")
-    private final String paymentMethod;
-
-    @NotBlank(message = "Description is required")
-    private final String description;
-
-    private final String correlationId;
-
-    // No validate() method needed - Jakarta validation handles all annotations!
-}
-
-// THE ONLY WAY to create command handlers - extend CommandHandler!
-@CommandHandlerComponent(timeout = 15000, metrics = true)
-public class ProcessPaymentHandler extends CommandHandler<ProcessPaymentCommand, PaymentResult> {
-
-    private final ServiceClient paymentClient;
-    private final ServiceClient notificationClient;
-
-    @Override
-    protected Mono<PaymentResult> doHandle(ProcessPaymentCommand command) {
-        // Only business logic - validation, logging, metrics handled automatically!
-        return processPayment(command)
-            .flatMap(paymentResult -> sendNotification(command, paymentResult));
-    }
-
-    // No getCommandType() needed - automatically detected from generics!
-    // Built-in features: logging, metrics, error handling, correlation context
-
-    private Mono<PaymentResult> processPayment(ProcessPaymentCommand command) {
-        return paymentClient.post("/payments", PaymentResult.class)
-            .withBody(command)
-            .execute();
-    }
-
-    private Mono<PaymentResult> sendNotification(ProcessPaymentCommand command, PaymentResult result) {
-        return notificationClient.post("/notifications", Void.class)
-            .withBody(createNotificationRequest(command, result))
-            .execute()
-            .thenReturn(result); // Return the original payment result
-    }
-
-    private Object createNotificationRequest(ProcessPaymentCommand command, PaymentResult result) {
-        // Create notification request object from command and result
-        return new NotificationRequest(command.getCustomerId(), result.getTransactionId());
-    }
-}
-
-// Usage example
-ProcessPaymentCommand command = ProcessPaymentCommand.builder()
-    .customerId("CUST-12345")
-    .amount(new BigDecimal("250.00"))
-    .paymentMethod("CREDIT_CARD")
-    .description("Monthly subscription payment")
-    .correlationId("CORR-PAY-001")
-    .build();
-
-commandBus.send(command)
-    .doOnSuccess(result -> log.info("Payment processed: {}", result.getTransactionId()))
-    .doOnError(error -> log.error("Payment failed: {}", error.getMessage()))
-    .subscribe();
-```
-
-## 🎯 Enhanced CQRS Framework Usage
-
-The enhanced CQRS framework eliminates boilerplate code through automatic Jakarta validation, smart caching, builder patterns, and clean handler interfaces.
-
-### 1. Commands with Automatic Validation
-
-Commands now use Jakarta validation annotations, eliminating manual validation code:
-
-```java
-import jakarta.validation.constraints.*;
-import lombok.Builder;
-import lombok.Data;
-
-@Data
-@Builder
-public class TransferMoneyCommand implements Command<TransferResult> {
-    @NotBlank(message = "Source account is required")
-    private final String fromAccount;
-
-    @NotBlank(message = "Destination account is required")
-    private final String toAccount;
-
-    @NotNull(message = "Transfer amount is required")
-    @Min(value = 1, message = "Transfer amount must be greater than zero")
-    @Max(value = 1000000, message = "Transfer amount cannot exceed $1,000,000")
-    private final BigDecimal amount;
-
-    @NotBlank(message = "Description is required")
-    private final String description;
-
-    private final String correlationId;
-
-    // No validate() method needed - Jakarta validation handles annotations automatically!
-    // The CommandBus will automatically validate @NotBlank, @NotNull, @Min, @Max before processing
-
-    @Override
-    public Mono<ValidationResult> validate() {
-        // Only custom business validation here (Jakarta validation happens first)
-        if (fromAccount != null && fromAccount.equals(toAccount)) {
-            return Mono.just(ValidationResult.failure("accounts", "Cannot transfer to the same account"));
-        }
-        return Mono.just(ValidationResult.success());
-    }
-}
-```
-
-### 2. Zero-Boilerplate Command Handlers
-
-THE ONLY WAY to create command handlers - extend CommandHandler for automatic features:
-
-```java
-@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
-public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
-
-    private final ServiceClient accountServiceClient;
-    private final ServiceClient fraudServiceClient;
-    private final DomainEventPublisher eventPublisher;
-
-    @Override
-    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
-        // Only business logic - validation, logging, metrics handled automatically!
-        return performFraudCheck(command)
-            .flatMap(fraudResult -> {
-                if (!fraudResult.isApproved()) {
-                    return Mono.error(new TransferBlockedException("Transfer blocked by fraud detection"));
-                }
-                return executeTransfer(command);
-            })
-            .flatMap(this::publishTransferEvent);
-    }
-
-    // No getCommandType() needed - automatically detected from generics!
-    // Built-in features: logging, metrics, error handling, correlation context
-
-    private Mono<FraudCheckResult> performFraudCheck(TransferMoneyCommand command) {
-        return fraudServiceClient.post("/fraud-check", FraudCheckResult.class)
-            .withBody(command)
-            .execute();
-    }
-
-    private Mono<TransferResult> executeTransfer(TransferMoneyCommand command) {
-        return accountServiceClient.post("/transfers", TransferResult.class)
-            .withBody(command)
-            .execute();
-    }
-
-    private Mono<TransferResult> publishTransferEvent(TransferResult result) {
-        DomainEventEnvelope event = DomainEventEnvelope.builder()
-            .topic("banking.transfers")
-            .type("transfer.completed")
-            .key(result.getTransferId())
-            .payload(result)
-            .timestamp(Instant.now())
-            .build();
-
-        return eventPublisher.publish(event).thenReturn(result);
-    }
-}
-```
-
-### 3. Clean Command Creation and Execution
-
-Create and execute commands using the builder pattern:
+### Your First Domain Event Publisher
 
 ```java
 @Service
-@RequiredArgsConstructor
-public class TransferService {
-
-    private final CommandBus commandBus;
-
-    public Mono<TransferResult> transferMoney(TransferRequest request) {
-        // Clean command creation using builder pattern
-        TransferMoneyCommand command = TransferMoneyCommand.builder()
-            .fromAccount(request.getFromAccount())
-            .toAccount(request.getToAccount())
-            .amount(request.getAmount())
-            .description(request.getDescription())
-            .correlationId(generateCorrelationId())
-            .build();
-
-        // Execute command - validation happens automatically
-        return commandBus.send(command);
+public class AccountService {
+    
+    private final DomainEventPublisher eventPublisher;
+    private final AccountRepository accountRepository;
+    
+    public Mono<Account> createAccount(CreateAccountCommand command) {
+        return accountRepository.save(buildAccount(command))
+            .flatMap(this::publishAccountCreatedEvent);
     }
-
-    public Mono<TransferResult> transferMoneyWithContext(TransferRequest request) {
-        // Alternative with correlation context
-        String correlationId = CorrelationContext.current().getCorrelationId();
-
-        TransferMoneyCommand command = TransferMoneyCommand.builder()
-            .fromAccount(request.getFromAccount())
-            .toAccount(request.getToAccount())
-            .amount(request.getAmount())
-            .description(request.getDescription())
-            .correlationId(correlationId)
-            .build();
-
-        return commandBus.send(command)
-            .doOnSuccess(result -> log.info("Transfer completed: {}", result.getTransferId()))
-            .doOnError(error -> log.error("Transfer failed: {}", error.getMessage()));
-    }
-
-    private String generateCorrelationId() {
-        return "TRANSFER-" + UUID.randomUUID().toString();
+    
+    private Mono<Account> publishAccountCreatedEvent(Account account) {
+        AccountCreatedEvent event = new AccountCreatedEvent(
+            account.getId(),
+            account.getCustomerId(),
+            account.getType(),
+            account.getBalance()
+        );
+        
+        return eventPublisher.publish(event)
+            .thenReturn(account);
     }
 }
 ```
 
-### 4. Smart Queries with Automatic Caching
-
-THE ONLY WAY to create query handlers - extend QueryHandler for automatic features:
+### Your First Service Client
 
 ```java
-import jakarta.validation.constraints.*;
-import lombok.Builder;
-import lombok.Data;
-
-@Data
-@Builder
-public class GetAccountBalanceQuery implements Query<AccountBalance> {
-    @NotBlank(message = "Account number is required")
-    private final String accountNumber;
-
-    @NotBlank(message = "Currency is required")
-    private final String currency;
-
-    private final String correlationId;
-
-    // No need to override getCacheKey() - automatic generation based on fields!
-}
-
-@QueryHandlerComponent(cacheable = true, cacheTtl = 300, metrics = true)
-public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
-
-    private final ServiceClient accountServiceClient;
-
-    @Override
-    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
-        // Only business logic - validation, caching, metrics handled automatically!
-        return accountServiceClient.get("/accounts/{accountNumber}/balance", AccountBalance.class)
-            .withPathVariable("accountNumber", query.getAccountNumber())
-            .withQueryParam("currency", query.getCurrency())
+@Service 
+public class CustomerServiceClient {
+    
+    private final ServiceClient serviceClient;
+    
+    public CustomerServiceClient() {
+        this.serviceClient = ServiceClient.rest("customer-service")
+            .baseUrl("http://customer-service:8080")
+            .timeout(Duration.ofSeconds(30))
+            .defaultHeader("Content-Type", "application/json")
+            .build();
+    }
+    
+    public Mono<Customer> getCustomer(String customerId) {
+        return serviceClient.get("/customers/{id}", Customer.class)
+            .withPathParam("id", customerId)
+            .withCircuitBreaker("customer-service")
+            .withRetry(3)
             .execute();
     }
-
-    // ✅ NO BOILERPLATE NEEDED:
-    // - No getQueryType() - automatically detected from generics!
-    // - No supportsCaching() - handled by @QueryHandlerComponent annotation
-    // - No getCacheTtlSeconds() - handled by @QueryHandlerComponent annotation
-    // - Built-in features: caching, logging, metrics, error handling
-}
-
-// Simple query execution using builder pattern
-GetAccountBalanceQuery query = GetAccountBalanceQuery.builder()
-    .accountNumber("ACC-123")
-    .currency("USD")
-    .correlationId("QUERY-001")
-    .build();
-
-queryBus.query(query)
-    .doOnSuccess(balance -> log.info("Account balance: {}", balance.getAmount()))
-    .subscribe();
-```
-
-### 5. ExecutionContext for Additional Values
-
-Pass additional context values that aren't part of the command/query itself:
-
-```java
-// Create execution context with additional values
-ExecutionContext context = ExecutionContext.builder()
-    .withUserId("user-123")
-    .withTenantId("tenant-456")
-    .withOrganizationId("org-789")
-    .withFeatureFlag("premium-features", true)
-    .withFeatureFlag("enhanced-view", false)
-    .withProperty("priority", "HIGH")
-    .withProperty("source", "mobile-app")
-    .build();
-
-// Send command with context
-commandBus.send(transferCommand, context)
-    .subscribe(result -> log.info("Transfer completed: {}", result));
-
-// Query with context
-queryBus.query(balanceQuery, context)
-    .subscribe(balance -> log.info("Balance: {}", balance));
-```
-
-#### Context-Aware Handlers
-
-For handlers that always need context, use `ContextAwareCommandHandler` or `ContextAwareQueryHandler`:
-
-```java
-@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
-public class CreateTenantAccountHandler extends ContextAwareCommandHandler<CreateAccountCommand, AccountResult> {
-
-    @Override
-    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
-        String tenantId = context.getTenantId();
-        String userId = context.getUserId();
-        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
-
-        if (tenantId == null) {
-            return Mono.error(new IllegalArgumentException("Tenant ID is required"));
-        }
-
-        return createAccountWithTenantContext(command, tenantId, userId, premiumFeatures);
+    
+    public Mono<Customer> createCustomer(CustomerCreateRequest request) {
+        return serviceClient.post("/customers", Customer.class)
+            .withBody(request)
+            .execute();
     }
 }
 ```
 
-#### Flexible Handlers
+## 🎯 Features
 
-Regular handlers can optionally use context by overriding the context-aware doHandle method:
+### 📡 Multi-Messaging Domain Events
+- **Unified API**: Single interface for multiple messaging platforms
+- **Reactive Streams**: Non-blocking event publishing and consumption
+- **Auto-Configuration**: Automatic adapter selection and configuration
+- **Flexible Routing**: Topic-based routing with filtering capabilities
+- **Reliable Delivery**: Built-in error handling and retry mechanisms
+
+### 🔗 Service Client Framework
+- **REST & gRPC**: Unified interface for different protocols
+- **Circuit Breakers**: Automatic failure detection and recovery
+- **Retry Logic**: Configurable retry with exponential backoff
+- **Load Balancing**: Multiple instance support with health checks
+- **Request Tracing**: Automatic correlation ID propagation
+
+### 🛡️ Resilience Patterns
+- **Circuit Breaker Manager**: Advanced circuit breaker with multiple states
+- **Sliding Window**: Time-based and count-based failure detection
+- **Bulkhead Isolation**: Resource isolation between services
+- **Timeout Management**: Configurable timeouts per operation
+- **Health Monitoring**: Real-time service health tracking
+
+### 🔄 Saga Integration
+- **lib-transactional-engine**: Native integration with saga orchestration
+- **Step Event Bridge**: Automatic saga step event publishing
+- **Metadata Enrichment**: Context propagation through saga steps
+- **Error Handling**: Built-in compensation and rollback support
+
+### 🌍 ExecutionContext
+- **Context Propagation**: Pass additional data not part of domain objects
+- **Multi-Tenancy**: Tenant isolation and context awareness
+- **Feature Flags**: Dynamic feature enablement
+- **User Context**: Authentication and authorization data
+- **Distributed Tracing**: Correlation across service boundaries
+
+### 🔍 Comprehensive Observability
+- **Metrics Collection**: Micrometer integration with custom metrics
+- **Health Indicators**: Spring Boot Actuator health checks
+- **Distributed Tracing**: Zipkin/Jaeger integration
+- **Structured Logging**: JSON logging with correlation context
+- **Performance Monitoring**: JVM, HTTP client, and thread pool metrics
+
+## 📖 Supported Messaging Platforms
+
+### ✅ Kafka
+```yaml
+firefly:
+  events:
+    adapter: KAFKA
+    kafka:
+      bootstrap-servers: localhost:9092
+      producer:
+        key-serializer: org.apache.kafka.common.serialization.StringSerializer
+        value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      consumer:
+        group-id: my-app
+        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+```
+
+### ✅ RabbitMQ
+```yaml
+firefly:
+  events:
+    adapter: RABBIT
+    rabbit:
+      host: localhost
+      port: 5672
+      username: guest
+      password: guest
+      exchange: domain.events
+      routing-key-prefix: banking
+```
+
+### ✅ AWS SQS
+```yaml
+firefly:
+  events:
+    adapter: SQS
+    sqs:
+      region: us-east-1
+      queue-name: domain-events-queue
+      access-key: ${AWS_ACCESS_KEY_ID}
+      secret-key: ${AWS_SECRET_ACCESS_KEY}
+```
+
+### ✅ AWS Kinesis
+```yaml
+firefly:
+  events:
+    adapter: KINESIS
+    kinesis:
+      region: us-east-1
+      stream-name: domain-events-stream
+      shard-count: 3
+      access-key: ${AWS_ACCESS_KEY_ID}
+      secret-key: ${AWS_SECRET_ACCESS_KEY}
+```
+
+### ✅ Spring ApplicationEvents
+```yaml
+firefly:
+  events:
+    adapter: APPLICATION_EVENT
+    # No additional configuration needed - works out of the box
+```
+
+## 🏗️ Architecture Overview
+
+### Domain-Driven Design Support
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                  lib-common-domain Architecture                                             │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                                             │
+│  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐   │
+│  │   Domain Events     │    │   Service Clients   │    │   Resilience        │    │   Saga Integration  │   │
+│  │                     │    │                     │    │   Patterns          │    │                     │   │
+│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │   │
+│  │ │ Multi-Messaging │ │    │ │ REST Clients    │ │    │ │ Circuit Breaker │ │    │ │ Step Event      │ │   │
+│  │ │ Event Publisher │ │    │ │ gRPC Clients    │ │    │ │ Manager         │ │    │ │ Bridge          │ │   │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │   │
+│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │   │
+│  │ │ Event Listeners │ │    │ │ Request Builder │ │    │ │ Sliding Window  │ │    │ │ Metadata        │ │   │
+│  │ │ & Filters       │ │    │ │ Response Mapper │ │    │ │ State Machine   │ │    │ │ Enrichment      │ │   │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │   │
+│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │   │
+│  │ │ Kafka/RabbitMQ  │ │    │ │ Health Checks   │ │    │ │ Retry Logic     │ │    │ │ Saga Events     │ │   │
+│  │ │ SQS/Kinesis     │ │    │ │ Load Balancing  │ │    │ │ Timeout Mgmt    │ │    │ │ Compensation    │ │   │
+│  │ │ ApplicationEvent│ │    │ │ Metrics         │ │    │ │ Bulkhead Isol.  │ │    │ │ Rollback        │ │   │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │   │
+│  └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘   │
+│                                                                                                             │
+│  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐                              │
+│  │ ExecutionContext    │    │ Observability       │    │ CQRS Integration    │                              │
+│  │                     │    │                     │    │                     │                              │
+│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │                              │
+│  │ │ Context         │ │    │ │ Metrics         │ │    │ │ lib-common-cqrs │ │                              │
+│  │ │ Propagation     │ │    │ │ Collection      │ │    │ │ Integration     │ │                              │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │                              │
+│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │                              │
+│  │ │ Tenant          │ │    │ │ Health          │ │    │ │ CommandBus      │ │                              │
+│  │ │ Awareness       │ │    │ │ Indicators      │ │    │ │ QueryBus        │ │                              │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ │ ExecutionCtx    │ │                              │
+│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ └─────────────────┘ │                              │
+│  │ │ Feature Flags   │ │    │ │ Distributed     │ │    │                     │                              │
+│  │ │ User Context    │ │    │ │ Tracing         │ │    │                     │                              │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │                     │                              │
+│  └─────────────────────┘    └─────────────────────┘    └─────────────────────┘                              │
+│                                                                                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+## 📡 Domain Events
+
+### Event Publishing
+
+Publish domain events to multiple messaging platforms with a unified API:
 
 ```java
-@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
-public class FlexibleAccountHandler extends CommandHandler<CreateAccountCommand, AccountResult> {
-
-    @Override
-    protected Mono<AccountResult> doHandle(CreateAccountCommand command) {
-        // Standard implementation without context
-        return createStandardAccount(command);
+// Simple event publishing
+@Service
+public class OrderService {
+    
+    private final DomainEventPublisher eventPublisher;
+    
+    public Mono<Order> processOrder(ProcessOrderCommand command) {
+        return createOrder(command)
+            .flatMap(this::validateOrder)
+            .flatMap(this::publishOrderEvents)
+            .flatMap(this::updateOrderStatus);
     }
+    
+    private Mono<Order> publishOrderEvents(Order order) {
+        // Multiple events can be published
+        List<DomainEvent> events = List.of(
+            new OrderCreatedEvent(order.getId(), order.getCustomerId(), order.getTotal()),
+            new InventoryReservedEvent(order.getId(), order.getItems()),
+            new PaymentRequestedEvent(order.getId(), order.getTotal(), order.getCustomerId())
+        );
+        
+        return Flux.fromIterable(events)
+            .flatMap(eventPublisher::publish)
+            .then(Mono.just(order));
+    }
+}
 
+// Event with metadata
+public class PaymentProcessedEvent implements DomainEvent {
+    
+    private final String paymentId;
+    private final String orderId;
+    private final BigDecimal amount;
+    private final PaymentMethod paymentMethod;
+    private final Instant processedAt;
+    
     @Override
-    protected Mono<AccountResult> doHandle(CreateAccountCommand command, ExecutionContext context) {
-        // Enhanced implementation with context
-        String tenantId = context.getTenantId();
-        boolean premiumFeatures = context.getFeatureFlag("premium-features", false);
-
-        return createAccountWithContext(command, tenantId, premiumFeatures);
+    public String getEventType() {
+        return "payment.processed";
+    }
+    
+    @Override
+    public String getAggregateId() {
+        return paymentId;
+    }
+    
+    @Override
+    public Map<String, Object> getMetadata() {
+        return Map.of(
+            "orderId", orderId,
+            "paymentMethod", paymentMethod.name(),
+            "processedAt", processedAt.toString(),
+            "source", "payment-service"
+        );
     }
 }
 ```
 
-## 🔐 Authorization System
+### Event Consumption
 
-The Firefly Common Domain Library includes a comprehensive authorization system designed for zero-trust banking applications. It seamlessly integrates with lib-common-auth while providing flexible custom authorization capabilities.
+Listen to domain events with flexible filtering:
 
-### Key Features
+```java
+@EventListener
+@Component
+public class OrderEventHandler {
+    
+    private final NotificationService notificationService;
+    private final InventoryService inventoryService;
+    
+    @EventHandler(eventType = "order.created")
+    public Mono<Void> handleOrderCreated(OrderCreatedEvent event) {
+        return notificationService.sendOrderConfirmation(
+            event.getCustomerId(),
+            event.getOrderId(),
+            event.getTotal()
+        );
+    }
+    
+    @EventHandler(eventType = "payment.failed")
+    public Mono<Void> handlePaymentFailed(PaymentFailedEvent event) {
+        return inventoryService.releaseReservation(event.getOrderId())
+            .then(notificationService.sendPaymentFailureNotification(
+                event.getCustomerId(), event.getReason()));
+    }
+    
+    // Filter events by metadata
+    @EventHandler(eventType = "order.*", filter = "metadata.source == 'mobile-app'")
+    public Mono<Void> handleMobileOrderEvents(DomainEvent event) {
+        return mobileAnalyticsService.trackOrderEvent(event);
+    }
+}
+```
 
-- **🔗 Seamless Integration**: Automatic detection and integration with lib-common-auth
-- **🛡️ Zero-Trust Architecture**: All operations denied by default with explicit authorization required
-- **⚙️ Configurable Security**: Environment-based configuration for different deployment scenarios
-- **🏦 Banking-Grade Security**: Resource ownership validation, fraud detection, compliance checks
-- **🚀 Performance Optimized**: Optional caching, async processing, and timeout controls
-- **📊 Comprehensive Monitoring**: Detailed metrics and logging for audit and compliance
+### Event Filtering
 
-### Quick Start
+Configure sophisticated event filtering:
 
-Enable authorization in your application:
+```java
+@Configuration
+public class EventFilterConfiguration {
+    
+    @Bean
+    public EventFilter orderEventFilter() {
+        return CompositeEventFilter.builder()
+            .add(new TypeFilter("order.*"))
+            .add(new HeaderFilter("source", "order-service"))
+            .add(new TopicFilter("banking.orders"))
+            .build();
+    }
+    
+    @Bean
+    public EventFilter paymentEventFilter() {
+        return CompositeEventFilter.builder()
+            .add(new TypeFilter("payment.*"))
+            .add(event -> {
+                // Custom filtering logic
+                BigDecimal amount = (BigDecimal) event.getMetadata().get("amount");
+                return amount.compareTo(new BigDecimal("1000.00")) > 0;
+            })
+            .build();
+    }
+}
+```
+
+## 🔗 Service Client Framework
+
+### REST Client Configuration
+
+Create type-safe, resilient REST clients:
+
+```java
+@Configuration
+public class ServiceClientConfiguration {
+    
+    @Bean
+    public ServiceClient customerServiceClient() {
+        return ServiceClient.rest("customer-service")
+            .baseUrl("http://customer-service:8080")
+            .timeout(Duration.ofSeconds(30))
+            .maxConnections(100)
+            .defaultHeader("Authorization", "Bearer ${jwt.token}")
+            .defaultHeader("Content-Type", "application/json")
+            .build();
+    }
+    
+    @Bean
+    public ServiceClient paymentServiceClient() {
+        return ServiceClient.rest("payment-service")
+            .baseUrl("https://payment-service.banking.com")
+            .timeout(Duration.ofSeconds(45))
+            .maxConnections(50)
+            .build();
+    }
+}
+```
+
+### Service Client Usage
+
+```java
+@Service
+public class AccountService {
+    
+    private final ServiceClient customerService;
+    private final ServiceClient paymentService;
+    
+    public Mono<AccountSummary> getAccountSummary(String accountId) {
+        return getAccount(accountId)
+            .flatMap(account -> enhanceWithCustomerInfo(account))
+            .flatMap(account -> enhanceWithPaymentInfo(account))
+            .map(this::toAccountSummary);
+    }
+    
+    private Mono<Account> getAccount(String accountId) {
+        return accountRepository.findById(accountId)
+            .switchIfEmpty(Mono.error(new AccountNotFoundException(accountId)));
+    }
+    
+    private Mono<Account> enhanceWithCustomerInfo(Account account) {
+        return customerService.get("/customers/{id}", Customer.class)
+            .withPathParam("id", account.getCustomerId())
+            .withTimeout(Duration.ofSeconds(10))
+            .withCircuitBreaker("customer-service")
+            .withRetry(3)
+            .execute()
+            .map(customer -> account.withCustomerInfo(customer))
+            .onErrorReturn(account); // Graceful degradation
+    }
+    
+    private Mono<Account> enhanceWithPaymentInfo(Account account) {
+        return paymentService.get("/payment-methods", PaymentMethodList.class)
+            .withQueryParam("customerId", account.getCustomerId())
+            .withHeader("X-Account-ID", account.getId())
+            .execute()
+            .map(paymentMethods -> account.withPaymentMethods(paymentMethods.getItems()))
+            .onErrorReturn(account);
+    }
+}
+```
+
+### gRPC Client Support
+
+```java
+@Service
+public class RiskAssessmentServiceClient {
+    
+    private final ServiceClient grpcClient;
+    
+    public RiskAssessmentServiceClient() {
+        this.grpcClient = ServiceClient.grpc("risk-service", RiskServiceGrpc.RiskServiceBlockingStub.class)
+            .address("risk-service:9090")
+            .timeout(Duration.ofSeconds(15))
+            .usePlaintext() // For internal services
+            .build();
+    }
+    
+    public Mono<RiskScore> assessRisk(String customerId, BigDecimal amount) {
+        RiskAssessmentRequest request = RiskAssessmentRequest.newBuilder()
+            .setCustomerId(customerId)
+            .setAmount(amount.toString())
+            .setTransactionType("TRANSFER")
+            .build();
+            
+        return grpcClient.post("/assess-risk", RiskScore.class)
+            .withBody(request)
+            .execute();
+    }
+}
+```
+
+## 🛡️ Resilience Patterns
+
+### Circuit Breaker Configuration
+
+```java
+@Configuration
+public class ResilienceConfiguration {
+    
+    @Bean
+    public CircuitBreaker customerServiceCircuitBreaker() {
+        return CircuitBreaker.ofDefaults("customer-service")
+            .toBuilder()
+            .failureRateThreshold(50.0f)                    // 50% failure rate
+            .waitDurationInOpenState(Duration.ofSeconds(30)) // Wait 30 seconds
+            .slidingWindowSize(20)                          // 20 calls window
+            .minimumNumberOfCalls(5)                        // Min 5 calls before evaluation
+            .build();
+    }
+    
+    @Bean
+    public Retry paymentServiceRetry() {
+        return Retry.ofDefaults("payment-service")
+            .toBuilder()
+            .maxAttempts(3)
+            .waitDuration(Duration.ofSeconds(2))
+            .retryOnException(throwable -> 
+                throwable instanceof ConnectException || 
+                throwable instanceof SocketTimeoutException)
+            .build();
+    }
+}
+```
+
+### Advanced Circuit Breaker Manager
+
+```java
+@Service
+public class AdvancedRiskService {
+    
+    private final AdvancedResilienceManager resilienceManager;
+    
+    public Mono<RiskAssessment> assessTransactionRisk(TransactionRequest request) {
+        return resilienceManager.executeWithResilience(
+            "risk-assessment",
+            () -> performRiskAssessment(request),
+            ResilienceConfig.builder()
+                .circuitBreaker(CircuitBreakerConfig.builder()
+                    .failureRateThreshold(60.0f)
+                    .waitDurationInOpenState(Duration.ofMinutes(2))
+                    .slidingWindowType(SlidingWindowType.TIME_BASED)
+                    .slidingWindowSize(60)
+                    .build())
+                .retry(RetryConfig.builder()
+                    .maxAttempts(3)
+                    .waitDuration(Duration.ofSeconds(1))
+                    .exponentialBackoff(true)
+                    .build())
+                .timeout(Duration.ofSeconds(10))
+                .bulkhead(BulkheadConfig.builder()
+                    .maxConcurrentCalls(50)
+                    .maxWaitDuration(Duration.ofMillis(500))
+                    .build())
+                .build()
+        );
+    }
+}
+```
+
+## 🔄 Saga Integration
+
+### Step Event Bridge Configuration
 
 ```yaml
 firefly:
-  cqrs:
-    authorization:
-      enabled: true
-      lib-common-auth:
-        enabled: true
-      custom:
-        enabled: true
+  step-events:
+    enabled: true
+    publisher-type: KAFKA  # KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT
+    topic-name: saga-steps
+    include-metadata: true
+    correlation-enabled: true
 ```
 
-### Implementation Example
+### Saga Step Implementation
 
 ```java
-@RequiresRole("CUSTOMER")
-@RequiresScope("accounts.transfer")
-@CustomAuthorization(description = "Transfer limits validation")
-public class TransferMoneyCommand implements Command<TransferResult> {
-
-    @Override
-    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
-        // Custom business logic validation
-        return validateTransferLimits(amount, context.getUserId());
+@Service
+public class MoneyTransferSaga {
+    
+    private final StepEventBridge stepEventBridge;
+    
+    @SagaStep("debit-source-account")
+    public Mono<StepResult> debitSourceAccount(TransferCommand command) {
+        return accountService.debitAccount(command.getSourceAccountId(), command.getAmount())
+            .flatMap(result -> publishStepEvent("debit-source-account", result, command))
+            .map(this::toStepResult)
+            .onErrorResume(error -> publishStepFailure("debit-source-account", error, command));
+    }
+    
+    @SagaStep("credit-target-account")  
+    public Mono<StepResult> creditTargetAccount(TransferCommand command) {
+        return accountService.creditAccount(command.getTargetAccountId(), command.getAmount())
+            .flatMap(result -> publishStepEvent("credit-target-account", result, command))
+            .map(this::toStepResult)
+            .onErrorResume(error -> publishStepFailure("credit-target-account", error, command));
+    }
+    
+    @CompensationStep("debit-source-account")
+    public Mono<Void> compensateDebitSourceAccount(TransferCommand command) {
+        return accountService.creditAccount(command.getSourceAccountId(), command.getAmount())
+            .flatMap(result -> publishStepEvent("compensate-debit-source", result, command))
+            .then();
+    }
+    
+    private Mono<Object> publishStepEvent(String stepName, Object result, TransferCommand command) {
+        StepEvent event = StepEvent.builder()
+            .stepName(stepName)
+            .sagaId(command.getSagaId())
+            .transactionId(command.getTransactionId())
+            .status(StepStatus.COMPLETED)
+            .result(result)
+            .metadata(Map.of(
+                "sourceAccountId", command.getSourceAccountId(),
+                "targetAccountId", command.getTargetAccountId(),
+                "amount", command.getAmount().toString()
+            ))
+            .build();
+            
+        return stepEventBridge.publishStepEvent(event)
+            .thenReturn(result);
     }
 }
 ```
 
-> 📖 **For complete documentation**, see [Authorization System Guide](docs/AUTHORIZATION.md) which covers:
-> - All four authorization patterns with examples
-> - Complete configuration reference
-> - Integration patterns with lib-common-auth
-> - Banking-specific use cases and best practices
-> - Monitoring and troubleshooting
+## 🌍 ExecutionContext Framework
+
+### Context Creation and Propagation
+
+```java
+@RestController
+public class AccountController {
+    
+    private final CommandBus commandBus;
+    private final QueryBus queryBus;
+    
+    @PostMapping("/accounts")
+    public Mono<ResponseEntity<AccountResult>> createAccount(
+            @RequestBody CreateAccountRequest request,
+            @RequestHeader("Authorization") String authToken,
+            @RequestHeader(value = "X-Tenant-ID", required = false) String tenantId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId,
+            ServerHttpRequest httpRequest) {
+        
+        ExecutionContext context = ExecutionContext.builder()
+            .userId(extractUserIdFromToken(authToken))
+            .tenantId(tenantId != null ? tenantId : "default")
+            .sessionId(extractSessionId(httpRequest))
+            .correlationId(correlationId != null ? correlationId : UUID.randomUUID().toString())
+            .source("web-app")
+            .clientIp(getClientIp(httpRequest))
+            .featureFlag("enhanced-validation", featureFlagService.isEnabled("enhanced-validation", tenantId))
+            .featureFlag("premium-features", isPremiumTenant(tenantId))
+            .customProperty("request-id", UUID.randomUUID().toString())
+            .build();
+            
+        CreateAccountCommand command = toCommand(request);
+        
+        return commandBus.send(command, context)
+            .map(result -> ResponseEntity.ok(result))
+            .onErrorResume(this::handleError);
+    }
+    
+    @GetMapping("/accounts/{accountId}/balance")
+    public Mono<ResponseEntity<AccountBalance>> getAccountBalance(
+            @PathVariable String accountId,
+            @RequestHeader("Authorization") String authToken) {
+        
+        ExecutionContext context = buildExecutionContext(authToken);
+        GetAccountBalanceQuery query = new GetAccountBalanceQuery(accountId);
+        
+        return queryBus.query(query, context)
+            .map(balance -> ResponseEntity.ok(balance));
+    }
+}
+```
+
+### Context-Aware Service Implementation
+
+```java
+@Service
+public class TenantAwareAccountService {
+    
+    public Mono<Account> createAccountInTenant(CreateAccountCommand command, ExecutionContext context) {
+        String tenantId = context.getTenantId();
+        String userId = context.getUserId();
+        
+        return validateTenantLimits(tenantId)
+            .flatMap(limits -> validateUserPermissions(userId, tenantId))
+            .flatMap(permissions -> createAccount(command, tenantId, context))
+            .flatMap(account -> applyTenantSpecificRules(account, context));
+    }
+    
+    private Mono<Account> createAccount(CreateAccountCommand command, String tenantId, ExecutionContext context) {
+        Account account = Account.builder()
+            .tenantId(tenantId)
+            .customerId(command.getCustomerId())
+            .type(command.getAccountType())
+            .balance(command.getInitialDeposit())
+            .createdBy(context.getUserId())
+            .createdFrom(context.getSource())
+            .build();
+            
+        // Apply feature flags
+        if (context.getFeatureFlag("enhanced-security", false)) {
+            account = account.withEnhancedSecurityEnabled(true);
+        }
+        
+        if (context.getFeatureFlag("premium-features", false)) {
+            account = account.withPremiumFeaturesEnabled(true);
+        }
+        
+        return accountRepository.save(account);
+    }
+}
+```
+
+## ⚙️ Configuration
+
+### Basic Configuration
 
 ```yaml
-      # Performance settings
-      performance:
-        cache-enabled: false
-        cache-ttl-seconds: 300
-        async-enabled: false
+# application.yml
+firefly:
+  # Domain Events Configuration
+  events:
+    enabled: true
+    adapter: AUTO  # AUTO, KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT, NOOP
+    default-topic: domain.events
+    correlation-enabled: true
+    metadata-enabled: true
+    
+  # Service Clients Configuration  
+  service-clients:
+    default-timeout: 30s
+    default-max-connections: 100
+    circuit-breaker:
+      enabled: true
+      failure-rate-threshold: 50.0
+      wait-duration: 30s
+      sliding-window-size: 20
+    retry:
+      enabled: true
+      max-attempts: 3
+      wait-duration: 1s
+      exponential-backoff: true
+      
+  # Resilience Configuration
+  resilience:
+    circuit-breaker:
+      enabled: true
+      default-config:
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 60s
+        sliding-window-size: 100
+        minimum-number-of-calls: 10
+    retry:
+      enabled: true
+      default-config:
+        max-attempts: 3
+        wait-duration: 500ms
+        
+  # Saga Integration
+  step-events:
+    enabled: true
+    publisher-type: AUTO
+    topic-name: saga.steps
+    include-metadata: true
+    
+  # Tracing Configuration
+  tracing:
+    enabled: true
+    correlation-header: X-Correlation-ID
+    trace-id-header: X-Trace-ID
+    span-id-header: X-Span-ID
 ```
 
 ### Environment Variables
 
-All configuration can be overridden using environment variables:
+All configuration properties can be overridden with environment variables:
 
 ```bash
-# Disable authorization completely
-FIREFLY_CQRS_AUTHORIZATION_ENABLED=false
+# Domain Events
+FIREFLY_EVENTS_ENABLED=true
+FIREFLY_EVENTS_ADAPTER=KAFKA
+FIREFLY_EVENTS_DEFAULT_TOPIC=domain.events
 
-# Disable lib-common-auth integration
-FIREFLY_CQRS_AUTHORIZATION_LIB_COMMON_AUTH_ENABLED=false
+# Service Clients
+FIREFLY_SERVICE_CLIENTS_DEFAULT_TIMEOUT=30s
+FIREFLY_SERVICE_CLIENTS_CIRCUIT_BREAKER_ENABLED=true
+FIREFLY_SERVICE_CLIENTS_RETRY_ENABLED=true
 
-# Enable verbose logging
-FIREFLY_CQRS_AUTHORIZATION_LOGGING_LOG_SUCCESSFUL=true
-FIREFLY_CQRS_AUTHORIZATION_LOGGING_LEVEL=DEBUG
+# Resilience
+FIREFLY_RESILIENCE_CIRCUIT_BREAKER_ENABLED=true
+FIREFLY_RESILIENCE_RETRY_ENABLED=true
+
+# Saga Integration  
+FIREFLY_STEP_EVENTS_ENABLED=true
+FIREFLY_STEP_EVENTS_PUBLISHER_TYPE=KAFKA
+
+# Tracing
+FIREFLY_TRACING_ENABLED=true
+FIREFLY_TRACING_CORRELATION_HEADER=X-Correlation-ID
 ```
 
-### Usage Examples
+### Messaging Platform Specific Configuration
 
-#### Basic Command Authorization
-
-```java
-@CommandHandlerComponent
-public class TransferMoneyHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
-
-    @Override
-    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
-        // Business logic here - authorization is handled automatically
-        return processTransfer(command);
-    }
-}
-
-// Command with custom authorization
-public class TransferMoneyCommand implements Command<TransferResult> {
-
-    @Override
-    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
-        String userId = context.getUserId();
-
-        // Verify account ownership
-        return accountService.verifyOwnership(sourceAccountId, userId)
-            .flatMap(ownsSource -> {
-                if (!ownsSource) {
-                    return Mono.just(AuthorizationResult.failure("sourceAccount",
-                        "Source account does not belong to user"));
-                }
-
-                // Check transfer limits
-                return transferLimitService.checkLimit(userId, amount)
-                    .map(withinLimit -> withinLimit ?
-                        AuthorizationResult.success() :
-                        AuthorizationResult.failure("amount", "Transfer exceeds daily limit"));
-            });
-    }
-}
-```
-
-#### Advanced Authorization with Annotations
-
-```java
-// Override lib-common-auth decisions
-@CustomAuthorization(overrideLibCommonAuth = true)
-public class EmergencyTransferCommand implements Command<TransferResult> {
-
-    @Override
-    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
-        // Emergency transfers bypass normal limits but require special approval
-        return emergencyApprovalService.checkApproval(context.getUserId())
-            .map(approved -> approved ?
-                AuthorizationResult.success() :
-                AuthorizationResult.failure("approval", "Emergency transfer not approved"));
-    }
-}
-
-// Require both lib-common-auth and custom authorization
-@CustomAuthorization(requiresBothToPass = true)
-public class HighValueTransferCommand implements Command<TransferResult> {
-
-    @Override
-    public Mono<AuthorizationResult> authorize(ExecutionContext context) {
-        // Additional checks for high-value transfers
-        return fraudDetectionService.checkTransaction(this, context)
-            .map(safe -> safe ?
-                AuthorizationResult.success() :
-                AuthorizationResult.failure("fraud", "Transaction flagged as suspicious"));
-    }
-}
-```
-
-#### Profile-Based Configuration
-
-```yaml
----
-# Development profile - verbose logging, no caching
-spring:
-  config:
-    activate:
-      on-profile: development
-
-firefly:
-  cqrs:
-    authorization:
-      logging:
-        log-successful: true
-        level: "DEBUG"
-      performance:
-        cache-enabled: false
-
----
-# Production profile - optimized for performance
-spring:
-  config:
-    activate:
-      on-profile: production
-
-firefly:
-  cqrs:
-    authorization:
-      lib-common-auth:
-        fail-fast: true
-      custom:
-        allow-override: false
-        timeout-ms: 3000
-      logging:
-        log-successful: false
-        level: "WARN"
-      performance:
-        cache-enabled: true
-        cache-ttl-seconds: 600
-
----
-# Testing profile - authorization disabled
-spring:
-  config:
-    activate:
-      on-profile: test
-
-firefly:
-  cqrs:
-    authorization:
-      enabled: false
-```
-
-
-
-## 📚 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [API Reference](docs/API_REFERENCE.md) | Complete API reference with method signatures |
-| [Architecture Guide](docs/ARCHITECTURE.md) | Architecture patterns and design principles |
-| [Authorization System](docs/AUTHORIZATION.md) | Comprehensive authorization system guide with configuration, patterns, and examples |
-| [Package Structure](docs/PACKAGE_STRUCTURE.md) | Package organization for library and microservices |
-| [Examples](docs/EXAMPLES.md) | Real working examples and best practices |
-| [Observability](docs/OBSERVABILITY.md) | Monitoring, metrics, and observability configuration |
-
-## 🏦 Banking Domain Examples
-
-### Money Transfer with ServiceClient Integration
-
-```java
-@CommandHandlerComponent(timeout = 30000, retries = 3, metrics = true)
-public class MoneyTransferHandler extends CommandHandler<TransferMoneyCommand, TransferResult> {
-
-    private final ServiceClient accountServiceClient;
-    private final ServiceClient fraudServiceClient;
-    private final DomainEventPublisher eventPublisher;
-
-    @Override
-    protected Mono<TransferResult> doHandle(TransferMoneyCommand command) {
-        // Only business logic - validation, logging, metrics handled automatically!
-        return performFraudCheck(command)
-            .flatMap(fraudResult -> {
-                if (!fraudResult.isApproved()) {
-                    return Mono.error(new FraudDetectedException("Transfer blocked"));
-                }
-                return executeTransfer(command);
-            })
-            .flatMap(this::publishTransferEvent);
-    }
-
-    // No getCommandType() needed - automatically detected from generics!
-    // Built-in features: logging, metrics, error handling, correlation context
-
-    private Mono<FraudCheckResult> performFraudCheck(TransferMoneyCommand command) {
-        return fraudServiceClient.post("/fraud-check", FraudCheckResult.class)
-            .withBody(command)
-            .execute();
-    }
-
-    private Mono<TransferResult> executeTransfer(TransferMoneyCommand command) {
-        return accountServiceClient.post("/transfers", TransferResult.class)
-            .withBody(command)
-            .execute();
-    }
-
-    private Mono<TransferResult> publishTransferEvent(TransferResult result) {
-        DomainEventEnvelope event = DomainEventEnvelope.builder()
-            .topic("banking.transfers")
-            .type("transfer.completed")
-            .key(result.getTransferId())
-            .payload(result)
-            .build();
-
-        return eventPublisher.publish(event).thenReturn(result);
-    }
-}
-```
-
-### Account Balance Query with Caching
-
-```java
-@QueryHandlerComponent(cacheable = true, cacheTtl = 300)
-public class GetAccountBalanceHandler extends QueryHandler<GetAccountBalanceQuery, AccountBalance> {
-
-    private final ServiceClient accountServiceClient;
-
-    @Override
-    protected Mono<AccountBalance> doHandle(GetAccountBalanceQuery query) {
-        return accountServiceClient.get("/accounts/{id}/balance", AccountBalance.class)
-            .withPathParam("id", query.getAccountNumber())
-            .execute();
-    }
-
-    // ✅ NO BOILERPLATE NEEDED:
-    // - Caching enabled and TTL configured via annotation
-    // - No supportsCaching() or getCacheTtlSeconds() methods needed
-}
-```
-
-### Event-Driven Customer Onboarding
-
-```java
-@Component
-public class CustomerOnboardingWorkflow {
-
-    private final CommandBus commandBus;
-
-    @org.springframework.context.event.EventListener
-    public void handleCustomerCreated(DomainSpringEvent event) {
-        if ("customer.created".equals(event.getEnvelope().getType())) {
-            CustomerCreatedEvent customerEvent = (CustomerCreatedEvent) event.getEnvelope().getPayload();
-            // Trigger KYC verification workflow
-            commandBus.send(new StartKycVerificationCommand(customerEvent.getCustomerId()))
-                .subscribe();
-        }
-    }
-}
-```
-
-### CQRS + Saga Integration
-
-This section demonstrates how to combine the CQRS framework with lib-transactional-engine for distributed transaction management in complex business workflows.
-
-#### Foundational Concepts
-
-**SAGA Pattern** is a distributed transaction pattern that manages data consistency across microservices without using distributed transactions. It coordinates a sequence of local transactions, where each transaction updates data within a single service. If any transaction fails, the saga executes compensating transactions to undo the impact of the preceding transactions.
-
-**CQRS (Command Query Responsibility Segregation)** separates read and write operations into different models. Commands modify state and are processed asynchronously, while Queries retrieve data and can be optimized for specific read scenarios with caching and denormalization.
-
-**Why Combine CQRS + Saga?** This integration provides:
-- **Distributed Transaction Management**: Saga orchestrates complex workflows across multiple services
-- **Clear Separation of Concerns**: Commands handle state changes, Queries handle data retrieval
-- **Automatic Compensation**: Failed saga steps trigger compensating actions
-- **Event-Driven Architecture**: Step completion events enable loose coupling between services
-- **Scalability**: Asynchronous processing and reactive patterns support high throughput
-
-**Integration Architecture** within lib-common-domain:
-```
-SagaEngine → @SagaStep Methods → CommandBus/QueryBus → Handlers → Business Logic
-     ↓              ↓                    ↓               ↓            ↓
-Step Coordination   Input/Output     CQRS Processing   Domain Logic   Data Layer
-     ↓              ↓                    ↓               ↓            ↓
-Compensation    Step Dependencies    Validation/Cache   Events      Persistence
-```
-
-#### Basic Integration Patterns
-
-**Command within Saga Step:**
-
-```java
-// Command execution within saga step
-@SagaStep(id = "create-account", compensate = "deleteAccount")
-public Mono<AccountResult> createAccount(@Input CreateAccountRequest request) {
-    CreateAccountCommand command = CreateAccountCommand.builder()
-        .customerId(request.getCustomerId())
-        .accountType(request.getAccountType())
-        .initialDeposit(request.getInitialDeposit())
-        .correlationId(request.getCorrelationId())
-        .build();
-
-    return commandBus.send(command);
-}
-```
-
-**Query within Saga Step:**
-```java
-// Query execution within saga step
-@SagaStep(id = "validate-customer", retry = 3)
-public Mono<ValidationResult> validateCustomer(@Input CustomerRequest request) {
-    ValidateCustomerQuery query = ValidateCustomerQuery.builder()
-        .email(request.getEmail())
-        .phoneNumber(request.getPhoneNumber())
-        .correlationId(request.getCorrelationId())
-        .build();
-
-    return queryBus.query(query);
-}
-```
-
-**Compensation Pattern:**
-```java
-// Compensation method for failed saga steps
-public Mono<Void> deleteAccount(@FromStep("create-account") AccountResult account) {
-    DeleteAccountCommand command = DeleteAccountCommand.builder()
-        .accountId(account.getAccountId())
-        .reason("SAGA_COMPENSATION")
-        .build();
-
-    return commandBus.send(command).then();
-}
-```
-
-#### Complete Banking Workflow Example
-
-This example demonstrates a money transfer saga that combines both commands and queries:
-
-```java
-@Component
-@Saga(name = "money-transfer")
-@EnableTransactionalEngine
-public class MoneyTransferSaga {
-
-    private final CommandBus commandBus;
-    private final QueryBus queryBus;
-
-    // Step 1: Validate source account using Query
-    @SagaStep(id = "validate-source", retry = 2)
-    public Mono<AccountValidation> validateSourceAccount(@Input TransferRequest request) {
-        GetAccountQuery query = GetAccountQuery.builder()
-            .accountId(request.getSourceAccountId())
-            .correlationId(request.getCorrelationId())
-            .build();
-
-        return queryBus.query(query)
-            .map(account -> AccountValidation.builder()
-                .accountId(account.getAccountId())
-                .balance(account.getBalance())
-                .isValid(account.getBalance().compareTo(request.getAmount()) >= 0)
-                .build());
-    }
-
-    // Step 2: Reserve funds using Command
-    @SagaStep(id = "reserve-funds",
-              dependsOn = "validate-source",
-              compensate = "releaseReservation")
-    public Mono<ReservationResult> reserveFunds(
-            @Input TransferRequest request,
-            @FromStep("validate-source") AccountValidation validation) {
-
-        if (!validation.isValid()) {
-            return Mono.error(new InsufficientFundsException());
-        }
-
-        ReserveFundsCommand command = ReserveFundsCommand.builder()
-            .accountId(request.getSourceAccountId())
-            .amount(request.getAmount())
-            .correlationId(request.getCorrelationId())
-            .build();
-
-        return commandBus.send(command);
-    }
-
-    // Step 3: Validate destination account using Query
-    @SagaStep(id = "validate-destination", dependsOn = "reserve-funds")
-    public Mono<AccountValidation> validateDestinationAccount(@Input TransferRequest request) {
-        GetAccountQuery query = GetAccountQuery.builder()
-            .accountId(request.getDestinationAccountId())
-            .correlationId(request.getCorrelationId())
-            .build();
-
-        return queryBus.query(query)
-            .map(account -> AccountValidation.builder()
-                .accountId(account.getAccountId())
-                .isValid(account.getStatus().equals("ACTIVE"))
-                .build());
-    }
-
-    // Step 4: Execute transfer using Command
-    @SagaStep(id = "execute-transfer",
-              dependsOn = "validate-destination",
-              compensate = "reverseTransfer")
-    public Mono<TransferResult> executeTransfer(
-            @Input TransferRequest request,
-            @FromStep("reserve-funds") ReservationResult reservation,
-            @FromStep("validate-destination") AccountValidation destination) {
-
-        if (!destination.isValid()) {
-            return Mono.error(new InvalidDestinationAccountException());
-        }
-
-        ExecuteTransferCommand command = ExecuteTransferCommand.builder()
-            .reservationId(reservation.getReservationId())
-            .sourceAccountId(request.getSourceAccountId())
-            .destinationAccountId(request.getDestinationAccountId())
-            .amount(request.getAmount())
-            .correlationId(request.getCorrelationId())
-            .build();
-
-        return commandBus.send(command);
-    }
-
-    // Compensation Methods
-    public Mono<Void> releaseReservation(@FromStep("reserve-funds") ReservationResult reservation) {
-        ReleaseReservationCommand command = ReleaseReservationCommand.builder()
-            .reservationId(reservation.getReservationId())
-            .build();
-        return commandBus.send(command).then();
-    }
-
-    public Mono<Void> reverseTransfer(@FromStep("execute-transfer") TransferResult transfer) {
-        ReverseTransferCommand command = ReverseTransferCommand.builder()
-            .transferId(transfer.getTransferId())
-            .build();
-        return commandBus.send(command).then();
-    }
-}
-```
-
-#### Saga Orchestration Service
-
-```java
-@Service
-public class TransferService {
-
-    private final SagaEngine sagaEngine;
-    private final CommandBus commandBus;
-    private final QueryBus queryBus;
-
-    /**
-     * Executes money transfer using saga orchestration
-     */
-    public Mono<TransferResult> transferMoney(TransferRequest request) {
-        // Create saga inputs for the first step
-        StepInputs inputs = StepInputs.of("validate-source", request);
-
-        // Execute the saga by name
-        return sagaEngine.execute("money-transfer", inputs)
-            .map(this::buildTransferResult);
-    }
-
-    /**
-     * Alternative: Type-safe saga execution
-     */
-    public Mono<TransferResult> transferMoneyTypeSafe(TransferRequest request) {
-        StepInputs inputs = StepInputs.of("validate-source", request);
-
-        return sagaEngine.execute(MoneyTransferSaga.class, inputs)
-            .map(this::buildTransferResult);
-    }
-
-    /**
-     * Query transfer status using CQRS Query
-     */
-    public Mono<TransferStatus> getTransferStatus(String transferId) {
-        GetTransferStatusQuery query = GetTransferStatusQuery.builder()
-            .transferId(transferId)
-            .build();
-
-        return queryBus.query(query);
-    }
-
-    private TransferResult buildTransferResult(SagaResult sagaResult) {
-        if (sagaResult.isSuccess()) {
-            // Extract results from completed steps
-            TransferResult transfer = sagaResult.resultOf("execute-transfer", TransferResult.class)
-                .orElseThrow(() -> new IllegalStateException("Transfer execution step not found"));
-
-            return TransferResult.builder()
-                .transferId(transfer.getTransferId())
-                .sourceAccountId(transfer.getSourceAccountId())
-                .destinationAccountId(transfer.getDestinationAccountId())
-                .amount(transfer.getAmount())
-                .status("COMPLETED")
-                .completedAt(Instant.now())
-                .build();
-        } else {
-            // Handle saga failure with compensation
-            List<String> failedSteps = sagaResult.failedSteps();
-            List<String> compensatedSteps = sagaResult.compensatedSteps();
-
-            return TransferResult.builder()
-                .status("FAILED")
-                .failedSteps(failedSteps)
-                .compensatedSteps(compensatedSteps)
-                .errorMessage("Transfer failed at steps: " + String.join(", ", failedSteps))
-                .build();
-        }
-    }
-}
-```
-
-#### Configuration
-
-Enable CQRS and Saga integration in your application:
-
+#### Kafka Configuration
 ```yaml
 firefly:
-  cqrs:
-    enabled: true
   events:
-    enabled: true
-  stepevents:
-    enabled: true
+    adapter: KAFKA
+    kafka:
+      bootstrap-servers: localhost:9092
+      producer:
+        acks: all
+        retries: 3
+        key-serializer: org.apache.kafka.common.serialization.StringSerializer
+        value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      consumer:
+        group-id: ${spring.application.name}
+        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+        auto-offset-reset: earliest
 ```
 
-**Required Dependencies:**
-```xml
-<!-- Only lib-common-domain needed - includes lib-transactional-engine as dependency -->
-<dependency>
-    <groupId>com.firefly</groupId>
-    <artifactId>lib-common-domain</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-</dependency>
+#### RabbitMQ Configuration
+```yaml
+firefly:
+  events:
+    adapter: RABBIT
+    rabbit:
+      host: localhost
+      port: 5672
+      username: guest
+      password: guest
+      virtual-host: /
+      exchange: domain.events.exchange
+      queue-name-prefix: ${spring.application.name}
+      routing-key-prefix: banking
+      durable: true
 ```
 
-> **Note**: lib-common-domain automatically includes lib-transactional-engine as a transitive dependency.
+#### AWS Configuration
+```yaml
+firefly:
+  events:
+    adapter: SQS
+    sqs:
+      region: ${AWS_REGION:us-east-1}
+      queue-name: domain-events-${spring.profiles.active}
+      visibility-timeout: 300
+      message-retention: 1209600  # 14 days
+      dead-letter-queue:
+        enabled: true
+        max-receive-count: 3
+        
+# For Kinesis
+firefly:
+  events:
+    adapter: KINESIS
+    kinesis:
+      region: ${AWS_REGION:us-east-1}
+      stream-name: domain-events-${spring.profiles.active}
+      shard-count: 3
+      retention-period: 168  # 7 days
+```
 
-**Auto-Configuration:** The integration is automatically configured when lib-common-domain is on the classpath. The following components are auto-wired:
-- `CommandBus` and `QueryBus` for CQRS operations
-- `SagaEngine` for saga orchestration
-- `StepEventPublisherBridge` for step event publishing
+## 🔍 Observability & Monitoring
 
-#### Best Practices
-
-**1. Command and Query Balance:**
-- Use Commands for state-changing operations within saga steps
-- Use Queries for validation and data retrieval
-- Keep saga steps focused on single responsibilities
-
-**2. Error Handling:**
-- Implement proper compensation logic for each saga step
-- Use meaningful error messages and correlation IDs
-- Handle both business logic errors and technical failures
-
-**3. Performance Optimization:**
-- Enable query caching for frequently accessed data
-- Use appropriate retry policies for transient failures
-- Set reasonable timeouts for external service calls
-
-**4. Testing Strategy:**
-- Test individual command/query handlers independently
-- Test complete saga flows with success and failure scenarios
-- Use integration tests to verify compensation logic
-
-This integration provides a powerful foundation for building complex, distributed banking workflows that maintain data consistency across multiple services while leveraging the benefits of both CQRS and Saga patterns.
-
-## 🔧 Technology Stack
-
-- **Java 21+** - Latest LTS with modern language features, virtual threads, and enhanced performance
-- **Spring Boot 3.x** - Auto-configuration and dependency injection with native compilation support
-- **Project Reactor** - Reactive programming foundation for non-blocking, asynchronous operations
-- **Resilience4j** - Circuit breakers, retry mechanisms, and fault tolerance patterns
-- **Micrometer** - Metrics collection and observability with Prometheus integration
-- **lib-common-auth** - Integrated authentication and authorization framework (included dependency)
-- **Spring Security** - Authentication, authorization, and security context propagation
-- **Multiple Messaging** - Kafka, RabbitMQ, AWS SQS/Kinesis support with auto-detection
-- **lib-transactional-engine** - Saga orchestration and distributed transaction management (manual integration)
-- **Jackson** - JSON serialization/deserialization with reactive streaming support
-- **Redis Cache** - Optional distributed caching support for CQRS queries (disabled by default, requires explicit enablement)
-- **Local Cache** - High-performance in-memory caching using ConcurrentMapCacheManager (default)
-
-## 📊 Metrics and Monitoring
-
-The library provides comprehensive metrics for production monitoring:
-
-### Authorization Metrics
-
-- `firefly.authorization.attempts` - Total authorization attempts
-- `firefly.authorization.successes` - Successful authorizations
-- `firefly.authorization.failures` - Failed authorizations
-- `firefly.authorization.duration` - Authorization timing
-- `firefly.authorization.cache.hits` - Cache hit rate
-- `firefly.authorization.active_requests` - Active authorization requests
-
-### CQRS Metrics
-
-- `firefly.cqrs.command.executions` - Command execution count
-- `firefly.cqrs.query.executions` - Query execution count
-- `firefly.cqrs.command.duration` - Command processing time
-- `firefly.cqrs.query.duration` - Query processing time
-- `firefly.cqrs.validation.failures` - Validation failure count
-
-### Configuration
+### Spring Boot Actuator Integration
 
 ```yaml
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
-  metrics:
-    export:
-      prometheus:
-        enabled: true
+        include: health,info,metrics,prometheus,domain-events,service-clients
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  health:
+    # Domain Events health indicators
+    domainEventsKafka:
+      enabled: true
+    domainEventsRabbit:
+      enabled: true
+    domainEventsSqs:
+      enabled: true
+    domainEventsKinesis:
+      enabled: true
+    # Service Client health indicators
+    serviceClients:
+      enabled: true
+    # Custom health indicators
+    threadPool:
+      enabled: true
+    httpClient:
+      enabled: true
 ```
 
-## 📄 License
+### Available Metrics
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+#### Domain Events Metrics
+- `firefly.events.published.total` - Total events published
+- `firefly.events.publishing.duration` - Event publishing time
+- `firefly.events.consumed.total` - Total events consumed
+- `firefly.events.processing.duration` - Event processing time
+- `firefly.events.errors.total` - Event processing errors
 
-## 🏢 About Firefly
+#### Service Client Metrics
+- `firefly.service.client.requests.total` - Total service requests
+- `firefly.service.client.request.duration` - Request duration
+- `firefly.service.client.errors.total` - Service client errors
+- `firefly.service.client.circuit.breaker.state` - Circuit breaker states
+- `firefly.service.client.retry.attempts.total` - Retry attempts
 
-Developed by **Firefly Software Solutions Inc** as part of the Firefly OpenCore Banking Platform.
+#### Resilience Metrics
+- `resilience4j.circuitbreaker.calls` - Circuit breaker calls
+- `resilience4j.circuitbreaker.state` - Circuit breaker state
+- `resilience4j.retry.calls` - Retry calls
+- `resilience4j.bulkhead.available.concurrent.calls` - Available concurrent calls
 
-- **Website**: [getfirefly.io](https://getfirefly.io)
-- **GitHub**: [firefly-oss](https://github.com/firefly-oss)
-- **License**: Apache 2.0
+### Health Indicators
 
----
+The library provides comprehensive health indicators:
 
-**Ready to build reactive, resilient banking microservices?** Start with our [Developer Guide](docs/DEVELOPER_GUIDE.md) for step-by-step tutorials and banking domain examples.
+```json
+{
+  "status": "UP",
+  "components": {
+    "domainEventsKafka": {
+      "status": "UP",
+      "details": {
+        "brokers": "localhost:9092",
+        "topics": ["domain.events", "saga.steps"],
+        "producer": "CONNECTED",
+        "consumer": "CONNECTED"
+      }
+    },
+    "serviceClients": {
+      "status": "UP", 
+      "details": {
+        "customer-service": {
+          "status": "UP",
+          "baseUrl": "http://customer-service:8080",
+          "circuitBreaker": "CLOSED",
+          "lastHealthCheck": "2025-01-05T10:30:00Z"
+        },
+        "payment-service": {
+          "status": "DEGRADED",
+          "baseUrl": "https://payment-service.banking.com", 
+          "circuitBreaker": "HALF_OPEN",
+          "lastHealthCheck": "2025-01-05T10:29:45Z",
+          "details": "Response time above threshold"
+        }
+      }
+    },
+    "threadPool": {
+      "status": "UP",
+      "details": {
+        "commonForkJoinPool": {
+          "parallelism": 8,
+          "poolSize": 8,
+          "activeThreadCount": 2,
+          "queuedSubmissionCount": 0
+        }
+      }
+    }
+  }
+}
+```
+
+## 🧪 Testing
+
+### Test Configuration
+
+```yaml
+# application-test.yml
+firefly:
+  events:
+    adapter: APPLICATION_EVENT  # Use in-memory events for testing
+  service-clients:
+    circuit-breaker:
+      enabled: false  # Disable circuit breakers for predictable testing
+    retry:
+      enabled: false  # Disable retries for faster testing
+  resilience:
+    circuit-breaker:
+      enabled: false
+    retry:
+      enabled: false
+  tracing:
+    enabled: false  # Disable tracing overhead in tests
+```
+
+### Integration Testing
+
+```java
+@SpringBootTest
+@Testcontainers
+class DomainEventsIntegrationTest {
+
+    @Container
+    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:latest"));
+    
+    @Autowired
+    private DomainEventPublisher eventPublisher;
+    
+    @Autowired
+    private TestEventListener testEventListener;
+    
+    @DynamicPropertySource
+    static void configureProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+        registry.add("firefly.events.adapter", () -> "KAFKA");
+    }
+    
+    @Test
+    void shouldPublishAndConsumeEvents() {
+        // Given
+        AccountCreatedEvent event = new AccountCreatedEvent("ACC-123", "CUST-456", "SAVINGS", new BigDecimal("1000"));
+        
+        // When
+        StepVerifier.create(eventPublisher.publish(event))
+            .verifyComplete();
+            
+        // Then
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> testEventListener.getReceivedEvents().size() == 1);
+            
+        AccountCreatedEvent receivedEvent = (AccountCreatedEvent) testEventListener.getReceivedEvents().get(0);
+        assertThat(receivedEvent.getAccountId()).isEqualTo("ACC-123");
+        assertThat(receivedEvent.getCustomerId()).isEqualTo("CUST-456");
+    }
+}
+
+@Component
+@EventListener
+class TestEventListener {
+    private final List<DomainEvent> receivedEvents = new CopyOnWriteArrayList<>();
+    
+    @EventHandler(eventType = "*")
+    public Mono<Void> handleEvent(DomainEvent event) {
+        receivedEvents.add(event);
+        return Mono.empty();
+    }
+    
+    public List<DomainEvent> getReceivedEvents() {
+        return receivedEvents;
+    }
+    
+    public void clear() {
+        receivedEvents.clear();
+    }
+}
+```
+
+### Service Client Testing
+
+```java
+@SpringBootTest
+class ServiceClientTest {
+
+    @Autowired
+    private ServiceClient customerServiceClient;
+    
+    private MockWebServer mockWebServer;
+    
+    @BeforeEach
+    void setUp() throws IOException {
+        mockWebServer = new MockWebServer();
+        mockWebServer.start();
+        
+        // Configure client to use mock server
+        ReflectionTestUtils.setField(customerServiceClient, "baseUrl", 
+            mockWebServer.url("/").toString());
+    }
+    
+    @AfterEach
+    void tearDown() throws IOException {
+        mockWebServer.shutdown();
+    }
+    
+    @Test
+    void shouldHandleSuccessfulResponse() {
+        // Given
+        Customer expectedCustomer = new Customer("CUST-123", "John Doe", "john@example.com");
+        mockWebServer.enqueue(new MockResponse()
+            .setResponseCode(200)
+            .setHeader("Content-Type", "application/json")
+            .setBody(objectMapper.writeValueAsString(expectedCustomer)));
+            
+        // When
+        Mono<Customer> result = customerServiceClient.get("/customers/{id}", Customer.class)
+            .withPathParam("id", "CUST-123")
+            .execute();
+            
+        // Then
+        StepVerifier.create(result)
+            .assertNext(customer -> {
+                assertThat(customer.getId()).isEqualTo("CUST-123");
+                assertThat(customer.getName()).isEqualTo("John Doe");
+                assertThat(customer.getEmail()).isEqualTo("john@example.com");
+            })
+            .verifyComplete();
+    }
+    
+    @Test
+    void shouldHandleServiceUnavailable() {
+        // Given
+        mockWebServer.enqueue(new MockResponse().setResponseCode(503));
+        
+        // When & Then
+        StepVerifier.create(
+            customerServiceClient.get("/customers/{id}", Customer.class)
+                .withPathParam("id", "CUST-123")
+                .execute()
+        )
+        .expectError(ServiceUnavailableException.class)
+        .verify();
+    }
+}
+```
+
+## 🔄 Integration with lib-common-cqrs
+
+This library includes `lib-common-cqrs` transitively, providing complete CQRS support:
+
+```xml
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-domain</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
+    <!-- lib-common-cqrs is automatically included -->
+</dependency>
+```
+
+**What you get from lib-common-cqrs:**
+- CommandBus and QueryBus: Central dispatching for commands and queries
+- Handler Annotations: @CommandHandlerComponent and @QueryHandlerComponent
+- Automatic Validation: Jakarta Bean Validation integration
+- Query Caching: Intelligent caching with configurable TTL
+- Authorization Framework: Integration with lib-common-auth
+- Metrics and Tracing: Built-in observability for CQRS operations
+
+**Combined Usage Example:**
+```java
+@Service
+public class BankingOrchestrationService {
+    
+    private final CommandBus commandBus;           // From lib-common-cqrs
+    private final QueryBus queryBus;              // From lib-common-cqrs  
+    private final DomainEventPublisher eventPublisher; // From lib-common-domain
+    private final ServiceClient paymentService;   // From lib-common-domain
+    
+    public Mono<TransferResult> processTransfer(TransferRequest request) {
+        ExecutionContext context = buildExecutionContext(request);
+        
+        return validateTransfer(request, context)
+            .flatMap(validation -> executeTransfer(request, context))
+            .flatMap(this::publishTransferEvents)
+            .flatMap(this::notifyExternalSystems);
+    }
+    
+    private Mono<TransferResult> executeTransfer(TransferRequest request, ExecutionContext context) {
+        // Use CQRS command
+        TransferMoneyCommand command = new TransferMoneyCommand(
+            request.getSourceAccountId(),
+            request.getTargetAccountId(),
+            request.getAmount()
+        );
+        
+        return commandBus.send(command, context);
+    }
+    
+    private Mono<TransferResult> publishTransferEvents(TransferResult result) {
+        // Use domain events
+        TransferCompletedEvent event = new TransferCompletedEvent(
+            result.getTransferId(),
+            result.getSourceAccountId(),
+            result.getTargetAccountId(),
+            result.getAmount()
+        );
+        
+        return eventPublisher.publish(event)
+            .thenReturn(result);
+    }
+    
+    private Mono<TransferResult> notifyExternalSystems(TransferResult result) {
+        // Use service client
+        TransferNotification notification = new TransferNotification(
+            result.getTransferId(),
+            result.getAmount(),
+            "COMPLETED"
+        );
+        
+        return paymentService.post("/notifications", Void.class)
+            .withBody(notification)
+            .execute()
+            .thenReturn(result);
+    }
+}
+```
+
+## 🤝 Contributing
+
+1. Follow the existing code style and patterns
+2. Write comprehensive tests for new features
+3. Update documentation for any API changes
+4. Use reactive programming patterns consistently
+5. Ensure proper integration with messaging platforms
+
+## 📜 License
+
+Copyright 2025 Firefly Software Solutions Inc
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

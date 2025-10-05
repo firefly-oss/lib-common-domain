@@ -170,6 +170,13 @@
             <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
+        <!-- lib-common-cqrs for CQRS pattern support -->
+        <dependency>
+            <groupId>com.firefly</groupId>
+            <artifactId>lib-common-cqrs</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
         <!-- All messaging dependencies included (Application Events work by default, others require additional setup) -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>

@@ -16,13 +16,15 @@
 
 package com.firefly.common.domain.config;
 
-import com.firefly.common.domain.cqrs.command.CommandBus;
-import com.firefly.common.domain.cqrs.query.QueryBus;
+import com.firefly.common.cqrs.command.CommandBus;
+import com.firefly.common.cqrs.config.CqrsAutoConfiguration;
+import com.firefly.common.cqrs.config.CqrsProperties;
+import com.firefly.common.cqrs.query.QueryBus;
 import com.firefly.common.domain.events.outbound.DomainEventPublisher;
 import com.firefly.common.domain.events.properties.DomainEventsProperties;
 import com.firefly.common.domain.resilience.CircuitBreakerManager;
 import com.firefly.common.domain.stepevents.StepEventPublisherBridge;
-import com.firefly.common.domain.tracing.CorrelationContext;
+import com.firefly.common.cqrs.tracing.CorrelationContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;

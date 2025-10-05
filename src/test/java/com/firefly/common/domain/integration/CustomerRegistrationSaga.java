@@ -16,8 +16,8 @@
 
 package com.firefly.common.domain.integration;
 
-import com.firefly.common.domain.cqrs.command.CommandBus;
-import com.firefly.common.domain.cqrs.query.QueryBus;
+import com.firefly.common.cqrs.command.CommandBus;
+import com.firefly.common.cqrs.query.QueryBus;
 import com.firefly.transactional.annotations.*;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
