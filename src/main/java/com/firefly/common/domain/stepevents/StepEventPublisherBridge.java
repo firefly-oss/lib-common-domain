@@ -16,49 +16,78 @@
 
 package com.firefly.common.domain.stepevents;
 
-import com.firefly.common.domain.events.DomainEventEnvelope;
-import com.firefly.common.domain.events.outbound.DomainEventPublisher;
+import com.firefly.common.eda.publisher.EventPublisher;
 import com.firefly.transactional.events.StepEventEnvelope;
 import com.firefly.transactional.events.StepEventPublisher;
 import reactor.core.publisher.Mono;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
- * Bridges StepEvents to the generic DomainEventPublisher so both share adapters and configuration.
+ * Bridges StepEvents from lib-transactional-engine to lib-common-eda's EventPublisher.
+ * <p>
+ * This bridge allows SAGA step events to be published through the unified EDA infrastructure,
+ * enabling step events to leverage all EDA features including:
+ * <ul>
+ *   <li>Multi-platform support (Kafka, RabbitMQ, etc.)</li>
+ *   <li>Resilience patterns (circuit breaker, retry, rate limiting)</li>
+ *   <li>Metrics and monitoring</li>
+ *   <li>Health checks</li>
+ * </ul>
  */
 public class StepEventPublisherBridge implements StepEventPublisher {
 
-    private final DomainEventPublisher delegate;
+    private final EventPublisher edaPublisher;
     private final String defaultTopic;
 
-    public StepEventPublisherBridge(String defaultTopic, DomainEventPublisher delegate) {
-        this.delegate = delegate;
+    /**
+     * Creates a new StepEventPublisherBridge.
+     *
+     * @param defaultTopic the default topic/destination for step events
+     * @param edaPublisher the EDA event publisher to delegate to
+     */
+    public StepEventPublisherBridge(String defaultTopic, EventPublisher edaPublisher) {
+        this.edaPublisher = edaPublisher;
         this.defaultTopic = defaultTopic;
     }
 
     @Override
-    public Mono<Void> publish(StepEventEnvelope e) {
-        java.util.Map<String, Object> hdrs = null;
-        if (e.getHeaders() != null && !e.getHeaders().isEmpty()) {
-            hdrs = new java.util.HashMap<>(e.getHeaders());
+    public Mono<Void> publish(StepEventEnvelope stepEvent) {
+        // Prepare headers from step event
+        Map<String, Object> headers = new HashMap<>();
+        if (stepEvent.getHeaders() != null && !stepEvent.getHeaders().isEmpty()) {
+            headers.putAll(stepEvent.getHeaders());
         }
 
-        // Add StepEventEnvelope metadata fields to provide context about the step event origin
-        java.util.Map<String, Object> metadata = new java.util.HashMap<>();
-        metadata.put("step.attempts", e.getAttempts());
-        metadata.put("step.latency_ms", e.getLatencyMs());
-        metadata.put("step.started_at", e.getStartedAt());
-        metadata.put("step.completed_at", e.getCompletedAt());
-        metadata.put("step.result_type", e.getResultType());
+        // Add step event metadata as headers for traceability
+        headers.put("step.saga_name", stepEvent.getSagaName());
+        headers.put("step.saga_id", stepEvent.getSagaId());
+        headers.put("step.type", stepEvent.getType());
+        headers.put("step.attempts", stepEvent.getAttempts());
+        headers.put("step.latency_ms", stepEvent.getLatencyMs());
+        headers.put("step.started_at", stepEvent.getStartedAt());
+        headers.put("step.completed_at", stepEvent.getCompletedAt());
+        headers.put("step.result_type", stepEvent.getResultType());
+        headers.put("step.timestamp", stepEvent.getTimestamp());
 
-        if(e.getKey() == null || e.getKey().isEmpty()){
-            e.setKey(e.getSagaName().concat(":").concat(e.getSagaId()));
+        // Set routing key if not already set
+        if (stepEvent.getKey() == null || stepEvent.getKey().isEmpty()) {
+            stepEvent.setKey(stepEvent.getSagaName() + ":" + stepEvent.getSagaId());
+            headers.put("routing_key", stepEvent.getKey());
+        } else {
+            headers.put("routing_key", stepEvent.getKey());
         }
-        if(e.getTopic() == null || e.getTopic().isEmpty()){
-            e.setTopic(defaultTopic);
-        }
 
-        DomainEventEnvelope env = new DomainEventEnvelope(e.getTopic(), e.getType(), e.getKey(), e, e.getTimestamp(), hdrs, metadata);
+        // Set event type header
+        headers.put("event_type", stepEvent.getType());
 
-        return delegate.publish(env);
+        // Determine destination topic
+        String destination = (stepEvent.getTopic() != null && !stepEvent.getTopic().isEmpty())
+                ? stepEvent.getTopic()
+                : defaultTopic;
+
+        // Publish through EDA infrastructure
+        return edaPublisher.publish(stepEvent, destination, headers);
     }
 }
