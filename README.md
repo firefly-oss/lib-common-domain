@@ -1,6 +1,6 @@
 # lib-common-domain
 
-**A comprehensive Spring Boot library for domain-driven design (DDD) with reactive programming support, featuring multi-messaging event publishing, resilience patterns, and saga integration.**
+**A comprehensive Spring Boot library for domain-driven design (DDD) with CQRS and SAGA orchestration support.**
 
 ## 🚀 Quick Start
 
@@ -13,6 +13,13 @@
     <version>2.0.0-SNAPSHOT</version>
     <!-- lib-common-cqrs is included transitively -->
 </dependency>
+
+<!-- For event-driven architecture features -->
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-eda</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
 ```
 
 ### Auto-Configuration
@@ -24,28 +31,30 @@ The framework auto-configures when detected on the classpath:
 public class MyApplication {
     public static void main(String[] args) {
         SpringApplication.run(MyApplication.class, args);
-        // ✅ Domain event publishers are automatically available
-        // ✅ Distributed tracing is enabled
         // ✅ CQRS features available via lib-common-cqrs
-        // ✅ Service clients available via lib-common-client
+        // ✅ SAGA step event bridge configured
+        // ✅ Distributed tracing is enabled
+        // ✅ Event publishing available via lib-common-eda
     }
 }
 ```
 
-### Your First Domain Event Publisher
+### Publishing Events with lib-common-eda
+
+For event publishing, use the `lib-common-eda` library:
 
 ```java
 @Service
 public class AccountService {
-    
-    private final DomainEventPublisher eventPublisher;
+
+    private final EventPublisher eventPublisher;
     private final AccountRepository accountRepository;
-    
+
     public Mono<Account> createAccount(CreateAccountCommand command) {
         return accountRepository.save(buildAccount(command))
             .flatMap(this::publishAccountCreatedEvent);
     }
-    
+
     private Mono<Account> publishAccountCreatedEvent(Account account) {
         AccountCreatedEvent event = new AccountCreatedEvent(
             account.getId(),
@@ -53,8 +62,13 @@ public class AccountService {
             account.getType(),
             account.getBalance()
         );
-        
-        return eventPublisher.publish(event)
+
+        Map<String, Object> headers = Map.of(
+            "event_type", "account.created",
+            "aggregate_id", account.getId()
+        );
+
+        return eventPublisher.publish(event, "account-events", headers)
             .thenReturn(account);
     }
 }
@@ -76,34 +90,29 @@ See the [lib-common-client documentation](../lib-common-client/README.md) for co
 
 ## 🎯 Features
 
-### 📡 Multi-Messaging Domain Events
-- **Unified API**: Single interface for multiple messaging platforms
-- **Reactive Streams**: Non-blocking event publishing and consumption
-- **Auto-Configuration**: Automatic adapter selection and configuration
-- **Flexible Routing**: Topic-based routing with filtering capabilities
-- **Reliable Delivery**: Built-in error handling and retry mechanisms
+### 🎯 CQRS Framework (via lib-common-cqrs)
+- **Command & Query Separation**: Clear separation of write and read operations
+- **Handler Auto-Discovery**: Automatic registration of command and query handlers
+- **Validation**: Jakarta Bean Validation integration
+- **Authorization**: Built-in authorization framework
+- **Caching**: Intelligent query result caching
+- **Metrics & Tracing**: Built-in observability
 
-### 🔗 Service Client Framework (lib-common-client)
-- **REST & gRPC**: Unified interface for different protocols (see lib-common-client)
-- **Circuit Breakers**: Automatic failure detection and recovery
-- **Retry Logic**: Configurable retry with exponential backoff
-- **Load Balancing**: Multiple instance support with health checks
-- **Request Tracing**: Automatic correlation ID propagation
-
-### 🛡️ Resilience Patterns
-- **Circuit Breaker Manager**: Advanced circuit breaker with multiple states
-- **Sliding Window**: Time-based and count-based failure detection
-- **Bulkhead Isolation**: Resource isolation between services
-- **Timeout Management**: Configurable timeouts per operation
-- **Health Monitoring**: Real-time service health tracking
-
-### 🔄 Saga Integration
+### 🔄 SAGA Orchestration Integration
 - **lib-transactional-engine**: Native integration with saga orchestration
-- **Step Event Bridge**: Automatic saga step event publishing
+- **Step Event Bridge**: Automatic saga step event publishing via lib-common-eda
 - **Metadata Enrichment**: Context propagation through saga steps
-- **Error Handling**: Built-in compensation and rollback support
+- **EDA Integration**: Leverages lib-common-eda for reliable event delivery
 
-### 🌍 ExecutionContext
+### 📡 Event-Driven Architecture (via lib-common-eda)
+For event publishing and consumption, use the dedicated `lib-common-eda` library:
+- **Multi-Platform Support**: Kafka, RabbitMQ, AWS SQS/Kinesis, Spring Events
+- **Reactive Streams**: Non-blocking event publishing and consumption
+- **Resilience Patterns**: Circuit breakers, retries, rate limiting
+- **Health Monitoring**: Real-time messaging platform health checks
+- **Metrics**: Comprehensive event publishing and consumption metrics
+
+### 🌍 ExecutionContext (via lib-common-cqrs)
 - **Context Propagation**: Pass additional data not part of domain objects
 - **Multi-Tenancy**: Tenant isolation and context awareness
 - **Feature Flags**: Dynamic feature enablement
@@ -115,71 +124,53 @@ See the [lib-common-client documentation](../lib-common-client/README.md) for co
 - **Health Indicators**: Spring Boot Actuator health checks
 - **Distributed Tracing**: Zipkin/Jaeger integration
 - **Structured Logging**: JSON logging with correlation context
-- **Performance Monitoring**: JVM, HTTP client, and thread pool metrics
 
-## 📖 Supported Messaging Platforms
+## 📖 Event-Driven Architecture with lib-common-eda
 
-### ✅ Kafka
+For event publishing and consumption, this library integrates with `lib-common-eda`. See the [lib-common-eda documentation](../lib-common-eda/README.md) for:
+
+- **Supported Messaging Platforms**: Kafka, RabbitMQ, AWS SQS, AWS Kinesis, Spring Application Events
+- **Configuration Options**: Platform-specific configuration
+- **Event Publishing**: Unified EventPublisher API
+- **Event Consumption**: Event listeners and handlers
+- **Resilience Patterns**: Circuit breakers, retries, rate limiting
+- **Health Monitoring**: Platform health indicators
+
+### Quick Example
+
 ```yaml
+# application.yml
 firefly:
-  events:
-    adapter: KAFKA
+  eda:
+    enabled: true
+    default-publisher-type: KAFKA  # or RABBIT, SQS, KINESIS, APPLICATION_EVENT
     kafka:
       bootstrap-servers: localhost:9092
-      producer:
-        key-serializer: org.apache.kafka.common.serialization.StringSerializer
-        value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      consumer:
-        group-id: my-app
-        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
 ```
 
-### ✅ RabbitMQ
-```yaml
-firefly:
-  events:
-    adapter: RABBIT
-    rabbit:
-      host: localhost
-      port: 5672
-      username: guest
-      password: guest
-      exchange: domain.events
-      routing-key-prefix: banking
-```
+```java
+@Service
+public class OrderService {
 
-### ✅ AWS SQS
-```yaml
-firefly:
-  events:
-    adapter: SQS
-    sqs:
-      region: us-east-1
-      queue-name: domain-events-queue
-      access-key: ${AWS_ACCESS_KEY_ID}
-      secret-key: ${AWS_SECRET_ACCESS_KEY}
-```
+    private final EventPublisher eventPublisher;
 
-### ✅ AWS Kinesis
-```yaml
-firefly:
-  events:
-    adapter: KINESIS
-    kinesis:
-      region: us-east-1
-      stream-name: domain-events-stream
-      shard-count: 3
-      access-key: ${AWS_ACCESS_KEY_ID}
-      secret-key: ${AWS_SECRET_ACCESS_KEY}
-```
+    public Mono<Order> createOrder(CreateOrderCommand command) {
+        return processOrder(command)
+            .flatMap(order -> publishOrderCreatedEvent(order));
+    }
 
-### ✅ Spring ApplicationEvents
-```yaml
-firefly:
-  events:
-    adapter: APPLICATION_EVENT
-    # No additional configuration needed - works out of the box
+    private Mono<Order> publishOrderCreatedEvent(Order order) {
+        OrderCreatedEvent event = new OrderCreatedEvent(order.getId(), order.getTotal());
+
+        Map<String, Object> headers = Map.of(
+            "event_type", "order.created",
+            "aggregate_id", order.getId()
+        );
+
+        return eventPublisher.publish(event, "order-events", headers)
+            .thenReturn(order);
+    }
+}
 ```
 
 ## 🏗️ Architecture Overview
@@ -191,175 +182,123 @@ firefly:
 │                                  lib-common-domain Architecture                                             │
 ├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                                             │
-│  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐   │
-│  │   Domain Events     │    │   Service Clients   │    │   Resilience        │    │   Saga Integration  │   │
-│  │                     │    │                     │    │   Patterns          │    │                     │   │
-│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │   │
-│  │ │ Multi-Messaging │ │    │ │ REST Clients    │ │    │ │ Circuit Breaker │ │    │ │ Step Event      │ │   │
-│  │ │ Event Publisher │ │    │ │ gRPC Clients    │ │    │ │ Manager         │ │    │ │ Bridge          │ │   │
-│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │   │
-│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │   │
-│  │ │ Event Listeners │ │    │ │ Request Builder │ │    │ │ Sliding Window  │ │    │ │ Metadata        │ │   │
-│  │ │ & Filters       │ │    │ │ Response Mapper │ │    │ │ State Machine   │ │    │ │ Enrichment      │ │   │
-│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │   │
-│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │   │
-│  │ │ Kafka/RabbitMQ  │ │    │ │ Health Checks   │ │    │ │ Retry Logic     │ │    │ │ Saga Events     │ │   │
-│  │ │ SQS/Kinesis     │ │    │ │ Load Balancing  │ │    │ │ Timeout Mgmt    │ │    │ │ Compensation    │ │   │
-│  │ │ ApplicationEvent│ │    │ │ Metrics         │ │    │ │ Bulkhead Isol.  │ │    │ │ Rollback        │ │   │
-│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │   │
-│  └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘   │
-│                                                                                                             │
 │  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐                              │
-│  │ ExecutionContext    │    │ Observability       │    │ CQRS Integration    │                              │
-│  │                     │    │                     │    │                     │                              │
+│  │   CQRS Framework    │    │   SAGA Integration  │    │   Observability     │                              │
+│  │  (lib-common-cqrs)  │    │                     │    │                     │                              │
 │  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │                              │
-│  │ │ Context         │ │    │ │ Metrics         │ │    │ │ lib-common-cqrs │ │                              │
-│  │ │ Propagation     │ │    │ │ Collection      │ │    │ │ Integration     │ │                              │
+│  │ │ CommandBus      │ │    │ │ Step Event      │ │    │ │ Metrics         │ │                              │
+│  │ │ QueryBus        │ │    │ │ Bridge          │ │    │ │ Collection      │ │                              │
 │  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │                              │
 │  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │                              │
-│  │ │ Tenant          │ │    │ │ Health          │ │    │ │ CommandBus      │ │                              │
-│  │ │ Awareness       │ │    │ │ Indicators      │ │    │ │ QueryBus        │ │                              │
-│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ │ ExecutionCtx    │ │                              │
-│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ └─────────────────┘ │                              │
-│  │ │ Feature Flags   │ │    │ │ Distributed     │ │    │                     │                              │
-│  │ │ User Context    │ │    │ │ Tracing         │ │    │                     │                              │
-│  │ └─────────────────┘ │    │ └─────────────────┘ │    │                     │                              │
+│  │ │ Handler         │ │    │ │ Metadata        │ │    │ │ Health          │ │                              │
+│  │ │ Auto-Discovery  │ │    │ │ Enrichment      │ │    │ │ Indicators      │ │                              │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │                              │
+│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │                              │
+│  │ │ Validation      │ │    │ │ EDA Integration │ │    │ │ Distributed     │ │                              │
+│  │ │ Authorization   │ │    │ │ (lib-common-eda)│ │    │ │ Tracing         │ │                              │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │                              │
+│  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │                              │
+│  │ │ ExecutionContext│ │    │ │ Saga Events     │ │    │ │ JSON Logging    │ │                              │
+│  │ │ Multi-Tenancy   │ │    │ │ Compensation    │ │    │ │ Correlation     │ │                              │
+│  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │                              │
 │  └─────────────────────┘    └─────────────────────┘    └─────────────────────┘                              │
+│                                                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────────────────────┐   │
+│  │                          External Dependencies                                                        │   │
+│  │                                                                                                       │   │
+│  │  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐                      │   │
+│  │  │  lib-common-eda     │    │ lib-transactional-  │    │  lib-common-client  │                      │   │
+│  │  │                     │    │      engine         │    │                     │                      │   │
+│  │  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │                      │   │
+│  │  │ │ EventPublisher  │ │    │ │ StepEventPubl.  │ │    │ │ ServiceClient   │ │                      │   │
+│  │  │ │ Multi-Platform  │ │    │ │ Interface       │ │    │ │ REST & gRPC     │ │                      │   │
+│  │  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │                      │   │
+│  │  │ ┌─────────────────┐ │    │ ┌─────────────────┐ │    │ ┌─────────────────┐ │                      │   │
+│  │  │ │ Kafka/RabbitMQ  │ │    │ │ Saga            │ │    │ │ Circuit Breaker │ │                      │   │
+│  │  │ │ SQS/Kinesis     │ │    │ │ Orchestration   │ │    │ │ Retry Logic     │ │                      │   │
+│  │  │ └─────────────────┘ │    │ └─────────────────┘ │    │ └─────────────────┘ │                      │   │
+│  │  └─────────────────────┘    └─────────────────────┘    └─────────────────────┘                      │   │
+│  └─────────────────────────────────────────────────────────────────────────────────────────────────────┘   │
 │                                                                                                             │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 📡 Domain Events
+## 📡 Event Publishing with lib-common-eda
 
-### Event Publishing
+For event publishing and consumption, use the dedicated `lib-common-eda` library:
 
-Publish domain events to multiple messaging platforms with a unified API:
+```xml
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-eda</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+The `lib-common-eda` library provides:
+- **Multi-Platform Support**: Kafka, RabbitMQ, AWS SQS, AWS Kinesis, Spring Application Events
+- **Unified API**: Single EventPublisher interface for all platforms
+- **Reactive Streams**: Non-blocking event publishing and consumption
+- **Resilience Patterns**: Circuit breakers, retries, rate limiting
+- **Health Monitoring**: Real-time messaging platform health checks
+- **Metrics**: Comprehensive event publishing and consumption metrics
+
+### Event Publishing Example
 
 ```java
-// Simple event publishing
 @Service
 public class OrderService {
-    
-    private final DomainEventPublisher eventPublisher;
-    
+
+    private final EventPublisher eventPublisher;
+
     public Mono<Order> processOrder(ProcessOrderCommand command) {
         return createOrder(command)
             .flatMap(this::validateOrder)
             .flatMap(this::publishOrderEvents)
             .flatMap(this::updateOrderStatus);
     }
-    
-    private Mono<Order> publishOrderEvents(Order order) {
-        // Multiple events can be published
-        List<DomainEvent> events = List.of(
-            new OrderCreatedEvent(order.getId(), order.getCustomerId(), order.getTotal()),
-            new InventoryReservedEvent(order.getId(), order.getItems()),
-            new PaymentRequestedEvent(order.getId(), order.getTotal(), order.getCustomerId())
-        );
-        
-        return Flux.fromIterable(events)
-            .flatMap(eventPublisher::publish)
-            .then(Mono.just(order));
-    }
-}
 
-// Event with metadata
-public class PaymentProcessedEvent implements DomainEvent {
-    
-    private final String paymentId;
-    private final String orderId;
-    private final BigDecimal amount;
-    private final PaymentMethod paymentMethod;
-    private final Instant processedAt;
-    
-    @Override
-    public String getEventType() {
-        return "payment.processed";
-    }
-    
-    @Override
-    public String getAggregateId() {
-        return paymentId;
-    }
-    
-    @Override
-    public Map<String, Object> getMetadata() {
-        return Map.of(
-            "orderId", orderId,
-            "paymentMethod", paymentMethod.name(),
-            "processedAt", processedAt.toString(),
-            "source", "payment-service"
+    private Mono<Order> publishOrderEvents(Order order) {
+        OrderCreatedEvent event = new OrderCreatedEvent(
+            order.getId(),
+            order.getCustomerId(),
+            order.getTotal()
         );
+
+        Map<String, Object> headers = Map.of(
+            "event_type", "order.created",
+            "aggregate_id", order.getId(),
+            "source", "order-service"
+        );
+
+        return eventPublisher.publish(event, "order-events", headers)
+            .thenReturn(order);
     }
 }
 ```
 
-### Event Consumption
-
-Listen to domain events with flexible filtering:
+### Event Consumption Example
 
 ```java
-@EventListener
 @Component
 public class OrderEventHandler {
-    
+
     private final NotificationService notificationService;
-    private final InventoryService inventoryService;
-    
-    @EventHandler(eventType = "order.created")
-    public Mono<Void> handleOrderCreated(OrderCreatedEvent event) {
+
+    @EventListener
+    public Mono<Void> handleOrderCreated(Event<OrderCreatedEvent> event) {
+        OrderCreatedEvent payload = event.getPayload();
+
         return notificationService.sendOrderConfirmation(
-            event.getCustomerId(),
-            event.getOrderId(),
-            event.getTotal()
+            payload.getCustomerId(),
+            payload.getOrderId(),
+            payload.getTotal()
         );
     }
-    
-    @EventHandler(eventType = "payment.failed")
-    public Mono<Void> handlePaymentFailed(PaymentFailedEvent event) {
-        return inventoryService.releaseReservation(event.getOrderId())
-            .then(notificationService.sendPaymentFailureNotification(
-                event.getCustomerId(), event.getReason()));
-    }
-    
-    // Filter events by metadata
-    @EventHandler(eventType = "order.*", filter = "metadata.source == 'mobile-app'")
-    public Mono<Void> handleMobileOrderEvents(DomainEvent event) {
-        return mobileAnalyticsService.trackOrderEvent(event);
-    }
 }
 ```
 
-### Event Filtering
-
-Configure sophisticated event filtering:
-
-```java
-@Configuration
-public class EventFilterConfiguration {
-    
-    @Bean
-    public EventFilter orderEventFilter() {
-        return CompositeEventFilter.builder()
-            .add(new TypeFilter("order.*"))
-            .add(new HeaderFilter("source", "order-service"))
-            .add(new TopicFilter("banking.orders"))
-            .build();
-    }
-    
-    @Bean
-    public EventFilter paymentEventFilter() {
-        return CompositeEventFilter.builder()
-            .add(new TypeFilter("payment.*"))
-            .add(event -> {
-                // Custom filtering logic
-                BigDecimal amount = (BigDecimal) event.getMetadata().get("amount");
-                return amount.compareTo(new BigDecimal("1000.00")) > 0;
-            })
-            .build();
-    }
-}
-```
+See the [lib-common-eda documentation](../lib-common-eda/README.md) for complete usage examples, configuration options, and advanced features.
 
 ## 🔗 Service Client Framework
 
@@ -383,138 +322,98 @@ The `lib-common-client` library provides:
 
 See the [lib-common-client documentation](../lib-common-client/README.md) for complete usage examples and configuration options.
 
-## 🛡️ Resilience Patterns
 
-### Circuit Breaker Configuration
 
-```java
-@Configuration
-public class ResilienceConfiguration {
-    
-    @Bean
-    public CircuitBreaker customerServiceCircuitBreaker() {
-        return CircuitBreaker.ofDefaults("customer-service")
-            .toBuilder()
-            .failureRateThreshold(50.0f)                    // 50% failure rate
-            .waitDurationInOpenState(Duration.ofSeconds(30)) // Wait 30 seconds
-            .slidingWindowSize(20)                          // 20 calls window
-            .minimumNumberOfCalls(5)                        // Min 5 calls before evaluation
-            .build();
-    }
-    
-    @Bean
-    public Retry paymentServiceRetry() {
-        return Retry.ofDefaults("payment-service")
-            .toBuilder()
-            .maxAttempts(3)
-            .waitDuration(Duration.ofSeconds(2))
-            .retryOnException(throwable -> 
-                throwable instanceof ConnectException || 
-                throwable instanceof SocketTimeoutException)
-            .build();
-    }
-}
+## 🔄 SAGA Orchestration Integration
+
+This library provides integration between `lib-transactional-engine` (SAGA orchestration) and `lib-common-eda` (event publishing).
+
+### Dependencies
+
+```xml
+<!-- SAGA orchestration -->
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-transactional-engine</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+
+<!-- Event publishing -->
+<dependency>
+    <groupId>com.firefly</groupId>
+    <artifactId>lib-common-eda</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
 ```
-
-### Advanced Circuit Breaker Manager
-
-```java
-@Service
-public class AdvancedRiskService {
-    
-    private final AdvancedResilienceManager resilienceManager;
-    
-    public Mono<RiskAssessment> assessTransactionRisk(TransactionRequest request) {
-        return resilienceManager.executeWithResilience(
-            "risk-assessment",
-            () -> performRiskAssessment(request),
-            ResilienceConfig.builder()
-                .circuitBreaker(CircuitBreakerConfig.builder()
-                    .failureRateThreshold(60.0f)
-                    .waitDurationInOpenState(Duration.ofMinutes(2))
-                    .slidingWindowType(SlidingWindowType.TIME_BASED)
-                    .slidingWindowSize(60)
-                    .build())
-                .retry(RetryConfig.builder()
-                    .maxAttempts(3)
-                    .waitDuration(Duration.ofSeconds(1))
-                    .exponentialBackoff(true)
-                    .build())
-                .timeout(Duration.ofSeconds(10))
-                .bulkhead(BulkheadConfig.builder()
-                    .maxConcurrentCalls(50)
-                    .maxWaitDuration(Duration.ofMillis(500))
-                    .build())
-                .build()
-        );
-    }
-}
-```
-
-## 🔄 Saga Integration
 
 ### Step Event Bridge Configuration
 
+The `StepEventPublisherBridge` automatically bridges SAGA step events to the EDA infrastructure:
+
 ```yaml
 firefly:
-  step-events:
+  stepevents:
+    enabled: true  # Default: true
+    topic: saga-step-events  # Default: step-events
+
+  eda:
     enabled: true
-    publisher-type: KAFKA  # KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT
-    topic-name: saga-steps
-    include-metadata: true
-    correlation-enabled: true
+    default-publisher-type: KAFKA  # or RABBIT, SQS, KINESIS, APPLICATION_EVENT
+    kafka:
+      bootstrap-servers: localhost:9092
 ```
 
-### Saga Step Implementation
+### How It Works
+
+The bridge automatically:
+1. Receives step events from `lib-transactional-engine` via the `StepEventPublisher` interface
+2. Enriches events with metadata (saga ID, transaction ID, step name, status)
+3. Publishes events through `lib-common-eda`'s `EventPublisher` to your configured messaging platform
+
+### SAGA Implementation Example
+
+For SAGA implementation details, see the [lib-transactional-engine documentation](../lib-transactional-engine/README.md).
 
 ```java
 @Service
 public class MoneyTransferSaga {
-    
-    private final StepEventBridge stepEventBridge;
-    
-    @SagaStep("debit-source-account")
-    public Mono<StepResult> debitSourceAccount(TransferCommand command) {
-        return accountService.debitAccount(command.getSourceAccountId(), command.getAmount())
-            .flatMap(result -> publishStepEvent("debit-source-account", result, command))
-            .map(this::toStepResult)
-            .onErrorResume(error -> publishStepFailure("debit-source-account", error, command));
-    }
-    
-    @SagaStep("credit-target-account")  
-    public Mono<StepResult> creditTargetAccount(TransferCommand command) {
-        return accountService.creditAccount(command.getTargetAccountId(), command.getAmount())
-            .flatMap(result -> publishStepEvent("credit-target-account", result, command))
-            .map(this::toStepResult)
-            .onErrorResume(error -> publishStepFailure("credit-target-account", error, command));
-    }
-    
-    @CompensationStep("debit-source-account")
-    public Mono<Void> compensateDebitSourceAccount(TransferCommand command) {
-        return accountService.creditAccount(command.getSourceAccountId(), command.getAmount())
-            .flatMap(result -> publishStepEvent("compensate-debit-source", result, command))
-            .then();
-    }
-    
-    private Mono<Object> publishStepEvent(String stepName, Object result, TransferCommand command) {
-        StepEvent event = StepEvent.builder()
-            .stepName(stepName)
-            .sagaId(command.getSagaId())
-            .transactionId(command.getTransactionId())
-            .status(StepStatus.COMPLETED)
-            .result(result)
-            .metadata(Map.of(
-                "sourceAccountId", command.getSourceAccountId(),
-                "targetAccountId", command.getTargetAccountId(),
-                "amount", command.getAmount().toString()
-            ))
-            .build();
-            
-        return stepEventBridge.publishStepEvent(event)
-            .thenReturn(result);
+
+    private final SagaOrchestrator orchestrator;
+
+    public Mono<TransferResult> executeTransfer(TransferCommand command) {
+        return orchestrator.execute(
+            SagaDefinition.builder()
+                .sagaId(command.getSagaId())
+                .step("debit-source", () -> debitAccount(command))
+                .step("credit-target", () -> creditAccount(command))
+                .compensation("debit-source", () -> refundAccount(command))
+                .build()
+        );
+        // Step events are automatically published via StepEventPublisherBridge
     }
 }
 ```
+
+### Step Event Structure
+
+Step events published through the bridge include:
+
+```json
+{
+  "sagaId": "saga-123",
+  "transactionId": "txn-456",
+  "stepName": "debit-source-account",
+  "status": "COMPLETED",
+  "timestamp": "2025-01-05T10:30:00Z",
+  "payload": { /* step result data */ }
+}
+```
+
+Headers automatically added:
+- `saga_id`: SAGA identifier
+- `transaction_id`: Transaction identifier
+- `step_name`: Step name
+- `step_status`: Step status (STARTED, COMPLETED, FAILED, COMPENSATED)
 
 
 ## ⚙️ Configuration
@@ -524,57 +423,33 @@ public class MoneyTransferSaga {
 ```yaml
 # application.yml
 firefly:
-  # Domain Events Configuration
-  events:
+  # CQRS Configuration (from lib-common-cqrs)
+  cqrs:
     enabled: true
-    adapter: AUTO  # AUTO, KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT, NOOP
-    default-topic: domain.events
-    correlation-enabled: true
-    metadata-enabled: true
-    
-  # Service Clients Configuration  
-  service-clients:
-    default-timeout: 30s
-    default-max-connections: 100
-    circuit-breaker:
-      enabled: true
-      failure-rate-threshold: 50.0
-      wait-duration: 30s
-      sliding-window-size: 20
-    retry:
-      enabled: true
-      max-attempts: 3
-      wait-duration: 1s
-      exponential-backoff: true
-      
-  # Resilience Configuration
-  resilience:
-    circuit-breaker:
-      enabled: true
-      default-config:
-        failure-rate-threshold: 50.0
-        wait-duration-in-open-state: 60s
-        sliding-window-size: 100
-        minimum-number-of-calls: 10
-    retry:
-      enabled: true
-      default-config:
-        max-attempts: 3
-        wait-duration: 500ms
-        
-  # Saga Integration
-  step-events:
+    command:
+      validation:
+        enabled: true
+    query:
+      cache:
+        enabled: true
+
+  # SAGA Step Events Configuration
+  stepevents:
+    enabled: true  # Default: true
+    topic: saga-step-events  # Default: step-events
+
+  # Event-Driven Architecture (from lib-common-eda)
+  eda:
     enabled: true
-    publisher-type: AUTO
-    topic-name: saga.steps
-    include-metadata: true
-    
-  # Tracing Configuration
-  tracing:
-    enabled: true
-    correlation-header: X-Correlation-ID
-    trace-id-header: X-Trace-ID
-    span-id-header: X-Span-ID
+    default-publisher-type: KAFKA  # KAFKA, RABBIT, SQS, KINESIS, APPLICATION_EVENT
+    kafka:
+      bootstrap-servers: localhost:9092
+      producer:
+        acks: all
+        retries: 3
+      consumer:
+        group-id: ${spring.application.name}
+        auto-offset-reset: earliest
 ```
 
 ### Environment Variables
@@ -582,36 +457,29 @@ firefly:
 All configuration properties can be overridden with environment variables:
 
 ```bash
-# Domain Events
-FIREFLY_EVENTS_ENABLED=true
-FIREFLY_EVENTS_ADAPTER=KAFKA
-FIREFLY_EVENTS_DEFAULT_TOPIC=domain.events
+# CQRS
+FIREFLY_CQRS_ENABLED=true
+FIREFLY_CQRS_COMMAND_VALIDATION_ENABLED=true
+FIREFLY_CQRS_QUERY_CACHE_ENABLED=true
 
-# Service Clients
-FIREFLY_SERVICE_CLIENTS_DEFAULT_TIMEOUT=30s
-FIREFLY_SERVICE_CLIENTS_CIRCUIT_BREAKER_ENABLED=true
-FIREFLY_SERVICE_CLIENTS_RETRY_ENABLED=true
+# SAGA Step Events
+FIREFLY_STEPEVENTS_ENABLED=true
+FIREFLY_STEPEVENTS_TOPIC=saga-step-events
 
-# Resilience
-FIREFLY_RESILIENCE_CIRCUIT_BREAKER_ENABLED=true
-FIREFLY_RESILIENCE_RETRY_ENABLED=true
-
-# Saga Integration  
-FIREFLY_STEP_EVENTS_ENABLED=true
-FIREFLY_STEP_EVENTS_PUBLISHER_TYPE=KAFKA
-
-# Tracing
-FIREFLY_TRACING_ENABLED=true
-FIREFLY_TRACING_CORRELATION_HEADER=X-Correlation-ID
+# Event-Driven Architecture
+FIREFLY_EDA_ENABLED=true
+FIREFLY_EDA_DEFAULT_PUBLISHER_TYPE=KAFKA
 ```
 
-### Messaging Platform Specific Configuration
+### Event Publishing Configuration (lib-common-eda)
+
+For detailed event publishing configuration, see the [lib-common-eda documentation](../lib-common-eda/README.md).
 
 #### Kafka Configuration
 ```yaml
 firefly:
-  events:
-    adapter: KAFKA
+  eda:
+    default-publisher-type: KAFKA
     kafka:
       bootstrap-servers: localhost:9092
       producer:
@@ -619,53 +487,29 @@ firefly:
         retries: 3
         key-serializer: org.apache.kafka.common.serialization.StringSerializer
         value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      consumer:
-        group-id: ${spring.application.name}
-        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-        auto-offset-reset: earliest
 ```
 
 #### RabbitMQ Configuration
 ```yaml
 firefly:
-  events:
-    adapter: RABBIT
+  eda:
+    default-publisher-type: RABBIT
     rabbit:
       host: localhost
       port: 5672
       username: guest
       password: guest
-      virtual-host: /
       exchange: domain.events.exchange
-      queue-name-prefix: ${spring.application.name}
-      routing-key-prefix: banking
-      durable: true
 ```
 
 #### AWS Configuration
 ```yaml
 firefly:
-  events:
-    adapter: SQS
+  eda:
+    default-publisher-type: SQS
     sqs:
       region: ${AWS_REGION:us-east-1}
       queue-name: domain-events-${spring.profiles.active}
-      visibility-timeout: 300
-      message-retention: 1209600  # 14 days
-      dead-letter-queue:
-        enabled: true
-        max-receive-count: 3
-        
-# For Kinesis
-firefly:
-  events:
-    adapter: KINESIS
-    kinesis:
-      region: ${AWS_REGION:us-east-1}
-      stream-name: domain-events-${spring.profiles.active}
-      shard-count: 3
-      retention-period: 168  # 7 days
 ```
 
 ## 🔍 Observability & Monitoring
@@ -677,102 +521,55 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus,domain-events,service-clients
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always
       show-components: always
-  health:
-    # Domain Events health indicators
-    domainEventsKafka:
-      enabled: true
-    domainEventsRabbit:
-      enabled: true
-    domainEventsSqs:
-      enabled: true
-    domainEventsKinesis:
-      enabled: true
-    # Service Client health indicators
-    serviceClients:
-      enabled: true
-    # Custom health indicators
-    threadPool:
-      enabled: true
-    httpClient:
-      enabled: true
 ```
 
 ### Available Metrics
 
-#### Domain Events Metrics
-- `firefly.events.published.total` - Total events published
-- `firefly.events.publishing.duration` - Event publishing time
-- `firefly.events.consumed.total` - Total events consumed
-- `firefly.events.processing.duration` - Event processing time
-- `firefly.events.errors.total` - Event processing errors
+#### CQRS Metrics (from lib-common-cqrs)
+- `firefly.cqrs.command.executed.total` - Total commands executed
+- `firefly.cqrs.command.execution.duration` - Command execution time
+- `firefly.cqrs.query.executed.total` - Total queries executed
+- `firefly.cqrs.query.execution.duration` - Query execution time
+- `firefly.cqrs.query.cache.hits` - Query cache hits
+- `firefly.cqrs.query.cache.misses` - Query cache misses
 
-#### Service Client Metrics
-- `firefly.service.client.requests.total` - Total service requests
-- `firefly.service.client.request.duration` - Request duration
-- `firefly.service.client.errors.total` - Service client errors
-- `firefly.service.client.circuit.breaker.state` - Circuit breaker states
-- `firefly.service.client.retry.attempts.total` - Retry attempts
+#### Event Publishing Metrics (from lib-common-eda)
+- `firefly.eda.events.published.total` - Total events published
+- `firefly.eda.events.publishing.duration` - Event publishing time
+- `firefly.eda.events.consumed.total` - Total events consumed
+- `firefly.eda.events.processing.duration` - Event processing time
+- `firefly.eda.events.errors.total` - Event processing errors
 
-#### Resilience Metrics
-- `resilience4j.circuitbreaker.calls` - Circuit breaker calls
-- `resilience4j.circuitbreaker.state` - Circuit breaker state
-- `resilience4j.retry.calls` - Retry calls
-- `resilience4j.bulkhead.available.concurrent.calls` - Available concurrent calls
+#### SAGA Step Event Metrics
+- `firefly.stepevents.published.total` - Total step events published
+- `firefly.stepevents.publishing.duration` - Step event publishing time
 
 ### Health Indicators
 
-The library provides comprehensive health indicators:
+The library provides health indicators for SAGA step event bridge:
 
 ```json
 {
   "status": "UP",
   "components": {
-    "domainEventsKafka": {
+    "stepEventBridge": {
       "status": "UP",
       "details": {
-        "brokers": "localhost:9092",
-        "topics": ["domain.events", "saga.steps"],
-        "producer": "CONNECTED",
-        "consumer": "CONNECTED"
-      }
-    },
-    "serviceClients": {
-      "status": "UP", 
-      "details": {
-        "customer-service": {
-          "status": "UP",
-          "baseUrl": "http://customer-service:8080",
-          "circuitBreaker": "CLOSED",
-          "lastHealthCheck": "2025-01-05T10:30:00Z"
-        },
-        "payment-service": {
-          "status": "DEGRADED",
-          "baseUrl": "https://payment-service.banking.com", 
-          "circuitBreaker": "HALF_OPEN",
-          "lastHealthCheck": "2025-01-05T10:29:45Z",
-          "details": "Response time above threshold"
-        }
-      }
-    },
-    "threadPool": {
-      "status": "UP",
-      "details": {
-        "commonForkJoinPool": {
-          "parallelism": 8,
-          "poolSize": 8,
-          "activeThreadCount": 2,
-          "queuedSubmissionCount": 0
-        }
+        "topic": "saga-step-events",
+        "publisher": "KAFKA",
+        "enabled": true
       }
     }
   }
 }
 ```
+
+For EDA health indicators (Kafka, RabbitMQ, SQS, Kinesis), see the [lib-common-eda documentation](../lib-common-eda/README.md#observability).
 
 ## 🧪 Testing
 
@@ -781,87 +578,109 @@ The library provides comprehensive health indicators:
 ```yaml
 # application-test.yml
 firefly:
-  events:
-    adapter: APPLICATION_EVENT  # Use in-memory events for testing
-  service-clients:
-    circuit-breaker:
-      enabled: false  # Disable circuit breakers for predictable testing
-    retry:
-      enabled: false  # Disable retries for faster testing
-  resilience:
-    circuit-breaker:
-      enabled: false
-    retry:
-      enabled: false
-  tracing:
-    enabled: false  # Disable tracing overhead in tests
+  cqrs:
+    enabled: true
+    command:
+      validation:
+        enabled: true
+    query:
+      cache:
+        enabled: false  # Disable cache for predictable testing
+
+  stepevents:
+    enabled: true
+    topic: test-step-events
+
+  eda:
+    default-publisher-type: APPLICATION_EVENT  # Use in-memory events for testing
 ```
 
-### Integration Testing
+### Integration Testing with Testcontainers
 
 ```java
 @SpringBootTest
 @Testcontainers
-class DomainEventsIntegrationTest {
+class StepEventBridgeIntegrationTest {
 
     @Container
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:latest"));
-    
+    static KafkaContainer kafka = new KafkaContainer(
+        DockerImageName.parse("confluentinc/cp-kafka:latest")
+    );
+
     @Autowired
-    private DomainEventPublisher eventPublisher;
-    
-    @Autowired
-    private TestEventListener testEventListener;
-    
+    private StepEventPublisherBridge stepEventBridge;
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
-        registry.add("firefly.events.adapter", () -> "KAFKA");
+        registry.add("firefly.eda.default-publisher-type", () -> "KAFKA");
     }
-    
-    @Test
-    void shouldPublishAndConsumeEvents() {
-        // Given
-        AccountCreatedEvent event = new AccountCreatedEvent("ACC-123", "CUST-456", "SAVINGS", new BigDecimal("1000"));
-        
-        // When
-        StepVerifier.create(eventPublisher.publish(event))
-            .verifyComplete();
-            
-        // Then
-        await().atMost(5, TimeUnit.SECONDS)
-            .until(() -> testEventListener.getReceivedEvents().size() == 1);
-            
-        AccountCreatedEvent receivedEvent = (AccountCreatedEvent) testEventListener.getReceivedEvents().get(0);
-        assertThat(receivedEvent.getAccountId()).isEqualTo("ACC-123");
-        assertThat(receivedEvent.getCustomerId()).isEqualTo("CUST-456");
-    }
-}
 
-@Component
-@EventListener
-class TestEventListener {
-    private final List<DomainEvent> receivedEvents = new CopyOnWriteArrayList<>();
-    
-    @EventHandler(eventType = "*")
-    public Mono<Void> handleEvent(DomainEvent event) {
-        receivedEvents.add(event);
-        return Mono.empty();
-    }
-    
-    public List<DomainEvent> getReceivedEvents() {
-        return receivedEvents;
-    }
-    
-    public void clear() {
-        receivedEvents.clear();
+    @Test
+    void shouldPublishStepEvent() {
+        // Given
+        StepEventEnvelope stepEvent = StepEventEnvelope.builder()
+            .sagaId("saga-123")
+            .transactionId("txn-456")
+            .stepName("debit-account")
+            .status("COMPLETED")
+            .payload(Map.of("accountId", "ACC-123", "amount", 100.00))
+            .build();
+
+        // When
+        StepVerifier.create(stepEventBridge.publish(stepEvent))
+            .verifyComplete();
     }
 }
 ```
 
-### Service Client Testing
+### Unit Testing
 
-For service client testing, see the [lib-common-client testing documentation](../lib-common-client/README.md#testing).
+```java
+@ExtendWith(MockitoExtension.class)
+class StepEventPublisherBridgeTest {
+
+    @Mock
+    private EventPublisher eventPublisher;
+
+    private StepEventPublisherBridge bridge;
+
+    @BeforeEach
+    void setUp() {
+        bridge = new StepEventPublisherBridge("step-events", eventPublisher);
+    }
+
+    @Test
+    void shouldPublishStepEventWithMetadata() {
+        // Given
+        when(eventPublisher.publish(any(), anyString(), anyMap()))
+            .thenReturn(Mono.empty());
+
+        StepEventEnvelope stepEvent = StepEventEnvelope.builder()
+            .sagaId("saga-123")
+            .stepName("test-step")
+            .build();
+
+        // When
+        StepVerifier.create(bridge.publish(stepEvent))
+            .verifyComplete();
+
+        // Then
+        verify(eventPublisher).publish(
+            eq(stepEvent),
+            eq("step-events"),
+            argThat(headers ->
+                headers.containsKey("saga_id") &&
+                headers.containsKey("step_name")
+            )
+        );
+    }
+}
+```
+
+### Testing with lib-common-eda
+
+For event publishing and consumption testing, see the [lib-common-eda testing documentation](../lib-common-eda/README.md#testing).
 
 ## 🔄 Integration with lib-common-cqrs
 
