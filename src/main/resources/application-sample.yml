@@ -246,19 +246,8 @@ firefly:
       tracing-enabled: true
     query:
       timeout: 15s
-      caching-enabled: true
-      cache-ttl: 15m
       metrics-enabled: true
       tracing-enabled: true
-      cache:
-        type: LOCAL  # LOCAL or REDIS
-        redis:
-          enabled: false
-          host: localhost
-          port: 6379
-          database: 0
-          key-prefix: "firefly:cqrs:"
-          statistics: false
 
   # Service Client Configuration
   service-client:

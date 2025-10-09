@@ -2,8 +2,6 @@
 spring:
   main:
     banner-mode: off
-  cache:
-    type: simple
   application:
     name: firefly-common-domain-test
 
