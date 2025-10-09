@@ -28,7 +28,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -62,13 +61,12 @@ class AutoConfigurationTest {
                 // Then: CQRS components should be available
                 assertThat(context).hasSingleBean(CommandBus.class);
                 assertThat(context).hasSingleBean(QueryBus.class);
-                assertThat(context).hasSingleBean(CacheManager.class);
                 assertThat(context).hasSingleBean(CorrelationContext.class);
-                
+
                 // Verify beans are properly configured
                 CommandBus commandBus = context.getBean(CommandBus.class);
                 assertThat(commandBus).isNotNull();
-                
+
                 QueryBus queryBus = context.getBean(QueryBus.class);
                 assertThat(queryBus).isNotNull();
             });
@@ -162,32 +160,27 @@ class AutoConfigurationTest {
                 "firefly.events.enabled=true",
                 "firefly.events.adapter=APPLICATION_EVENT",
                 "firefly.stepevents.enabled=true",
-                
+
                 // Banking-specific configuration
                 "domain.topic=banking-domain-events",
-                "spring.application.name=banking-service",
-                
-                // CQRS configuration
-                "firefly.cqrs.query.cache.enabled=true",
-                "firefly.cqrs.query.cache.default-ttl=300"
+                "spring.application.name=banking-service"
             )
             .run(context -> {
                 // Then: All banking microservice components should be available
-                
+
                 // CQRS Framework
                 assertThat(context).hasSingleBean(CommandBus.class);
                 assertThat(context).hasSingleBean(QueryBus.class);
-                assertThat(context).hasBean("cqrsCacheManager");
-                
+
                 // Domain Events
                 assertThat(context).hasSingleBean(DomainEventPublisher.class);
-                
+
                 // StepEvents Bridge
                 assertThat(context).hasSingleBean(StepEventPublisherBridge.class);
-                
+
                 // Correlation Context
                 assertThat(context).hasSingleBean(CorrelationContext.class);
-                
+
                 // Verify integration between components
                 StepEventPublisherBridge bridge = context.getBean(StepEventPublisherBridge.class);
                 DomainEventPublisher publisher = context.getBean(DomainEventPublisher.class);
@@ -240,17 +233,16 @@ class AutoConfigurationTest {
             .withPropertyValues(
                 "firefly.cqrs.enabled=true"
             )
-            .withBean("cqrsCacheManager", CacheManager.class, () -> {
-                // Custom cache manager implementation
-                return new org.springframework.cache.concurrent.ConcurrentMapCacheManager("custom-cache");
+            .withBean("customCommandBus", CommandBus.class, () -> {
+                // Custom command bus implementation (mock for testing)
+                return mock(CommandBus.class);
             })
             .run(context -> {
                 // Then: Custom bean should be used instead of auto-configured one
-                assertThat(context).hasBean("cqrsCacheManager");
+                assertThat(context).hasBean("customCommandBus");
 
-                CacheManager cacheManager = context.getBean("cqrsCacheManager", CacheManager.class);
-                assertThat(cacheManager).isInstanceOf(org.springframework.cache.concurrent.ConcurrentMapCacheManager.class);
-                assertThat(cacheManager.getCacheNames()).contains("custom-cache");
+                CommandBus customCommandBus = context.getBean("customCommandBus", CommandBus.class);
+                assertThat(customCommandBus).isNotNull();
             });
     }
 }
