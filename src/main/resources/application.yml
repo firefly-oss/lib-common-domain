@@ -2,5 +2,3 @@ server:
   address: ${SERVER_ADDRESS:localhost}
   port: ${SERVER_PORT:8080}
   shutdown: graceful
-
-domain.topic: "domain-layer"

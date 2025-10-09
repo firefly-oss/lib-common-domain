@@ -16,8 +16,7 @@
 
 package com.firefly.common.domain.stepevents;
 
-import com.firefly.common.domain.events.DomainEventEnvelope;
-import com.firefly.common.domain.events.outbound.DomainEventPublisher;
+import com.firefly.common.eda.publisher.EventPublisher;
 import com.firefly.transactional.events.StepEventEnvelope;
 import lombok.Data;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,12 +35,14 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Comprehensive test suite for StepEventPublisherBridge integration with lib-transactional-engine.
- * Tests cover step event publishing through domain events infrastructure, metadata handling,
+ * Tests cover step event publishing through EDA infrastructure, metadata handling,
  * and bridge pattern implementation for banking transaction workflows.
  */
 @ExtendWith(MockitoExtension.class)
@@ -49,14 +50,14 @@ import static org.mockito.Mockito.when;
 class StepEventPublisherBridgeTest {
 
     @Mock
-    private DomainEventPublisher domainEventPublisher;
+    private EventPublisher edaPublisher;
 
     private StepEventPublisherBridge stepEventBridge;
-    private final String defaultTopic = "banking-step-events";
+    private final String defaultTopic = "domain-layer";
 
     @BeforeEach
     void setUp() {
-        stepEventBridge = new StepEventPublisherBridge(defaultTopic, domainEventPublisher);
+        stepEventBridge = new StepEventPublisherBridge(defaultTopic, edaPublisher);
     }
 
     private StepEventEnvelope createStepEvent(String sagaName, String sagaId, String type, String key, Object payload) {
@@ -80,8 +81,9 @@ class StepEventPublisherBridgeTest {
     @Test
     @DisplayName("Should publish money transfer step event with complete metadata")
     void shouldPublishMoneyTransferStepEvent() {
-        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+        when(edaPublisher.publish(any(), anyString(), any()))
             .thenReturn(Mono.empty());
+
         // Given: A money transfer saga step has completed
         MoneyTransferStepPayload payload = new MoneyTransferStepPayload(
             "TXN-12345",
@@ -104,35 +106,37 @@ class StepEventPublisherBridgeTest {
         StepVerifier.create(stepEventBridge.publish(stepEvent))
             .verifyComplete();
 
-        // Then: Domain event publisher should be called with properly transformed event
-        ArgumentCaptor<DomainEventEnvelope> eventCaptor = ArgumentCaptor.forClass(DomainEventEnvelope.class);
-        verify(domainEventPublisher).publish(eventCaptor.capture());
+        // Then: EDA publisher should be called with properly transformed event
+        ArgumentCaptor<String> destinationCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Map> headersCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
 
-        DomainEventEnvelope domainEvent = eventCaptor.getValue();
+        verify(edaPublisher).publish(eventCaptor.capture(), destinationCaptor.capture(), headersCaptor.capture());
 
-        // Verify basic event properties
-        assertThat(domainEvent.getTopic()).isEqualTo(defaultTopic);
-        assertThat(domainEvent.getType()).isEqualTo("transfer.step.completed");
-        assertThat(domainEvent.getKey()).isEqualTo("TXN-12345");
-        assertThat(domainEvent.getPayload()).isEqualTo(stepEvent);
-        assertThat(domainEvent.getTimestamp()).isEqualTo(stepEvent.getTimestamp());
+        // Verify destination
+        assertThat(destinationCaptor.getValue()).isEqualTo(defaultTopic);
 
-        // Verify headers are empty since createStepEvent creates empty headers
-        assertThat(domainEvent.getHeaders()).isEmpty();
+        // Verify event payload
+        assertThat(eventCaptor.getValue()).isEqualTo(stepEvent);
 
-        // Verify step-specific metadata is added
-        assertThat(domainEvent.getMetadata()).containsEntry("step.attempts", 1);
-        assertThat(domainEvent.getMetadata()).containsEntry("step.latency_ms", 250L);
-        assertThat(domainEvent.getMetadata()).containsEntry("step.started_at", stepEvent.getStartedAt());
-        assertThat(domainEvent.getMetadata()).containsEntry("step.completed_at", stepEvent.getCompletedAt());
-        assertThat(domainEvent.getMetadata()).containsEntry("step.result_type", "SUCCESS");
+        // Verify headers contain step metadata
+        Map<String, Object> headers = headersCaptor.getValue();
+        assertThat(headers).containsEntry("step.saga_name", "MoneyTransferSaga");
+        assertThat(headers).containsEntry("step.saga_id", "SAGA-67890");
+        assertThat(headers).containsEntry("step.type", "transfer.step.completed");
+        assertThat(headers).containsEntry("step.attempts", 1);
+        assertThat(headers).containsEntry("step.latency_ms", 250L);
+        assertThat(headers).containsEntry("step.result_type", "SUCCESS");
+        assertThat(headers).containsEntry("routing_key", "TXN-12345");
+        assertThat(headers).containsEntry("event_type", "transfer.step.completed");
     }
 
     @Test
     @DisplayName("Should auto-generate key from saga name and ID when key is missing")
     void shouldAutoGenerateKeyFromSagaNameAndId() {
-        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+        when(edaPublisher.publish(any(), anyString(), any()))
             .thenReturn(Mono.empty());
+
         // Given: A step event without a key
         StepEventEnvelope stepEvent = createStepEvent(
             "AccountOpeningSaga",
@@ -147,18 +151,19 @@ class StepEventPublisherBridgeTest {
             .verifyComplete();
 
         // Then: Key should be auto-generated from saga name and ID
-        ArgumentCaptor<DomainEventEnvelope> eventCaptor = ArgumentCaptor.forClass(DomainEventEnvelope.class);
-        verify(domainEventPublisher).publish(eventCaptor.capture());
+        ArgumentCaptor<Map> headersCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(edaPublisher).publish(any(), anyString(), headersCaptor.capture());
 
-        DomainEventEnvelope domainEvent = eventCaptor.getValue();
-        assertThat(domainEvent.getKey()).isEqualTo("AccountOpeningSaga:SAGA-12345");
+        Map<String, Object> headers = headersCaptor.getValue();
+        assertThat(headers).containsEntry("routing_key", "AccountOpeningSaga:SAGA-12345");
     }
 
     @Test
     @DisplayName("Should use default topic when topic is missing")
     void shouldUseDefaultTopicWhenTopicMissing() {
-        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+        when(edaPublisher.publish(any(), anyString(), any()))
             .thenReturn(Mono.empty());
+
         // Given: A step event without a topic
         StepEventEnvelope stepEvent = createStepEvent(
             "LoanApprovalSaga",
@@ -173,18 +178,18 @@ class StepEventPublisherBridgeTest {
             .verifyComplete();
 
         // Then: Default topic should be used
-        ArgumentCaptor<DomainEventEnvelope> eventCaptor = ArgumentCaptor.forClass(DomainEventEnvelope.class);
-        verify(domainEventPublisher).publish(eventCaptor.capture());
+        ArgumentCaptor<String> destinationCaptor = ArgumentCaptor.forClass(String.class);
+        verify(edaPublisher).publish(any(), destinationCaptor.capture(), any());
 
-        DomainEventEnvelope domainEvent = eventCaptor.getValue();
-        assertThat(domainEvent.getTopic()).isEqualTo(defaultTopic);
+        assertThat(destinationCaptor.getValue()).isEqualTo(defaultTopic);
     }
 
     @Test
     @DisplayName("Should handle step event with retry attempts and failure metadata")
     void shouldHandleStepEventWithRetryAttemptsAndFailureMetadata() {
-        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+        when(edaPublisher.publish(any(), anyString(), any()))
             .thenReturn(Mono.empty());
+
         // Given: A step event that failed and was retried
         FraudCheckStepPayload payload = new FraudCheckStepPayload(
             "TXN-99999",
@@ -219,30 +224,33 @@ class StepEventPublisherBridgeTest {
             .verifyComplete();
 
         // Then: All failure and retry metadata should be preserved
-        ArgumentCaptor<DomainEventEnvelope> eventCaptor = ArgumentCaptor.forClass(DomainEventEnvelope.class);
-        verify(domainEventPublisher).publish(eventCaptor.capture());
+        ArgumentCaptor<String> destinationCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Map> headersCaptor = ArgumentCaptor.forClass(Map.class);
 
-        DomainEventEnvelope domainEvent = eventCaptor.getValue();
+        verify(edaPublisher).publish(any(), destinationCaptor.capture(), headersCaptor.capture());
 
-        assertThat(domainEvent.getTopic()).isEqualTo("banking-fraud-events");
-        assertThat(domainEvent.getType()).isEqualTo("fraud.check.failed");
-        assertThat(domainEvent.getKey()).isEqualTo("TXN-99999");
+        assertThat(destinationCaptor.getValue()).isEqualTo("banking-fraud-events");
+
+        Map<String, Object> headers = headersCaptor.getValue();
+        assertThat(headers).containsEntry("step.type", "fraud.check.failed");
+        assertThat(headers).containsEntry("routing_key", "TXN-99999");
 
         // Verify retry and failure metadata
-        assertThat(domainEvent.getMetadata()).containsEntry("step.attempts", 3);
-        assertThat(domainEvent.getMetadata()).containsEntry("step.latency_ms", 1200L);
-        assertThat(domainEvent.getMetadata()).containsEntry("step.result_type", "FAILURE");
+        assertThat(headers).containsEntry("step.attempts", 3);
+        assertThat(headers).containsEntry("step.latency_ms", 1200L);
+        assertThat(headers).containsEntry("step.result_type", "FAILURE");
 
-        // Verify headers are preserved
-        assertThat(domainEvent.getHeaders()).containsEntry("priority", "high");
-        assertThat(domainEvent.getHeaders()).containsEntry("alert-level", "critical");
+        // Verify original headers are preserved
+        assertThat(headers).containsEntry("priority", "high");
+        assertThat(headers).containsEntry("alert-level", "critical");
     }
 
     @Test
     @DisplayName("Should handle step event with empty headers gracefully")
     void shouldHandleStepEventWithEmptyHeadersGracefully() {
-        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+        when(edaPublisher.publish(any(), anyString(), any()))
             .thenReturn(Mono.empty());
+
         // Given: A step event with null headers
         StepEventEnvelope stepEvent = new StepEventEnvelope(
             "SimpleTransferSaga",
@@ -265,21 +273,21 @@ class StepEventPublisherBridgeTest {
             .verifyComplete();
 
         // Then: Should handle null headers gracefully
-        ArgumentCaptor<DomainEventEnvelope> eventCaptor = ArgumentCaptor.forClass(DomainEventEnvelope.class);
-        verify(domainEventPublisher).publish(eventCaptor.capture());
+        ArgumentCaptor<Map> headersCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(edaPublisher).publish(any(), anyString(), headersCaptor.capture());
 
-        DomainEventEnvelope domainEvent = eventCaptor.getValue();
-        assertThat(domainEvent.getHeaders()).isEmpty();
-        assertThat(domainEvent.getMetadata()).isNotNull();
-        assertThat(domainEvent.getMetadata()).containsEntry("step.attempts", 1);
+        Map<String, Object> headers = headersCaptor.getValue();
+        assertThat(headers).isNotNull();
+        assertThat(headers).containsEntry("step.attempts", 1);
+        assertThat(headers).containsEntry("step.saga_name", "SimpleTransferSaga");
     }
 
     @Test
-    @DisplayName("Should propagate domain event publisher errors")
-    void shouldPropagateDomainEventPublisherErrors() {
-        // Given: Domain event publisher that fails
+    @DisplayName("Should propagate EDA publisher errors")
+    void shouldPropagateEdaPublisherErrors() {
+        // Given: EDA publisher that fails
         RuntimeException publisherError = new RuntimeException("Message broker unavailable");
-        when(domainEventPublisher.publish(any(DomainEventEnvelope.class)))
+        when(edaPublisher.publish(any(), anyString(), any()))
             .thenReturn(Mono.error(publisherError));
 
         StepEventEnvelope stepEvent = createStepEvent(
@@ -296,7 +304,7 @@ class StepEventPublisherBridgeTest {
             .verify();
 
         // Then: Error should be propagated
-        verify(domainEventPublisher).publish(any(DomainEventEnvelope.class));
+        verify(edaPublisher).publish(any(), anyString(), any());
     }
 
     // Test Payloads for Banking Domain Step Events

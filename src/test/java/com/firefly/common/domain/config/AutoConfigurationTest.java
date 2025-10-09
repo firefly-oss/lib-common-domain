@@ -20,32 +20,30 @@ import com.firefly.common.cqrs.command.CommandBus;
 import com.firefly.common.cqrs.config.CqrsAutoConfiguration;
 import com.firefly.common.cqrs.config.CqrsProperties;
 import com.firefly.common.cqrs.query.QueryBus;
-import com.firefly.common.domain.events.outbound.DomainEventPublisher;
-import com.firefly.common.domain.events.properties.DomainEventsProperties;
-import com.firefly.common.domain.stepevents.StepEventPublisherBridge;
 import com.firefly.common.cqrs.tracing.CorrelationContext;
+import com.firefly.common.domain.stepevents.StepEventPublisherBridge;
+import com.firefly.common.eda.publisher.EventPublisher;
+import com.firefly.common.eda.publisher.EventPublisherFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Comprehensive test suite for Auto-Configuration classes in the Firefly Common Domain library.
  * Tests cover conditional bean creation, property binding, and integration scenarios
  * for banking domain microservices auto-configuration.
  */
-@DisplayName("Banking Domain Auto-Configuration - Component Initialization")
+@DisplayName("Common Domain Auto-Configuration - Component Initialization")
 class AutoConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(
             CqrsAutoConfiguration.class,
-            DomainEventsAutoConfiguration.class,
             StepBridgeConfiguration.class
         ))
         .withBean(CorrelationContext.class);
@@ -87,65 +85,41 @@ class AutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("Should auto-configure Domain Events with APPLICATION_EVENT adapter")
-    void shouldAutoConfigureDomainEventsWithApplicationEventAdapter() {
-        contextRunner
-            .withBean(ApplicationEventPublisher.class, () -> mock(ApplicationEventPublisher.class))
-            .withPropertyValues(
-                "firefly.events.enabled=true",
-                "firefly.events.adapter=APPLICATION_EVENT"
-            )
-            .run(context -> {
-                // Then: Domain Events components should be available
-                assertThat(context).hasSingleBean(DomainEventPublisher.class);
-                assertThat(context).hasSingleBean(ApplicationEventPublisher.class);
-
-                // Verify publisher is properly configured
-                DomainEventPublisher publisher = context.getBean(DomainEventPublisher.class);
-                assertThat(publisher).isNotNull();
-                assertThat(publisher.getClass().getSimpleName())
-                    .isEqualTo("ApplicationEventDomainEventPublisher");
-            });
-    }
-
-    @Test
-    @DisplayName("Should auto-configure Domain Events with AUTO adapter selection")
-    void shouldAutoConfigureDomainEventsWithAutoAdapterSelection() {
-        contextRunner
-            .withPropertyValues(
-                "firefly.events.enabled=true",
-                "firefly.events.adapter=AUTO"
-            )
-            .run(context -> {
-                // Then: Domain Events should auto-detect available adapter
-                assertThat(context).hasSingleBean(DomainEventPublisher.class);
-
-                DomainEventPublisher publisher = context.getBean(DomainEventPublisher.class);
-                assertThat(publisher).isNotNull();
-                // In test environment with RabbitMQ dependencies, RabbitMQ is auto-detected
-                assertThat(publisher.getClass().getSimpleName())
-                    .isEqualTo("RabbitMqDomainEventPublisher");
-            });
-    }
-
-    @Test
-    @DisplayName("Should auto-configure StepEvents bridge when enabled")
+    @DisplayName("Should auto-configure StepEvents bridge when EventPublisherFactory is available")
     void shouldAutoConfigureStepEventsBridgeWhenEnabled() {
+        // Create mock EventPublisher and EventPublisherFactory
+        EventPublisher mockPublisher = mock(EventPublisher.class);
+        EventPublisherFactory mockFactory = mock(EventPublisherFactory.class);
+        when(mockFactory.getDefaultPublisher()).thenReturn(mockPublisher);
+
         contextRunner
+            .withBean(EventPublisherFactory.class, () -> mockFactory)
             .withPropertyValues(
                 "firefly.stepevents.enabled=true",
-                "firefly.events.enabled=true",
-                "firefly.events.adapter=APPLICATION_EVENT",
-                "domain.topic=banking-step-events"
+                "firefly.stepevents.topic=step-events"
             )
             .run(context -> {
                 // Then: StepEvents bridge should be available
                 assertThat(context).hasSingleBean(StepEventPublisherBridge.class);
-                assertThat(context).hasSingleBean(DomainEventPublisher.class);
-                
+                assertThat(context).hasSingleBean(EventPublisherFactory.class);
+
                 // Verify bridge is properly configured
                 StepEventPublisherBridge bridge = context.getBean(StepEventPublisherBridge.class);
                 assertThat(bridge).isNotNull();
+            });
+    }
+
+    @Test
+    @DisplayName("Should not auto-configure StepEvents bridge when EventPublisherFactory is missing")
+    void shouldNotAutoConfigureStepEventsBridgeWhenEdaMissing() {
+        contextRunner
+            .withPropertyValues(
+                "firefly.stepevents.enabled=true",
+                "firefly.stepevents.topic=step-events"
+            )
+            .run(context -> {
+                // Then: StepEvents bridge should not be available without EDA
+                assertThat(context).doesNotHaveBean(StepEventPublisherBridge.class);
             });
     }
 
@@ -153,16 +127,20 @@ class AutoConfigurationTest {
     @Test
     @DisplayName("Should configure complete banking microservice stack")
     void shouldConfigureCompleteBankingMicroserviceStack() {
+        // Create mock EventPublisher and EventPublisherFactory
+        EventPublisher mockPublisher = mock(EventPublisher.class);
+        EventPublisherFactory mockFactory = mock(EventPublisherFactory.class);
+        when(mockFactory.getDefaultPublisher()).thenReturn(mockPublisher);
+
         contextRunner
+            .withBean(EventPublisherFactory.class, () -> mockFactory)
             .withPropertyValues(
                 // Enable all components
                 "firefly.cqrs.enabled=true",
-                "firefly.events.enabled=true",
-                "firefly.events.adapter=APPLICATION_EVENT",
                 "firefly.stepevents.enabled=true",
+                "firefly.stepevents.topic=step-events",
 
                 // Banking-specific configuration
-                "domain.topic=banking-domain-events",
                 "spring.application.name=banking-service"
             )
             .run(context -> {
@@ -172,8 +150,8 @@ class AutoConfigurationTest {
                 assertThat(context).hasSingleBean(CommandBus.class);
                 assertThat(context).hasSingleBean(QueryBus.class);
 
-                // Domain Events
-                assertThat(context).hasSingleBean(DomainEventPublisher.class);
+                // EDA Framework (mocked)
+                assertThat(context).hasSingleBean(EventPublisherFactory.class);
 
                 // StepEvents Bridge
                 assertThat(context).hasSingleBean(StepEventPublisherBridge.class);
@@ -183,46 +161,36 @@ class AutoConfigurationTest {
 
                 // Verify integration between components
                 StepEventPublisherBridge bridge = context.getBean(StepEventPublisherBridge.class);
-                DomainEventPublisher publisher = context.getBean(DomainEventPublisher.class);
+                EventPublisherFactory factory = context.getBean(EventPublisherFactory.class);
                 assertThat(bridge).isNotNull();
-                assertThat(publisher).isNotNull();
-            });
-    }
-
-    @Test
-    @DisplayName("Should fail when explicitly configured adapter is not available")
-    void shouldFailWhenExplicitlyConfiguredAdapterIsNotAvailable() {
-        contextRunner
-            .withPropertyValues(
-                "firefly.events.enabled=true",
-                "firefly.events.adapter=KAFKA" // Kafka not available in test
-            )
-            .run(context -> {
-                // Then: Should fail with appropriate error message
-                assertThat(context).hasFailed();
-                assertThat(context.getStartupFailure())
-                    .hasMessageContaining("Kafka adapter selected but KafkaTemplate bean was not found");
+                assertThat(factory).isNotNull();
             });
     }
 
     @Test
     @DisplayName("Should bind configuration properties correctly")
     void shouldBindConfigurationPropertiesCorrectly() {
+        // Create mock EventPublisher and EventPublisherFactory
+        EventPublisher mockPublisher = mock(EventPublisher.class);
+        EventPublisherFactory mockFactory = mock(EventPublisherFactory.class);
+        when(mockFactory.getDefaultPublisher()).thenReturn(mockPublisher);
+
         contextRunner
+            .withBean(EventPublisherFactory.class, () -> mockFactory)
             .withPropertyValues(
                 "firefly.cqrs.enabled=true",
-                "firefly.events.enabled=true",
-                "firefly.events.adapter=APPLICATION_EVENT"
+                "firefly.stepevents.enabled=true",
+                "firefly.stepevents.topic=custom-step-events"
             )
             .run(context -> {
                 // Then: Configuration properties should be properly bound
                 assertThat(context).hasSingleBean(CqrsProperties.class);
-                assertThat(context).hasSingleBean(DomainEventsProperties.class);
-                
+                assertThat(context).hasSingleBean(StepEventsProperties.class);
+
                 // Verify property values
-                DomainEventsProperties eventsProps = context.getBean(DomainEventsProperties.class);
-                assertThat(eventsProps.isEnabled()).isTrue();
-                assertThat(eventsProps.getAdapter()).isEqualTo(DomainEventsProperties.Adapter.APPLICATION_EVENT);
+                StepEventsProperties stepProps = context.getBean(StepEventsProperties.class);
+                assertThat(stepProps.isEnabled()).isTrue();
+                assertThat(stepProps.getTopic()).isEqualTo("custom-step-events");
             });
     }
 
