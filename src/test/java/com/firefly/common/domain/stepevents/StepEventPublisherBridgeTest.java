@@ -17,7 +17,7 @@
 package com.firefly.common.domain.stepevents;
 
 import com.firefly.common.eda.publisher.EventPublisher;
-import com.firefly.transactional.events.StepEventEnvelope;
+import com.firefly.transactional.saga.events.StepEventEnvelope;
 import lombok.Data;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
