@@ -126,13 +126,6 @@
             <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
-        <!-- lib-common-auth for authentication and authorization -->
-        <dependency>
-            <groupId>com.firefly</groupId>
-            <artifactId>lib-common-auth</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
-        </dependency>
-
         <!-- lib-common-cqrs for CQRS pattern support -->
         <dependency>
             <groupId>com.firefly</groupId>
